@@ -39,7 +39,8 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "workspace:^",
-    "fflate": "^0.8.2"
+    "fflate": "^0.8.2",
+    "undici": "^7.16.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",

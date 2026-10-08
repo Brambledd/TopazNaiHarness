@@ -38,6 +38,7 @@ The token is read from the `NOVELAI_TOKEN` environment variable; alternatively s
 | `imageBaseUrl` | `https://image.novelai.net` | Image API base URL |
 | `outputDir` | `workspace/novelai` | Directory for generated PNGs; relative paths resolve against the process working directory |
 | `timeoutMs` | `180000` | Per-request timeout |
+| `proxyUrl` | `''` | HTTP(S) proxy URL for reaching the API; empty defers to the `NOVELAI_PROXY`/`HTTPS_PROXY` environment variables, unset means a direct connection |
 
 ### What each call does
 
@@ -69,6 +70,7 @@ Every call is paid. The tool description tells the model to batch and iterate de
 | [`src/index.ts`](src/index.ts) | Plugin entry: `Config` schema, `novelai_generate` registration, default resolution, HTTP submission, file saving |
 | [`src/types.ts`](src/types.ts) | Model/sampler enums, request and result types |
 | [`src/payload.ts`](src/payload.ts) | Pure wire-body assembly, Anlas estimation, filename stems |
+| [`src/client.ts`](src/client.ts) | HTTP submission with optional proxy dispatch and network-failure guidance |
 | [`src/unzip.ts`](src/unzip.ts) | ZIP/PNG response extraction with bounded sizes |
 | [`src/invariant.ts`](src/invariant.ts) | Empty invariant companion: the adapter owns no durable session relation |
 

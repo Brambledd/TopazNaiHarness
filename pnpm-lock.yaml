@@ -6913,6 +6913,9 @@ importers:
       fflate:
         specifier: ^0.8.2
         version: 0.8.3
+      undici:
+        specifier: ^7.16.0
+        version: 7.28.0
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^

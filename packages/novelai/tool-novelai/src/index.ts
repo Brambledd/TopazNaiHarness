@@ -21,7 +21,7 @@ import {
   type NovelaiSampler,
 } from './types.ts'
 import { DEFAULT_NEGATIVE_PROMPT, buildNovelaiPayload, estimateAnlas, generationFileStem } from './payload.ts'
-import { extractImages } from './unzip.ts'
+import { requestGeneration, resolveProxyUrl } from './client.ts'
 
 export const name = 'tool-novelai'
 export const inject = ['tools']
@@ -36,6 +36,8 @@ export interface Config {
   outputDir: string
   /** Per-request timeout in milliseconds. */
   timeoutMs: number
+  /** HTTP(S) proxy URL for reaching the NovelAI API, e.g. `http://127.0.0.1:7890`; empty defers to `NOVELAI_PROXY`/`HTTPS_PROXY` environment variables, unset means a direct connection. */
+  proxyUrl: string
 }
 
 /** Schemastery configuration for the NovelAI tool consumer. */
@@ -44,6 +46,7 @@ export const Config: z<Config> = z.object({
   imageBaseUrl: z.string().default('https://image.novelai.net'),
   outputDir: z.string().default('workspace/novelai'),
   timeoutMs: z.number().default(180_000),
+  proxyUrl: z.string().default(''),
 })
 
 const DESCRIPTION =
@@ -172,21 +175,14 @@ export function apply(ctx: Context, config: Config): void {
       const payload = buildNovelaiPayload(input)
       const timeout = AbortSignal.timeout(config.timeoutMs)
       const signal = AbortSignal.any([exec.signal, timeout])
-      const response = await fetch(`${config.imageBaseUrl.replace(/\/+$/, '')}/ai/generate-image`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/zip, application/octet-stream',
-        },
-        body: JSON.stringify(payload),
+      const images = await requestGeneration({
+        payload,
+        token,
+        baseUrl: config.imageBaseUrl,
+        timeoutMs: config.timeoutMs,
         signal,
+        proxyUrl: resolveProxyUrl(config.proxyUrl) ?? '',
       })
-      if (!response.ok) {
-        // Never auto-retry a failed paid submission: the server may have charged for the image.
-        throw new Error(`NovelAI generation failed: HTTP ${response.status} ${response.statusText}`)
-      }
-      const images = extractImages(new Uint8Array(await response.arrayBuffer()))
       const image = images[0]
       if (image === undefined) {
         throw new Error('NovelAI returned an empty image list; not retrying to avoid a duplicate charge')

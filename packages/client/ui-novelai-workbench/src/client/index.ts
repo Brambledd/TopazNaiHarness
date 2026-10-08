@@ -22,8 +22,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Services required by the workbench plugin. */
-export const inject = ['slots', 'layout', 'remote', 'locale']
+/** Services required by the workbench plugin. Both the 'remote' aggregate and
+ * the dot-path 'remote.novelai' namespace are declared, mirroring the
+ * ui-conversation / ui-commands inject pattern. */
+export const inject = ['slots', 'layout', 'remote', 'remote.novelai', 'locale']
 
 /** Register the workbench seats and dictionaries.
  * @param ctx - client root context.

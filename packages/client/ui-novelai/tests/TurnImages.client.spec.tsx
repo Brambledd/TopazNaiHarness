@@ -14,6 +14,7 @@ const imageA = {
   attachment: {
     attachmentId: 'sha256:aaa',
     mediaType: 'image/webp',
+    bytes: 99_932,
     width: 832,
     height: 1216,
     name: 'one.png',
@@ -24,6 +25,7 @@ const imageB = {
   attachment: {
     attachmentId: 'sha256:bbb',
     mediaType: 'image/webp',
+    bytes: 163_194,
     width: 832,
     height: 1216,
   },

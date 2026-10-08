@@ -1,8 +1,9 @@
 /** Workbench presentation components (pure props; all data via inject). */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   NovelaiCatalogValue,
   NovelaiGenerateRequest,
+  NovelaiGenerationValue,
 } from '@deepseek-ai/dsh-api-novelai-controller/types'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -14,6 +15,7 @@ import {
   resolutionForTier,
   snapDimensionWithinArea,
 } from './resolution.ts'
+import { PromptTextarea } from './autocomplete.tsx'
 import type { WorkbenchInjected } from './injected.ts'
 import css from './workbench.module.css'
 
@@ -28,12 +30,14 @@ const TIER_LABEL_KEYS: Record<Tier, 'param.tier.0_4' | 'param.tier.1' | 'param.t
   3: 'param.tier.3',
 }
 
-/** Workbench center surface: prompt, full parameter panel, and generation. */
+/** Workbench center surface: prompt, full parameter panel, generation, and history. */
 export function WorkbenchRoot({
   catalog,
   estimate,
   generate,
   history,
+  suggestTags,
+  readEntry,
   setViewMode,
   t,
 }: PropsRuntime<'workbench'> & WorkbenchInjected & PropsLocale<'novelai-workbench'>) {
@@ -55,6 +59,9 @@ export function WorkbenchRoot({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
   const [done, setDone] = useState<string | undefined>(undefined)
+  const [entries, setEntries] = useState<readonly NovelaiGenerationValue[]>([])
+  const [lightbox, setLightbox] = useState<NovelaiGenerationValue | undefined>(undefined)
+  const urlCache = useRef(new Map<string, string>())
 
   // One-time catalog load seeds every dropdown and the workbench defaults.
   useEffect(() => {
@@ -73,6 +80,15 @@ export function WorkbenchRoot({
     return () => { cancelled = true }
   }, [catalog])
 
+  // Initial history page, refreshed after every generation.
+  useEffect(() => {
+    let cancelled = false
+    history().then((page) => {
+      if (!cancelled) setEntries(page.entries)
+    }).catch(() => { /* the grid stays empty; generation reports its own failures */ })
+    return () => { cancelled = true }
+  }, [history])
+
   // Live Anlas quote, debounced across width/height/steps edits.
   useEffect(() => {
     if (width <= 0 || height <= 0) return undefined
@@ -85,6 +101,12 @@ export function WorkbenchRoot({
     return () => { cancelled = true; clearTimeout(timer) }
   }, [width, height, steps, estimate])
 
+  // Revoke every minted object URL when the surface unmounts.
+  useEffect(() => () => {
+    for (const url of urlCache.current.values()) URL.revokeObjectURL(url)
+    urlCache.current.clear()
+  }, [])
+
   const tier = useMemo(() => nearestTier(width, height), [width, height])
   const ratio = useMemo(() => nearestRatio(width, height), [width, height])
 
@@ -95,9 +117,21 @@ export function WorkbenchRoot({
     setHeight(size.height)
   }
 
-  const submit = (): void => {
+  const refreshHistory = (): void => {
+    history().then((page) => { setEntries(page.entries) }).catch(() => { /* keep the current page */ })
+  }
+
+  const submit = (request: NovelaiGenerateRequest): void => {
     setBusy(true)
     setError(undefined)
+    generate(request).then((value) => {
+      setDone(value.file)
+      if (value.seed !== undefined) setLastSeed(value.seed)
+      refreshHistory()
+    }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) }).finally(() => { setBusy(false) })
+  }
+
+  const submitCurrent = (): void => {
     const request: NovelaiGenerateRequest = {
       prompt,
       model,
@@ -110,11 +144,63 @@ export function WorkbenchRoot({
       ...(negativePrompt.trim() === '' ? {} : { negativePrompt }),
       ...(seedMode === 'fixed' ? { seed } : {}),
     }
-    generate(request).then((value) => {
-      setDone(value.file)
-      if (value.seed !== undefined) setLastSeed(value.seed)
-      return history()
-    }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) }).finally(() => { setBusy(false) })
+    submit(request)
+  }
+
+  /** One-click variation: the entry's parameters with a fresh random seed. */
+  const submitVariation = (entry: NovelaiGenerationValue): void => {
+    if (entry.prompt === undefined) return
+    setPrompt(entry.prompt)
+    setNegativePrompt(entry.negativePrompt ?? '')
+    if (entry.model !== undefined) setModel(entry.model)
+    if (entry.width !== undefined) setWidth(entry.width)
+    if (entry.height !== undefined) setHeight(entry.height)
+    if (entry.steps !== undefined) setSteps(entry.steps)
+    setSeedMode('random')
+    submit({
+      prompt: entry.prompt,
+      ...(entry.model === undefined ? {} : { model: entry.model }),
+      ...(entry.width === undefined ? {} : { width: entry.width }),
+      ...(entry.height === undefined ? {} : { height: entry.height }),
+      ...(entry.steps === undefined ? {} : { steps: entry.steps }),
+      cfgScale,
+      sampler,
+      noiseSchedule,
+      ...(entry.negativePrompt === undefined || entry.negativePrompt.trim() === '' ? {} : { negativePrompt: entry.negativePrompt }),
+    })
+    setLightbox(undefined)
+  }
+
+  /** Backfill the panel from one history entry (sampler and schedule stay as set). */
+  const backfill = (entry: NovelaiGenerationValue): void => {
+    if (entry.prompt !== undefined) setPrompt(entry.prompt)
+    setNegativePrompt(entry.negativePrompt ?? '')
+    if (entry.negativePrompt !== undefined && entry.negativePrompt.trim() !== '') setNegativeOpen(true)
+    if (entry.model !== undefined) setModel(entry.model)
+    if (entry.width !== undefined) setWidth(entry.width)
+    if (entry.height !== undefined) setHeight(entry.height)
+    if (entry.steps !== undefined) setSteps(entry.steps)
+    if (entry.seed !== undefined) {
+      setSeedMode('fixed')
+      setSeed(entry.seed)
+    }
+    setDone(undefined)
+    setLightbox(undefined)
+  }
+
+  /** Mint (or reuse) the object URL of one entry's PNG. */
+  const entryUrl = (entry: NovelaiGenerationValue): string | undefined => {
+    const cached = urlCache.current.get(entry.id)
+    if (cached !== undefined) return cached
+    if (entry.bytes > 8_000_000) return undefined
+    void readEntry({ id: entry.id }).then((content) => {
+      const bytes = Uint8Array.from(atob(content.data), ch => ch.charCodeAt(0))
+      const url = URL.createObjectURL(new Blob([bytes], { type: content.mime }))
+      urlCache.current.set(entry.id, url)
+      const img = document.querySelector<HTMLImageElement>(`img[data-entry-id="${entry.id}"]`)
+      if (img !== null) img.src = url
+    }).catch(() => { /* the tile keeps its placeholder */ })
+    return undefined
   }
 
   return (
@@ -124,11 +210,13 @@ export function WorkbenchRoot({
       </button>
       <label className={css.section}>
         <span className={css.fieldLabel}>{t('prompt.label')}</span>
-        <textarea
-          className={css.promptArea}
+        <PromptTextarea
           value={prompt}
+          onChange={setPrompt}
+          suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
           placeholder={t('prompt.placeholder')}
-          onChange={(e) => { setPrompt(e.target.value) }}
+          ariaLabel={t('prompt.label')}
+          className={css.promptArea}
         />
       </label>
       <div className={css.section}>
@@ -142,11 +230,13 @@ export function WorkbenchRoot({
           {t('negative.label')}
         </button>
         {negativeOpen && (
-          <textarea
-            className={css.negativeArea}
+          <PromptTextarea
             value={negativePrompt}
+            onChange={setNegativePrompt}
+            suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
             placeholder={t('negative.placeholder')}
-            onChange={(e) => { setNegativePrompt(e.target.value) }}
+            ariaLabel={t('negative.label')}
+            className={css.negativeArea}
           />
         )}
       </div>
@@ -299,10 +389,70 @@ export function WorkbenchRoot({
         </span>
         {error !== undefined && <p className={css.errorText} role="alert">{t('error')}: {error}</p>}
         {done !== undefined && <p className={css.doneText}>{done}</p>}
-        <button type="button" className={css.generateButton} disabled={busy || prompt.trim() === ''} onClick={submit}>
+        <button type="button" className={css.generateButton} disabled={busy || prompt.trim() === ''} onClick={submitCurrent}>
           {busy ? t('generating') : t('generate')}
         </button>
       </div>
+      <div className={css.section}>
+        <span className={css.fieldLabel}>{t('history.label')}</span>
+        {entries.length === 0
+          ? <p className={css.doneText}>{t('history.empty')}</p>
+          : (
+            <div className={css.historyGrid}>
+              {entries.map(entry => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className={css.historyItem}
+                  onClick={() => { setLightbox(entry) }}
+                  aria-label={entry.prompt ?? entry.id}
+                >
+                  <img
+                    data-entry-id={entry.id}
+                    className={css.historyThumb}
+                    loading="lazy"
+                    alt={entry.prompt ?? entry.id}
+                    src={entryUrl(entry)}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+      </div>
+      {lightbox !== undefined && (
+        <div
+          className={css.lightbox}
+          role="dialog"
+          aria-modal="true"
+          onClick={(event) => { if (event.target === event.currentTarget) setLightbox(undefined) }}
+          onKeyDown={(event) => { if (event.key === 'Escape') setLightbox(undefined) }}
+        >
+          <div className={css.lightboxBody}>
+            <img className={css.lightboxImg} alt={lightbox.prompt ?? lightbox.id} src={entryUrl(lightbox)} />
+            <div className={css.lightboxMeta}>
+              <span className={css.doneText}>{lightbox.file}</span>
+              <span className={css.sizeHint}>
+                {lightbox.width === undefined ? '' : `${lightbox.width}×${lightbox.height} · `}
+                {lightbox.seed === undefined ? '' : `${t('seed.mode')} ${lightbox.seed} · `}
+                {lightbox.steps === undefined ? '' : `${t('param.steps')} ${lightbox.steps}`}
+              </span>
+              <div className={css.lightboxActions}>
+                <button type="button" className={css.backButton} onClick={() => { backfill(lightbox) }}>
+                  {t('lightbox.backfill')}
+                </button>
+                {lightbox.prompt !== undefined && (
+                  <button type="button" className={css.backButton} disabled={busy} onClick={() => { submitVariation(lightbox) }}>
+                    {t('lightbox.variant')}
+                  </button>
+                )}
+                <button type="button" className={css.backButton} onClick={() => { setLightbox(undefined) }}>
+                  {t('lightbox.close')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

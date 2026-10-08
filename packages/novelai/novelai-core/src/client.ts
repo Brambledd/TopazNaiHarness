@@ -83,3 +83,64 @@ export async function requestGeneration(options: {
   }
   return extractImages(new Uint8Array(await response.arrayBuffer()))
 }
+
+/** One tag suggestion as served by the NovelAI suggest-tags endpoint. */
+export interface NovelaiWireTagSuggestion {
+  /** English Danbooru tag in underscore form. */
+  readonly tag: string
+  /** Post count used for ordering. */
+  readonly count: number
+  /** Danbooru tag category id. */
+  readonly category: number
+  /** Server-provided description; empty when the endpoint omits it. */
+  readonly description?: string
+}
+
+/**
+ * Query the NovelAI suggest-tags endpoint for one partial prompt word.
+ * @param options - partial word, model, credentials, endpoint, timeout, cancellation, and proxy dispatch.
+ * @returns ranked suggestions; an unsuccessful or unreachable endpoint resolves to an empty list.
+ */
+export async function requestTagSuggestions(options: {
+  prompt: string
+  model: string
+  token: string
+  baseUrl: string
+  timeoutMs: number
+  signal: AbortSignal
+  proxyUrl: string | undefined
+}): Promise<NovelaiWireTagSuggestion[]> {
+  const proxyUrl = options.proxyUrl?.trim() ?? ''
+  const dispatcher: Dispatcher | undefined = proxyUrl === '' ? undefined : new ProxyAgent(proxyUrl)
+  let response: Response
+  try {
+    const query = new URLSearchParams({ model: options.model, prompt: options.prompt })
+    response = await fetch(`${options.baseUrl.replace(/\/+$/, '')}/ai/generate-image/suggest-tags?${query}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${options.token}`, Accept: 'application/json' },
+      signal: options.signal,
+      ...(dispatcher === undefined ? {} : { dispatcher }),
+    })
+  } catch {
+    // The suggestion endpoint is advisory: unreachable or timed out falls back to the dictionary.
+    return []
+  }
+  if (!response.ok) return []
+  let parsed: unknown
+  try {
+    parsed = await response.json()
+  } catch {
+    return []
+  }
+  const tags = (parsed as { tags?: unknown }).tags
+  if (!Array.isArray(tags)) return []
+  return tags.filter(isWireTagSuggestion)
+}
+
+/** Structural guard for one wire tag suggestion. */
+function isWireTagSuggestion(value: unknown): value is NovelaiWireTagSuggestion {
+  if (typeof value !== 'object' || value === null) return false
+  const record = value as Record<string, unknown>
+  return typeof record['tag'] === 'string' && typeof record['count'] === 'number'
+    && typeof record['category'] === 'number'
+}

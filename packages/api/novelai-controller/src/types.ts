@@ -53,6 +53,45 @@ export interface NovelaiEstimateValue {
   readonly anlas: number
 }
 
+/** Tag suggestion request for workbench prompt autocomplete. */
+export interface NovelaiSuggestTagsRequest {
+  /** The partial word at the caret, in either language. */
+  readonly prompt: string
+  /** Checkpoint the suggestions are scoped to; the workbench default applies when omitted. */
+  readonly model?: string
+}
+
+/** One ranked tag suggestion. */
+export interface NovelaiTagSuggestion {
+  /** English Danbooru tag in underscore form. */
+  readonly tag: string
+  /** Post count used for ordering. */
+  readonly count: number
+  /** Danbooru tag category id. */
+  readonly category: number
+  /** Human-readable description (Chinese label when known). */
+  readonly description: string
+}
+
+/** Ranked tag suggestions, best first. */
+export interface NovelaiTagSuggestionsValue {
+  readonly tags: readonly NovelaiTagSuggestion[]
+}
+
+/** Library entry content request. */
+export interface NovelaiReadEntryRequest {
+  /** Library entry id (the filename stem). */
+  readonly id: string
+}
+
+/** One library entry's PNG bytes, base64-encoded for the JSON remote channel. */
+export interface NovelaiEntryContentValue {
+  /** Base64-encoded PNG bytes. */
+  readonly data: string
+  /** Image media type; always `image/png`. */
+  readonly mime: 'image/png'
+}
+
 /** Workbench generation request; every parameter except `prompt` is optional. */
 export interface NovelaiGenerateRequest {
   /** Positive prompt text. */

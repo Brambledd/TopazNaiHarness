@@ -62,6 +62,16 @@ export function apply(ctx: ClientContext): void {
             if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
             return result.value
           },
+          suggestTags: async (request) => {
+            const result = await ctx.remote.novelai.suggestTags(request)
+            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+            return result.value
+          },
+          readEntry: async (request) => {
+            const result = await ctx.remote.novelai.readEntry(request)
+            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+            return result.value
+          },
         }),
       }, WorkbenchRoot))
     return () => { disposeWorkbench() }

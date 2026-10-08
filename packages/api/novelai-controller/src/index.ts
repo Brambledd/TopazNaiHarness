@@ -1,5 +1,6 @@
 /** Host NovelAI Remote owner: workbench generation and the shared output library. */
 
+import { readFile } from 'node:fs/promises'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService, RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -10,23 +11,31 @@ import {
   NOVELAI_SAMPLERS,
   estimateAnlas,
 } from '@deepseek-ai/dsh-novelai-core'
+import { requestTagSuggestions, resolveProxyUrl } from '@deepseek-ai/dsh-novelai-core/node'
 import { NovelaiImageLibrary } from './library.ts'
 import { NOVELAI_WORKBENCH_DEFAULTS, runGeneration } from './generation.ts'
+import { suggestTagsFromDictionary } from './tags.ts'
 import type {
   NovelaiCatalogValue,
+  NovelaiEntryContentValue,
   NovelaiEstimateRequest,
   NovelaiEstimateValue,
   NovelaiGenerateRequest,
   NovelaiGenerationValue,
   NovelaiHistoryRequest,
   NovelaiHistoryValue,
+  NovelaiReadEntryRequest,
   NovelaiRemoveRequest,
   NovelaiRemoveValue,
+  NovelaiSuggestTagsRequest,
+  NovelaiTagSuggestionsValue,
 } from './types.ts'
 
 export type * from './types.ts'
 export { NovelaiImageLibrary, LIBRARY_INDEX_FILE } from './library.ts'
 export { NOVELAI_WORKBENCH_DEFAULTS, resolveGenerationRequest, runGeneration } from './generation.ts'
+export { suggestTagsFromDictionary } from './tags.ts'
+export { TAG_DICTIONARY, type NovelaiDictEntry } from './tag-dictionary.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -156,6 +165,53 @@ export class NovelaiController extends TypertRemoteService {
       throw new RemoteError('novelai/entry-missing', `no library entry "${request.id}"`, { id: request.id })
     }
     return { removed }
+  }
+
+  /**
+   * Suggest tags for one partial prompt word: the NovelAI suggest-tags endpoint
+   * first, the built-in Chinese dictionary when the endpoint is unavailable or
+   * answers without suggestions.
+   * @param request - the partial word and its checkpoint scope.
+   * @returns ranked suggestions, best first.
+   */
+  @Remote('suggestTags')
+  async suggestTags(request: NovelaiSuggestTagsRequest): Promise<NovelaiTagSuggestionsValue> {
+    const prompt = request.prompt.trim()
+    if (prompt === '') return { tags: [] }
+    const model = request.model ?? NOVELAI_WORKBENCH_DEFAULTS.model
+    try {
+      const tags = await requestTagSuggestions({
+        prompt,
+        model,
+        token: process.env['NOVELAI_TOKEN'] ?? '',
+        baseUrl: 'https://api.novelai.net',
+        timeoutMs: 5_000,
+        signal: new AbortController().signal,
+        proxyUrl: resolveProxyUrl(''),
+      })
+      if (tags.length > 0) {
+        return { tags: tags.map(tag => ({ tag: tag.tag, count: tag.count, category: tag.category, description: tag.description ?? '' })) }
+      }
+    } catch {
+      // The suggestion endpoint is advisory: fall through to the dictionary.
+    }
+    return { tags: suggestTagsFromDictionary(prompt, 12) }
+  }
+
+  /**
+   * Read one library entry's PNG bytes for workbench display.
+   * @param request - the entry to read.
+   * @returns the base64-encoded PNG content.
+   */
+  @Remote('readEntry')
+  async readEntry(request: NovelaiReadEntryRequest): Promise<NovelaiEntryContentValue> {
+    const entries = await this.library.list()
+    const entry = entries.find(candidate => candidate.id === request.id)
+    if (entry === undefined) {
+      throw new RemoteError('novelai/entry-missing', `no library entry "${request.id}"`, { id: request.id })
+    }
+    const bytes = await readFile(entry.file)
+    return { data: bytes.toString('base64'), mime: 'image/png' }
   }
 
   /**

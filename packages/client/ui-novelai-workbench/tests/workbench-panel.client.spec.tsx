@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-/** Workbench panel behavior: catalog seeding, seed modes, negative fold, request assembly. */
+/** Workbench panel behavior: catalog seeding, seed modes, negative fold, autocomplete, history. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ComponentProps } from 'react'
-import type { NovelaiGenerateRequest } from '@deepseek-ai/dsh-api-novelai-controller/types'
+import type { NovelaiGenerateRequest, NovelaiTagSuggestion } from '@deepseek-ai/dsh-api-novelai-controller/types'
 import { WorkbenchRoot } from '../src/client/components.tsx'
+import { wordAtCursor } from '../src/client/autocomplete.tsx'
 import { resolutionForTier, snapDimensionWithinArea, maxDimensionFor } from '../src/client/resolution.ts'
 
 const zh = {
@@ -31,6 +32,12 @@ const zh = {
   'param.tier.2': '超大图 · 2 MP',
   'param.tier.3': '最大 · 3 MP',
   'size.commitHint': '失焦或回车后对齐到 64 像素',
+  'history.label': '历史',
+  'history.empty': '还没有图片',
+  'lightbox.close': '关闭',
+  'lightbox.backfill': '回填参数',
+  'lightbox.variant': '变体',
+  'backfilled': '已从历史回填参数',
   'seed.mode': '种子',
   'seed.random': '随机',
   'seed.fixed': '固定',
@@ -41,7 +48,6 @@ const zh = {
   'estimate.free': '免费',
   'generate': '生成',
   'generating': '生成中…',
-  'history.empty': '还没有图片',
   'error': '生成失败',
 } as const
 
@@ -61,7 +67,7 @@ const catalog = {
   },
 }
 
-function makeProps() {
+function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
   const generate = vi.fn(async (_request: NovelaiGenerateRequest) => ({
     id: 'x',
     file: 'workspace/novelai/x.png',
@@ -70,11 +76,17 @@ function makeProps() {
     anlasEstimate: 0,
     createdAt: '2026-10-08T00:00:00Z',
   }))
+  const suggestions: NovelaiTagSuggestion[] = [
+    { tag: '1girl', count: 19_000_000, category: 0, description: '一个女孩' },
+    { tag: '1boy', count: 8_000_000, category: 0, description: '一个男孩' },
+  ]
   const props = {
     catalog: vi.fn(async () => catalog),
     estimate: vi.fn(async () => ({ anlas: 0 })),
     generate,
-    history: vi.fn(async () => ({ entries: [], total: 0 })),
+    history: vi.fn(async () => ({ entries: historyEntries, total: historyEntries.length })),
+    suggestTags: vi.fn(async () => ({ tags: suggestions })),
+    readEntry: vi.fn(async () => ({ data: '', mime: 'image/png' as const })),
     setViewMode: vi.fn(),
     useSessions: (() => { throw new Error('workbench must not read global hooks') }) as never,
     useWorkspaces: (() => { throw new Error('workbench must not read global hooks') }) as never,
@@ -153,5 +165,60 @@ describe('resolution math (desktop parity)', () => {
     const snapped = snapDimensionWithinArea(100000, 1216, 832)
     expect(snapped).toBeLessThanOrEqual(maxDimensionFor(1216))
     expect(snapped % 64).toBe(0)
+  })
+})
+
+describe('word segmentation (desktop parity)', () => {
+  it('reads the Latin word left of the cursor', () => {
+    expect(wordAtCursor('1girl, blue', 11)).toEqual({ word: 'blue', start: 7 })
+  })
+
+  it('reads a CJK word left of the cursor', () => {
+    expect(wordAtCursor('1girl, 蓝眼', 9).word).toBe('蓝眼')
+  })
+
+  it('answers an empty word after a comma', () => {
+    expect(wordAtCursor('a, ', 3).word).toBe('')
+  })
+})
+
+describe('prompt autocomplete', () => {
+  it('offers suggestions while typing and applies the picked tag', async () => {
+    const { props } = makeProps()
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    const area = screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement
+    fireEvent.change(area, { target: { value: '1gi' } })
+    await waitFor(() => {
+      expect(props.suggestTags).toHaveBeenCalledWith({ prompt: '1gi', model: 'nai-diffusion-4-5-full' })
+    }, { timeout: 3000 })
+    const option = await screen.findByRole('option', { name: /1girl/ }, { timeout: 3000 })
+    fireEvent.mouseDown(option)
+    expect(area.value).toBe('1girl, ')
+  })
+
+  it('shows the history grid and opens the lightbox', async () => {
+    const entry = {
+      id: 'e1',
+      file: 'workspace/novelai/e1.png',
+      bytes: 10,
+      width: 832,
+      height: 1216,
+      seed: 42,
+      steps: 28,
+      prompt: 'a cat',
+      createdAt: '2026-10-08T00:00:00Z',
+    }
+    const { props } = makeProps([entry])
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    const tile = await screen.findByRole('button', { name: 'a cat' }, { timeout: 3000 })
+    fireEvent.click(tile)
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: '回填参数' }))
+    const area = screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement
+    expect(area.value).toBe('a cat')
+    const seedInput = screen.getByLabelText('种子值') as HTMLInputElement
+    expect(seedInput.value).toBe('42')
   })
 })

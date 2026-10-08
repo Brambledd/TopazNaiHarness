@@ -1,11 +1,15 @@
 /** Injected callback faces handed to the workbench components. */
 import type {
   NovelaiCatalogValue,
+  NovelaiEntryContentValue,
   NovelaiEstimateRequest,
   NovelaiEstimateValue,
   NovelaiGenerateRequest,
   NovelaiGenerationValue,
   NovelaiHistoryValue,
+  NovelaiReadEntryRequest,
+  NovelaiSuggestTagsRequest,
+  NovelaiTagSuggestionsValue,
 } from '@deepseek-ai/dsh-api-novelai-controller/types'
 import type { ViewMode } from '@deepseek-ai/dsh-client-ui-layout/client'
 
@@ -19,6 +23,10 @@ export interface WorkbenchInjected extends ModeSwitchInjected {
   generate: (request: NovelaiGenerateRequest) => Promise<NovelaiGenerationValue>
   /** Read the first library page (newest first). */
   history: () => Promise<NovelaiHistoryValue>
+  /** Suggest Danbooru tags for one partial prompt word. */
+  suggestTags: (request: NovelaiSuggestTagsRequest) => Promise<NovelaiTagSuggestionsValue>
+  /** Read one library entry's PNG bytes. */
+  readEntry: (request: NovelaiReadEntryRequest) => Promise<NovelaiEntryContentValue>
 }
 
 /** Mode-switch callbacks. */

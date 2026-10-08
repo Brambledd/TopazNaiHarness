@@ -24,6 +24,12 @@ export const en = {
   'param.tier.2': 'Extra large · 2 MP',
   'param.tier.3': 'Maximum · 3 MP',
   'size.commitHint': 'Snaps to 64px on Enter or focus loss',
+  'history.label': 'History',
+  'history.empty': 'No images yet',
+  'lightbox.close': 'Close',
+  'lightbox.backfill': 'Load parameters',
+  'lightbox.variant': 'Variation',
+  'backfilled': 'Parameters loaded from history',
   'seed.mode': 'Seed',
   'seed.random': 'Random',
   'seed.fixed': 'Fixed',
@@ -34,7 +40,6 @@ export const en = {
   'estimate.free': 'Free',
   'generate': 'Generate',
   'generating': 'Generating…',
-  'history.empty': 'No images yet',
   'error': 'Generation failed',
 } as const
 
@@ -62,6 +67,12 @@ export const zh = {
   'param.tier.2': '超大图 · 2 MP',
   'param.tier.3': '最大 · 3 MP',
   'size.commitHint': '失焦或回车后对齐到 64 像素',
+  'history.label': '历史',
+  'history.empty': '还没有图片',
+  'lightbox.close': '关闭',
+  'lightbox.backfill': '回填参数',
+  'lightbox.variant': '变体',
+  'backfilled': '已从历史回填参数',
   'seed.mode': '种子',
   'seed.random': '随机',
   'seed.fixed': '固定',
@@ -72,7 +83,6 @@ export const zh = {
   'estimate.free': '免费',
   'generate': '生成',
   'generating': '生成中…',
-  'history.empty': '还没有图片',
   'error': '生成失败',
 } as const
 

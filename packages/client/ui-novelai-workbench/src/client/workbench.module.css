@@ -1,0 +1,224 @@
+/* Workbench panel styles. Semantic --dsw-alias-* tokens only (web-styling rule). */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.backButton {
+  align-self: flex-start;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.backButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.promptArea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  padding: 8px 10px;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.fieldLabel {
+  display: block;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  margin-bottom: 4px;
+}
+
+.foldHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  padding: 4px 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chevron {
+  transition: transform 120ms ease;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.negativeArea {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  padding: 8px 10px;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.paramGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.select {
+  height: 30px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.number {
+  height: 30px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.sizeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sizeRow .number {
+  width: 88px;
+}
+
+.sizeHint {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.seedRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.seedSwitch {
+  display: inline-flex;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.seedSegment {
+  border: none;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.seedSegmentActive {
+  background: var(--dsw-alias-button-ghost-active-fill);
+  color: var(--dsw-alias-label-primary);
+}
+
+.seedValue {
+  width: 150px;
+}
+
+.seedDice {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  height: 30px;
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.seedDice:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.estimate {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.estimateValue {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.generateButton {
+  margin-left: auto;
+  border: 1px solid var(--dsw-alias-button-primary-fill);
+  border-radius: 8px;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+  padding: 7px 22px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.generateButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.errorText {
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  margin: 0;
+}
+
+.doneText {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  margin: 0;
+}

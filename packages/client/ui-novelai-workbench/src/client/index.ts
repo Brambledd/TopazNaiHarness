@@ -42,6 +42,16 @@ export function apply(ctx: ClientContext): void {
         locale: 'novelai-workbench',
         inject: (): WorkbenchInjected => ({
           setViewMode: (mode) => { ctx.layout.setViewMode(mode) },
+          catalog: async () => {
+            const result = await ctx.remote.novelai.catalog()
+            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+            return result.value
+          },
+          estimate: async (request) => {
+            const result = await ctx.remote.novelai.estimate(request)
+            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+            return result.value
+          },
           generate: async (request) => {
             const result = await ctx.remote.novelai.generate(request)
             if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)

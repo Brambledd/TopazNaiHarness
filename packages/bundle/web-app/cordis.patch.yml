@@ -95,6 +95,13 @@
     - id: workspace-controller
       name: '@deepseek-ai/dsh-api-workspace-controller'
 
+    # Workbench image generation and the shared NovelAI output library over
+    # Typert Remote; generation never passes through an agent turn.
+    - id: novelai-controller
+      name: '@deepseek-ai/dsh-api-novelai-controller'
+      config:
+        outputDir: workspace/novelai
+
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
 

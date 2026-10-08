@@ -9,13 +9,13 @@ import { isAbsolute, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import {
   MAX_NOVELAI_SEED,
   NOVELAI_MODELS,
   NOVELAI_NOISE_SCHEDULES,
   NOVELAI_SAMPLERS,
   type NovelaiModel,
-  type NovelaiGenerationResult,
   type NovelaiGenerateInput,
   type NovelaiNoiseSchedule,
   type NovelaiSampler,
@@ -158,12 +158,23 @@ export function apply(ctx: Context, config: Config): void {
           height: { type: 'integer', required: true },
           steps: { type: 'integer', required: true },
           anlasEstimate: { type: 'integer', required: true },
+          attachment: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+              attachmentId: { type: 'string', required: true },
+              mediaType: { type: 'string', required: true },
+              width: { type: 'integer', required: true },
+              height: { type: 'integer', required: true },
+            },
+          },
         },
       },
       render: (_args, value) => [{
         type: 'text',
         text: `Saved ${value.model} image (${value.width}x${value.height}, seed ${value.seed}, ~${value.anlasEstimate} Anlas) to ${value.path}`,
       }],
+      presentationMeta: (_args, value) => value.attachment === undefined ? {} : { image: value.attachment },
     },
     async execute(args, exec) {
       const token = config.token || process.env['NOVELAI_TOKEN'] || ''
@@ -198,7 +209,38 @@ export function apply(ctx: Context, config: Config): void {
       const path = join(outputDir, `${stem}.png`)
       await mkdir(outputDir, { recursive: true })
       await writeFile(path, image)
-      const result: NovelaiGenerationResult = {
+      // Durable attachment for transcript display and later reuse. This channel
+      // is best-effort: the generation already succeeded and the file result
+      // stands on its own, so an unavailable store or a failed save must not
+      // fail the paid call's result.
+      let attachment: ImageAttachmentRef | undefined
+      const store = ctx.get('attachments') as AttachmentStore | undefined
+      if (store !== undefined) {
+        try {
+          attachment = await store.saveImage({
+            data: new Uint8Array(image),
+            mediaType: 'image/png',
+            name: `${stem}.png`,
+          })
+        } catch {
+          // Swallow attachment-save failures only: the image is already on
+          // disk at `path`, and display degrades to the plain text result.
+        }
+      }
+      // Plain JSON projection of the durable reference: branded ids and
+      // interfaces do not cross the canonical-value boundary.
+      const attachmentJson = attachment === undefined ? undefined : {
+        attachmentId: `${attachment.attachmentId}`,
+        mediaType: attachment.mediaType,
+        bytes: attachment.bytes,
+        width: attachment.width,
+        height: attachment.height,
+        ...(attachment.name === undefined ? {} : { name: attachment.name }),
+        ...(attachment.originalDimensions === undefined
+          ? {}
+          : { originalDimensions: attachment.originalDimensions }),
+      }
+      const result = {
         path,
         bytes: image.byteLength,
         seed: input.seed,
@@ -207,6 +249,7 @@ export function apply(ctx: Context, config: Config): void {
         height: input.height,
         steps: input.steps,
         anlasEstimate: estimateAnlas(input.width, input.height, input.steps),
+        ...(attachmentJson === undefined ? {} : { attachment: attachmentJson }),
       }
       return result
     },

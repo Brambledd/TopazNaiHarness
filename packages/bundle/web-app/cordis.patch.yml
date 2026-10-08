@@ -219,6 +219,10 @@
     - id: ui-tool
       name: '@deepseek-ai/dsh-client-ui-tool'
 
+    # The dedicated NovelAI generation row with inline image preview.
+    - id: ui-novelai
+      name: '@deepseek-ai/dsh-client-ui-novelai'
+
     - id: ui-cordis
       name: '@deepseek-ai/dsh-client-ui-cordis'
 

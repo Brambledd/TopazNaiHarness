@@ -31,7 +31,9 @@ const FILE_REFERENCE_PROMPT = fileURLToPath(new URL(
  * sandbox row confines, and `mcp_*` servers spawn outside `ctx.shell`.
  * `web_fetch` is present because public-address enforcement and one-shot
  * approval now confine its model-selected request target. The composition
- * Agent Note owns the rationale and its sources.
+ * Agent Note owns the rationale and its sources. `novelai_generate` is this
+ * fork's paid image-generation tool, a per-session preset row (never a global
+ * layer row).
  */
 const EXPECTED_TOOLS = [
   'ask_user_question',
@@ -45,6 +47,7 @@ const EXPECTED_TOOLS = [
   'job_list',
   'job_output',
   'list_agents',
+  'novelai_generate',
   'ralph',
   'read',
   'read_image',

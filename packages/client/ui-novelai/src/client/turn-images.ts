@@ -22,7 +22,7 @@ export interface NovelaiImagesTurnData {
 declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ConversationTurnDataMap {
     /** Successful NovelAI images accumulated in this Turn. */
-    novelaiImages: NovelaiImagesTurnData
+    'novelai-images': NovelaiImagesTurnData
   }
 }
 
@@ -51,7 +51,7 @@ function imageRefOf(block: unknown): ImageAttachmentRef | undefined {
  * @returns Produced images as the component's match, or null to decline.
  */
 export function selectTurnImages(owner: TurnTailOwnerProps): readonly TurnImage[] | null {
-  const data = owner.turn.data.get('novelaiImages')
+  const data = owner.turn.data.get('novelai-images')
   if (data === undefined) return null
   const images: TurnImage[] = []
   const seen = new Set<string>()
@@ -102,7 +102,7 @@ export const turnImagesDefinition: ConversationNodeDefinition<TurnImagesState> =
     : {
       kind: 'turn',
       turn: context.state.turn,
-      key: 'novelaiImages',
+      key: 'novelai-images',
       value: { images: context.state.images },
     },
 }

@@ -544,8 +544,6 @@
       "@deepseek-ai/dsh-tool-terminal/invariant": ["./packages/terminal/tool-terminal/src/invariant.ts"],
       "@deepseek-ai/dsh-tool-novelai": ["./packages/novelai/tool-novelai/src"],
       "@deepseek-ai/dsh-tool-novelai/invariant": ["./packages/novelai/tool-novelai/src/invariant.ts"],
-      "@deepseek-ai/dsh-tool-novelai/payload": ["./packages/novelai/tool-novelai/src/payload.ts"],
-      "@deepseek-ai/dsh-tool-novelai/unzip": ["./packages/novelai/tool-novelai/src/unzip.ts"],
       "@deepseek-ai/dsh-tool-todo": ["./packages/todo/tool-todo/src"],
       "@deepseek-ai/dsh-tool-todo/invariant": ["./packages/todo/tool-todo/src/invariant.ts"],
       "@deepseek-ai/dsh-tool-web": ["./packages/web/tool-web/src"],

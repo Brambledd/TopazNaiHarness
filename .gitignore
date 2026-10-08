@@ -40,3 +40,6 @@ apps/web/dist/
 worktrees/
 .agents/worktrees/
 .typert-*/
+
+# isolated agent home (sessions/credentials/settings)
+.novelai-home/

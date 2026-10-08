@@ -102,6 +102,11 @@
       config:
         outputDir: workspace/novelai
 
+    # Browser workbench UI: parameter panel, canvas, history, and the
+    # conversation/workbench mode switch in the sidebar foot.
+    - id: ui-novelai-workbench
+      name: '@deepseek-ai/dsh-client-ui-novelai-workbench'
+
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
 

@@ -55,6 +55,7 @@ export function SidebarRoot({
   viewMode,
   startSession,
   toggleSidebar,
+  setViewMode,
   t,
   renderSlot,
 }: SidebarRootComponentProps) {
@@ -199,6 +200,27 @@ export function SidebarRoot({
           {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('session.new')}</span>}
         </button>
       </Tooltip>
+
+      {/* Center-surface mode switch: conversation ⟷ workbench. The rail keeps
+          both segments as icon-sized text so the switch never hides. */}
+      <div className={css.newSession} role="group" aria-label={t('mode.workbench')}>
+        <button
+          type="button"
+          className={css.iconButton}
+          aria-pressed={viewMode === 'conversation'}
+          onClick={() => { setViewMode('conversation') }}
+        >
+          {wide ? t('mode.conversation') : t('mode.conversation').slice(0, 1)}
+        </button>
+        <button
+          type="button"
+          className={css.iconButton}
+          aria-pressed={viewMode === 'workbench'}
+          onClick={() => { setViewMode('workbench') }}
+        >
+          {wide ? t('mode.workbench') : t('mode.workbench').slice(0, 1)}
+        </button>
+      </div>
 
       {/* The browsing region fills the column between the controls and the
           foot in both states; its rail icon column rides the same slot. */}

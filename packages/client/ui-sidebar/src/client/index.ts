@@ -45,6 +45,7 @@ export function apply(ctx: ClientContext): void {
     // (current Session Workspace, then recent Workspace).
     startSession: (workspaceId) => { workspaceNavigation.startSession(workspaceId) },
     toggleSidebar: () => { ctx.layout.toggleSidebar() },
+    setViewMode: (mode) => { ctx.layout.setViewMode(mode) },
   })
   ctx.effect(
     () => ctx.slots.register({

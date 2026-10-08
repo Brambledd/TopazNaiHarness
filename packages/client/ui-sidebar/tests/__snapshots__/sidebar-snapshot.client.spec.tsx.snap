@@ -61,6 +61,26 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
       />
     </button>
     <div
+      aria-label="Studio"
+      class="newSession"
+      role="group"
+    >
+      <button
+        aria-pressed="true"
+        class="iconButton"
+        type="button"
+      >
+        C
+      </button>
+      <button
+        aria-pressed="false"
+        class="iconButton"
+        type="button"
+      >
+        S
+      </button>
+    </div>
+    <div
       class="regionArea"
     >
       <div
@@ -191,6 +211,26 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
       </span>
     </button>
     <div
+      aria-label="Studio"
+      class="newSession"
+      role="group"
+    >
+      <button
+        aria-pressed="true"
+        class="iconButton"
+        type="button"
+      >
+        Chat
+      </button>
+      <button
+        aria-pressed="false"
+        class="iconButton"
+        type="button"
+      >
+        Studio
+      </button>
+    </div>
+    <div
       class="regionArea"
     >
       <div
@@ -320,6 +360,26 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
         新会话
       </span>
     </button>
+    <div
+      aria-label="创作台"
+      class="newSession"
+      role="group"
+    >
+      <button
+        aria-pressed="true"
+        class="iconButton"
+        type="button"
+      >
+        对话
+      </button>
+      <button
+        aria-pressed="false"
+        class="iconButton"
+        type="button"
+      >
+        创作台
+      </button>
+    </div>
     <div
       class="regionArea"
     >

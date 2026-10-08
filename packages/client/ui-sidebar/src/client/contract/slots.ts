@@ -103,6 +103,8 @@ export type SidebarRootInjected = {
   startSession: (workspaceId?: WorkspaceId) => void
   /** Toggle the sidebar column through the layout service. */
   toggleSidebar: () => void
+  /** Switch the frame's center surface through the layout service. */
+  setViewMode: (mode: ViewMode) => void
 }
 
 /**

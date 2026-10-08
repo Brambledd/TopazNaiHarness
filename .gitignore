@@ -43,3 +43,6 @@ worktrees/
 
 # isolated agent home (sessions/credentials/settings)
 .novelai-home/
+
+# Generated NovelAI run artifacts (Phase 5 asset library will own storage)
+/workspace/

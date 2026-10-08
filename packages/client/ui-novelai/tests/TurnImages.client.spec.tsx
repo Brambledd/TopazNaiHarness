@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TurnImages } from '../src/client/TurnImages.tsx'
+import type { TurnImage } from '../src/client/turn-images.ts'
 
 type TurnImagesProps = Parameters<typeof TurnImages>[0]
 
@@ -28,7 +29,7 @@ const imageB = {
   },
 }
 
-const props = (matched: typeof imageA[], loadImage: TurnImagesProps['loadImage']) => ({
+const props = (matched: readonly TurnImage[], loadImage: TurnImagesProps['loadImage']) => ({
   matched,
   t,
   loadImage,

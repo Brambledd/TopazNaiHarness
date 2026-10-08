@@ -16,6 +16,7 @@ import {
   snapDimensionWithinArea,
 } from './resolution.ts'
 import { PromptTextarea } from './autocomplete.tsx'
+import { CapsuleBrowser, STYLE_PRESETS } from './capsule-picker.tsx'
 import type { WorkbenchInjected } from './injected.ts'
 import css from './workbench.module.css'
 
@@ -45,6 +46,7 @@ export function WorkbenchRoot({
   const [prompt, setPrompt] = useState('')
   const [negativePrompt, setNegativePrompt] = useState('')
   const [negativeOpen, setNegativeOpen] = useState(false)
+  const [capsuleOpen, setCapsuleOpen] = useState(false)
   const [model, setModel] = useState('')
   const [sampler, setSampler] = useState('')
   const [noiseSchedule, setNoiseSchedule] = useState('')
@@ -129,6 +131,22 @@ export function WorkbenchRoot({
       if (value.seed !== undefined) setLastSeed(value.seed)
       refreshHistory()
     }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) }).finally(() => { setBusy(false) })
+  }
+
+  /** Append one English tag to the positive prompt, comma-separated. */
+  const insertTag = (tag: string): void => {
+    setPrompt((current) => {
+      const trimmed = current.trimEnd().replace(/,\s*$/, '')
+      return trimmed === '' ? `${tag}, ` : `${trimmed}, ${tag}, `
+    })
+  }
+
+  /** Prepend one style tag ahead of the existing prompt. */
+  const prependStyle = (tag: string): void => {
+    setPrompt((current) => {
+      const trimmed = current.trimStart()
+      return trimmed === '' ? `${tag}, ` : `${tag}, ${trimmed}`
+    })
   }
 
   const submitCurrent = (): void => {
@@ -219,6 +237,34 @@ export function WorkbenchRoot({
           className={css.promptArea}
         />
       </label>
+      <div className={css.section}>
+        <span className={css.fieldLabel}>{t('styles.label')}</span>
+        <div className={css.styleRow}>
+          {STYLE_PRESETS.map(style => (
+            <button
+              key={style.en}
+              type="button"
+              className={css.capsuleChip}
+              title={style.en}
+              onClick={() => { prependStyle(style.en) }}
+            >
+              {style.zh}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className={css.section}>
+        <button
+          type="button"
+          className={css.foldHeader}
+          aria-expanded={capsuleOpen}
+          onClick={() => { setCapsuleOpen(open => !open) }}
+        >
+          <span className={`${css.chevron} ${capsuleOpen ? css.chevronOpen : ''}`}>▾</span>
+          {t('capsule.label')}
+        </button>
+        {capsuleOpen && <CapsuleBrowser onInsert={insertTag} filterLabel={t('capsule.filter')} />}
+      </div>
       <div className={css.section}>
         <button
           type="button"

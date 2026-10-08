@@ -280,6 +280,90 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Inspiration capsule (quick tags) */
+.capsulePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.capsuleFilter {
+  height: 28px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.capsuleTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.capsuleTab {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.capsuleTabActive {
+  background: var(--dsw-alias-button-ghost-active-fill);
+  color: var(--dsw-alias-label-primary);
+}
+
+.capsuleSubgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.capsuleSubgroupLabel {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.capsuleGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.capsuleChip {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.capsuleChip:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* Style library row */
+.styleRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
 /* History grid */
 .historyGrid {
   display: grid;

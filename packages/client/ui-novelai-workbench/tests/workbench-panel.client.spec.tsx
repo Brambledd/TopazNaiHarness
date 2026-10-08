@@ -6,6 +6,8 @@ import type { ComponentProps } from 'react'
 import type { NovelaiGenerateRequest, NovelaiTagSuggestion } from '@deepseek-ai/dsh-api-novelai-controller/types'
 import { WorkbenchRoot } from '../src/client/components.tsx'
 import { wordAtCursor } from '../src/client/autocomplete.tsx'
+import { CapsuleBrowser, STYLE_PRESETS } from '../src/client/capsule-picker.tsx'
+import { CAPSULE_TAXONOMY, mergeCapsules, type CapsuleCategory } from '../src/client/capsule-data.ts'
 import { resolutionForTier, snapDimensionWithinArea, maxDimensionFor } from '../src/client/resolution.ts'
 
 const zh = {
@@ -32,6 +34,9 @@ const zh = {
   'param.tier.2': '超大图 · 2 MP',
   'param.tier.3': '最大 · 3 MP',
   'size.commitHint': '失焦或回车后对齐到 64 像素',
+  'capsule.label': '快捷标签',
+  'capsule.filter': '搜索标签（中英文均可）',
+  'styles.label': '风格库',
   'history.label': '历史',
   'history.empty': '还没有图片',
   'lightbox.close': '关闭',
@@ -165,6 +170,51 @@ describe('resolution math (desktop parity)', () => {
     const snapped = snapDimensionWithinArea(100000, 1216, 832)
     expect(snapped).toBeLessThanOrEqual(maxDimensionFor(1216))
     expect(snapped % 64).toBe(0)
+  })
+})
+
+describe('inspiration capsule (desktop parity)', () => {
+  it('builds the taxonomy from the builtin base and the authored library', () => {
+    expect(CAPSULE_TAXONOMY.length).toBeGreaterThan(10)
+    const people = CAPSULE_TAXONOMY.find(category => category.name === '人物')
+    expect(people?.subgroups.length).toBeGreaterThan(3)
+  })
+
+  it('derives style presets from the style category', () => {
+    expect(STYLE_PRESETS.length).toBeGreaterThan(5)
+    expect(STYLE_PRESETS.some(style => style.zh.includes('水彩'))).toBe(true)
+  })
+
+  it('deduplicates merged categories by English tag', () => {
+    const base: CapsuleCategory[] = [{ name: '测试', subgroups: [{ name: '组', tags: [{ en: 'tag_a', zh: '甲' }] }] }]
+    const extra: CapsuleCategory[] = [{ name: '测试', subgroups: [{ name: '组', tags: [{ en: 'tag_a', zh: '甲二' }, { en: 'tag_b', zh: '乙' }] }] }]
+    const merged = mergeCapsules(base, extra)
+    const tags = merged[0]!.subgroups[0]!.tags.map(tag => tag.en)
+    expect(tags).toContain('tag_b')
+    expect(tags.filter(en => en === 'tag_a')).toHaveLength(1)
+  })
+
+  it('renders the capsule browser, filters, and inserts on click', () => {
+    const onInsert = vi.fn()
+    const view = render(<CapsuleBrowser onInsert={onInsert} filterLabel="搜索标签" />)
+    fireEvent.click(screen.getByRole('tab', { name: '人物' }))
+    fireEvent.click(screen.getAllByRole('button', { name: '女仆' })[0]!)
+    expect(onInsert).toHaveBeenCalledWith('maid')
+    const filter = screen.getByLabelText('搜索标签') as HTMLInputElement
+    fireEvent.change(filter, { target: { value: '水彩' } })
+    const chips = Array.from(view.container.querySelectorAll<HTMLButtonElement>('button[title]'))
+    expect(chips.length).toBeGreaterThan(0)
+    fireEvent.click(chips[0]!)
+    expect(onInsert).toHaveBeenCalledTimes(2)
+  })
+
+  it('offers style presets and appends them on click from the workbench', async () => {
+    mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    const styleChip = screen.getAllByRole('button', { name: '写实' })[0]!
+    fireEvent.click(styleChip)
+    const area = screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement
+    expect(area.value).toContain('realistic')
   })
 })
 

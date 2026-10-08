@@ -6956,6 +6956,22 @@ importers:
         specifier: ^2026.7.4
         version: 2026.7.10(zod@4.4.3)
 
+  packages/novelai/novelai-core:
+    dependencies:
+      fflate:
+        specifier: ^0.8.2
+        version: 0.8.3
+      undici:
+        specifier: ^7.16.0
+        version: 7.28.0
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+
   packages/novelai/tool-novelai:
     dependencies:
       '@deepseek-ai/schemastery':

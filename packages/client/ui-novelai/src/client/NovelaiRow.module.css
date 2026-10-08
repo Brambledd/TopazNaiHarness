@@ -71,8 +71,13 @@
 }
 
 .loadFailed {
+  align-self: flex-start;
+  padding: 2px 0;
+  border: none;
+  background: none;
   font-size: 12px;
   color: var(--dsw-text-danger, inherit);
+  cursor: pointer;
 }
 
 .detailsCard {

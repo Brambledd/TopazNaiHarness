@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react'
 import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
@@ -99,22 +99,29 @@ function novelaiRowModel(block: ToolCallViewProps['block']): NovelaiRowModel {
  * @returns the dedicated NovelAI row.
  */
 export function NovelaiRow({ block, t, loadImage }: NovelaiRowProps) {
-  const model = novelaiRowModel(block)
+  // The projection caches blocks, so the derived model stays referentially
+  // stable between transcript updates and cannot re-arm the load effect below
+  // on unrelated renders.
+  const model = useMemo(() => novelaiRowModel(block), [block])
   const [url, setUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
   const [zoomed, setZoomed] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  // One load attempt per arm; `reload` re-arms after a revoked or broken URL.
+  const [attempt, setAttempt] = useState(0)
+  const reload = useCallback(() => { setAttempt(value => value + 1) }, [])
 
   useEffect(() => {
-    if (model.image === undefined || url !== null || failed) return
+    if (model.image === undefined) return
     let alive = true
+    setFailed(false)
     // The reference is the validated wire shape; the brand is type-only.
     loadImage(model.image as unknown as ImageAttachmentRef).then(
       (value) => { if (alive) setUrl(value) },
       () => { if (alive) setFailed(true) },
     )
     return () => { alive = false }
-  }, [model.image, url, failed, loadImage])
+  }, [model.image, loadImage, attempt])
 
   useEffect(() => {
     if (!zoomed) return
@@ -168,11 +175,16 @@ export function NovelaiRow({ block, t, loadImage }: NovelaiRowProps) {
           aria-label={t('row.preview')}
           onClick={() => setZoomed(true)}
         >
-          <img className={css.thumbnail} src={url} alt={model.image.name ?? t('row.title')} />
+          <img
+            className={css.thumbnail}
+            src={url}
+            alt={model.image.name ?? t('row.title')}
+            onError={reload}
+          />
         </button>
       ) : null}
       {model.image !== undefined && failed ? (
-        <div className={css.loadFailed}>{t('row.loadFailed')}</div>
+        <button type="button" className={css.loadFailed} onClick={reload}>{t('row.loadFailed')}</button>
       ) : null}
       {open ? (
         <section className={css.detailsCard} aria-label={t('row.details')}>

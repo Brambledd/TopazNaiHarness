@@ -86,6 +86,18 @@ describe('NovelaiRow', () => {
     await waitFor(() => expect(screen.getByText('row.loadFailed')).toBeTruthy())
   })
 
+  it('re-loads through the cache when the rendered URL breaks', async () => {
+    const p = props(imageMeta)
+    p.loadImage = vi.fn()
+      .mockResolvedValueOnce('blob:broken')
+      .mockResolvedValue('blob:fixed')
+    render(<NovelaiRow {...p} />)
+    await waitFor(() => expect(screen.getByRole('img').getAttribute('src')).toBe('blob:broken'))
+    fireEvent.error(screen.getByRole('img'))
+    await waitFor(() => expect(screen.getByRole('img').getAttribute('src')).toBe('blob:fixed'))
+    expect(p.loadImage).toHaveBeenCalledTimes(2)
+  })
+
   it('renders a running call without an image', () => {
     render(<NovelaiRow {...props(undefined)} block={{
       callId: 'call-2',

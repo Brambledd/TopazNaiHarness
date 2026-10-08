@@ -24,7 +24,7 @@ function harness(): { controller: NovelaiController; library: NovelaiImageLibrar
     contexts: { configureHost: () => (): void => {} },
   } as never)
   const library = new NovelaiImageLibrary(dir)
-  return { controller: new NovelaiController(ctx, { outputDir: dir }), library, dir }
+  return { controller: new NovelaiController(ctx, { outputDir: dir, tagIndexPath: join(dir, 'tag-index.csv') }), library, dir }
 }
 
 describe('NovelaiController verbs', () => {
@@ -71,6 +71,12 @@ describe('NovelaiController verbs', () => {
   it('rejects removal of a missing entry with the namespace error', async () => {
     const { controller } = harness()
     await expect(controller.removeEntry({ id: 'missing' })).rejects.toMatchObject({ code: 'novelai/entry-missing' })
+  })
+
+  it('reports the tag index as not downloaded and answers blank suggestions with an empty batch', async () => {
+    const { controller } = harness()
+    expect(await controller.status()).toMatchObject({ downloaded: false, count: 0, sizeBytes: 0 })
+    expect(await controller.suggestTags({ prompt: '  ' })).toEqual({ tags: [] })
   })
 
   it('maps a missing token to the namespace error', async () => {

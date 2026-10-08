@@ -83,6 +83,7 @@ export function PromptTextarea({
   const composingRef = useRef(false)
   const areaRef = useRef<HTMLTextAreaElement | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestIdRef = useRef(0)
 
   const clearSuggestions = (): void => {
     setSuggestions([])
@@ -91,8 +92,10 @@ export function PromptTextarea({
 
   const runSuggest = (word: string, cursor: number): void => {
     if (timerRef.current !== null) clearTimeout(timerRef.current)
+    const requestId = ++requestIdRef.current
     timerRef.current = setTimeout(() => {
       suggest(word).then((tags) => {
+        if (requestId !== requestIdRef.current) return
         const top = tags.slice(0, 8)
         setSuggestions(top)
         setActiveIdx(0)
@@ -101,8 +104,10 @@ export function PromptTextarea({
           const coords = caretCoordinates(area, cursor)
           setListTop(coords.top - area.scrollTop + coords.height + 2)
         }
-      }).catch(() => { clearSuggestions() })
-    }, 160)
+      }).catch(() => {
+        if (requestId === requestIdRef.current) clearSuggestions()
+      })
+    }, 80)
   }
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>): void => {

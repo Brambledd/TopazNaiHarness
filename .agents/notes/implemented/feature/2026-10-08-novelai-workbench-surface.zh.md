@@ -1,0 +1,39 @@
+# Agent Note：NovelAI 创作台（互动画板、tag 联想、历史画布、快捷标签）
+
+状态：已实现
+
+[English](2026-10-08-novelai-workbench-surface.md) | 中文
+
+## 问题
+
+本 fork 的目标是直连 NovelAI 的 agent，但此前唯一的生成入口是模型工具：用户无法交互式地写提示词、挑参数、浏览生成结果，也无法复用历史生成。桌面参考实现（Langbai NovelAI Studio）拥有这套交互，而本 fork 的规则是照搬它。
+
+## 决定
+
+创作台是一个功能包 `@deepseek-ai/dsh-client-ui-novelai-workbench`，注册进 layout 的 `'workbench'` 槽位。侧栏带 对话/创作台 模式开关，底层是 `LayoutState.viewMode`；AppFrame 让两个中栏常驻、只隐藏一个，因此切换时生成状态不丢。宿主侧是 `NovelaiController` 的 Remote 命名空间（`novelai`）：`catalog`、`estimate`、`generate`、`history`、`removeEntry`、`suggestTags`、`readEntry`。
+
+**注入声明。** 客户端插件调用生成的 Remote 命名空间时必须同时声明聚合与点路径命名空间——`inject = ['remote', 'remote.novelai']`——与 ui-conversation（`remote.session`）、ui-commands（`remote.commands`）的先例一致。只声明点路径会让 `ctx.remote` 取不到；只声明聚合会让命名空间属性取不到。本系列第一轮在线调试就栽在这里，后续所有 remote 消费方都必须沿用这个约定。
+
+**参数面板（桌面同款）。** 分辨率沿用桌面模型：五档像素（0.4/1/1.5/2/3 MP，0.4 档固定 409 600 px）× 十三个画面比例，由 64px 格点搜索求解——在官方 3Mi 像素上限下按「比例误差 + 面积利用」打分；手动宽高在失焦或回车时提交，对齐 64px 并夹到配对边的最大合法值。种子是 🎲随机/🔒固定 两段开关；固定档展示数值框和骰子随机按钮，生成完成后展示实际使用的种子。Anlas 报价随宽高步数实时刷新（350ms 防抖）。负面提示词是受控折叠。
+
+**Tag 联想。** 两个提示词输入框打字时提取光标处单词（含中文），80ms 防抖并携带单调递增的请求号——迟到的旧响应不会覆盖更新一批结果——然后查询 `suggestTags`：先查本地双语 Danbooru 索引（见下），再走 NovelAI `suggest-tags` 端点（Bearer、5s 超时、走代理），失败或为空时回退到内置词典（约 134 条策展词条，移植自 MIT 的桌面版），排序为 精确 > 前缀 > 包含，同分按热度。下拉经镜像 div 探测锚定在光标行下方，最多 8 条，方向键导航、Enter/Tab 采纳、Escape 关闭，输入法组字期间保持静默。
+
+**双语标签索引。** 全量联想（`topaz (honkai: star rail)` 一类游戏与动漫角色）来自桌面版的可选数据集：固定 commit 的 `tags_enhanced.csv`（GBK、GPL-3.0），按需下载（20MB 上限、记录数下限、原子替换）到控制器的 `tagIndexPath`，永不进仓库。新部署的第一次 `suggestTags` 会在后台启动下载；控制器同时暴露 `tagIndexStatus` 与 `downloadTagIndex`。
+
+**历史画布。** `readEntry` 经 JSON remote 通道返回 PNG base64；客户端铸造 object URL、按挂载缓存、卸载时统一撤销。瓦片点开全屏灯箱（`role="dialog"`、`aria-modal`），带条目元数据、「回填参数」按钮（填入提示词/负面/模型/尺寸/步数并把种子切到固定）与一键「变体」（沿用条目参数换新随机种子）。
+
+**快捷标签与风格库。** 灵感胶囊库（策展内置批 + 三个自著批，压缩 `en=zh|…` 串加载时解析，按类别/子组合并、类别内按英文去重）驱动折叠式浏览器：类别页签、双语过滤、点击即向提示词追加 `tag, `。风格库一行派生自分类法的「风格画风」类，点击把风格 tag 前置到提示词。
+
+## 备选方案
+
+**用静态文件路由对外提供图库图片。** 否决：为单一消费方新增一个文件服务面。走既有 Remote 通道传 base64 不改变信任边界，本地回环下每张缩略图只多几百毫秒。
+
+**内置 Danbooru 中文 CSV 索引。** 作为*内置数据*是否决的：数据集为 GPL-3.0，而本仓库移植的数据保持 MIT 边界。实际落地的是桌面版的可选下载——按需拉取到配置路径，校验（表头形状、记录数下限、字节上限），永不提交进仓库——在不改变许可证面的前提下拿到全量角色覆盖。
+
+**把创作台生成写进对话会话。** 暂缓：模型可见输入必须有会话事件，把 UI 发起的图片推进当前会话需要先设计会话写入缝隙。生成已通过共享输出目录互通（创作台与 `novelai_generate` 工具写同一库）；显式推送留作后续工作。
+
+**用户自建风格预设的持久化。** 暂缓：桌面版存于应用数据目录并带图片管理器。本 fork 先提供从胶囊分类法派生的策展预设；用户自建预设需要 settings 命名空间扩展，届时一并落地。
+
+## 影响
+
+`packages/client/ui-novelai-workbench`（面板、联想、胶囊、历史）、`packages/api/novelai-controller`（命名空间动词、词典、评分）与 `packages/novelai/novelai-core`（`requestTagSuggestions`) 扩展；api-remotes 的客户端 bundle 内嵌再生成的命名空间，控制器动词变更后必须重建该 bundle——陈旧的 remotes bundle 表现为属性代理静默失配，因此动词新增在重建 bundle 并刷新页面前不算完成。组件 spec 覆盖面板、联想、胶囊与历史行为；宿主 spec 覆盖词典评分。已知暂缓项：上述会话推送互通与风格预设持久化。

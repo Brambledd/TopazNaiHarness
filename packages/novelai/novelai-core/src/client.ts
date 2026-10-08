@@ -33,6 +33,39 @@ export function resolveProxyUrl(configUrl: string): string | undefined {
 }
 
 /**
+ * Download one binary file over GET with proxy dispatch, for on-demand data
+ * files (the bilingual Danbooru tag index).
+ * @param options - URL, timeout, size cap, and proxy dispatch.
+ * @returns the raw bytes.
+ * @throws when the request fails, times out, or exceeds `maxBytes`.
+ */
+export async function requestBinaryDownload(options: {
+  url: string
+  timeoutMs: number
+  maxBytes: number
+  proxyUrl: string | undefined
+}): Promise<Uint8Array> {
+  const proxyUrl = options.proxyUrl?.trim() ?? ''
+  const dispatcher: Dispatcher | undefined = proxyUrl === '' ? undefined : new ProxyAgent(proxyUrl)
+  let response: Response
+  try {
+    response = await fetch(options.url, {
+      ...(dispatcher === undefined ? {} : { dispatcher }),
+      signal: AbortSignal.timeout(options.timeoutMs),
+    })
+  } catch (error) {
+    const cause = error instanceof Error ? error.message : String(error)
+    throw new Error(`download failed: ${cause}${proxyUrl === '' ? '' : ` (via proxy ${proxyUrl})`}`)
+  }
+  if (!response.ok) throw new Error(`download failed with HTTP ${String(response.status)}`)
+  const buffer = new Uint8Array(await response.arrayBuffer())
+  if (buffer.byteLength > options.maxBytes) {
+    throw new Error(`download exceeds the ${String(options.maxBytes)}-byte cap`)
+  }
+  return buffer
+}
+
+/**
  * Submit one paid text-to-image request and extract the returned images.
  *
  * A network-level failure (connection refused, unreachable host, TLS handshake failure)

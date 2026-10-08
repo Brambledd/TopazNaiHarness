@@ -15,8 +15,10 @@ import { requestTagSuggestions, resolveProxyUrl } from '@deepseek-ai/dsh-novelai
 import { NovelaiImageLibrary } from './library.ts'
 import { NOVELAI_WORKBENCH_DEFAULTS, runGeneration } from './generation.ts'
 import { suggestTagsFromDictionary } from './tags.ts'
+import { TagIndexStore } from './tag-index.ts'
 import type {
   NovelaiCatalogValue,
+  NovelaiDownloadTagIndexValue,
   NovelaiEntryContentValue,
   NovelaiEstimateRequest,
   NovelaiEstimateValue,
@@ -28,6 +30,7 @@ import type {
   NovelaiRemoveRequest,
   NovelaiRemoveValue,
   NovelaiSuggestTagsRequest,
+  NovelaiTagIndexStatusValue,
   NovelaiTagSuggestionsValue,
 } from './types.ts'
 
@@ -36,6 +39,7 @@ export { NovelaiImageLibrary, LIBRARY_INDEX_FILE } from './library.ts'
 export { NOVELAI_WORKBENCH_DEFAULTS, resolveGenerationRequest, runGeneration } from './generation.ts'
 export { suggestTagsFromDictionary } from './tags.ts'
 export { TAG_DICTIONARY, type NovelaiDictEntry } from './tag-dictionary.ts'
+export { TagIndexStore, searchTagIndexEntries, parseTagIndexFromBuffer, parseCsvLine } from './tag-index.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -48,6 +52,8 @@ declare module '@deepseek-ai/cordis' {
 export interface NovelaiControllerConfig {
   /** Output directory of the shared image library; the generation tool must point at the same directory. */
   outputDir: string
+  /** On-disk location of the optional bilingual Danbooru tag index CSV (downloaded, never bundled). */
+  tagIndexPath: string
 }
 
 /** Host service backing the generated `ctx.remote.novelai` namespace. */
@@ -56,16 +62,20 @@ export class NovelaiController extends TypertRemoteService {
 
   static Config: z<NovelaiControllerConfig> = z.object({
     outputDir: z.string().default('workspace/novelai'),
+    tagIndexPath: z.string().default('workspace/novelai/danbooru-cn.csv'),
   })
 
   private readonly config: NovelaiControllerConfig
   private readonly library: NovelaiImageLibrary
+  private readonly tagIndex: TagIndexStore
+  private tagIndexDownload: Promise<unknown> | undefined
 
   /** @param ctx - Host context carrying the typert registry. @param config - deployment settings. */
   constructor(ctx: Context, config: NovelaiControllerConfig) {
     super(ctx, 'novelaiController', { namespace: 'novelai' })
     this.config = config
     this.library = new NovelaiImageLibrary(config.outputDir)
+    this.tagIndex = new TagIndexStore(config.tagIndexPath, resolveProxyUrl('') ?? '')
   }
 
   /**
@@ -178,7 +188,14 @@ export class NovelaiController extends TypertRemoteService {
   async suggestTags(request: NovelaiSuggestTagsRequest): Promise<NovelaiTagSuggestionsValue> {
     const prompt = request.prompt.trim()
     if (prompt === '') return { tags: [] }
+    // First round on a fresh deployment kicks off the one-time index download in
+    // the background; this round still answers from the endpoint or dictionary.
+    void this.status().then((status) => {
+      if (!status.downloaded) this.ensureTagIndexDownload()
+    }).catch(() => {})
     const model = request.model ?? NOVELAI_WORKBENCH_DEFAULTS.model
+    const fromIndex = await this.tagIndex.search(prompt, 12)
+    if (fromIndex.length > 0) return { tags: fromIndex }
     try {
       const tags = await requestTagSuggestions({
         prompt,
@@ -196,6 +213,34 @@ export class NovelaiController extends TypertRemoteService {
       // The suggestion endpoint is advisory: fall through to the dictionary.
     }
     return { tags: suggestTagsFromDictionary(prompt, 12) }
+  }
+
+  /**
+   * Report the bilingual tag index state.
+   * @returns download presence, record count, and file size.
+   */
+  @Remote('tagIndexStatus')
+  async status(): Promise<NovelaiTagIndexStatusValue> {
+    const status = await this.tagIndex.status()
+    return status
+  }
+
+  /**
+   * Download (or refresh) the bilingual tag index CSV.
+   * @returns the download receipt.
+   */
+  @Remote('downloadTagIndex')
+  async downloadTagIndex(): Promise<NovelaiDownloadTagIndexValue> {
+    this.tagIndexDownload = undefined
+    return this.tagIndex.download()
+  }
+
+  /** Start one shared background index download; concurrent calls collapse. */
+  private ensureTagIndexDownload(): Promise<unknown> {
+    if (this.tagIndexDownload === undefined) {
+      this.tagIndexDownload = this.tagIndex.download().catch(() => {})
+    }
+    return this.tagIndexDownload
   }
 
   /**

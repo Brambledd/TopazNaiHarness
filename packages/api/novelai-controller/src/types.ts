@@ -78,6 +78,26 @@ export interface NovelaiTagSuggestionsValue {
   readonly tags: readonly NovelaiTagSuggestion[]
 }
 
+/** Bilingual tag index presence report. */
+export interface NovelaiTagIndexStatusValue {
+  /** Whether a valid index file is present and above the record floor. */
+  readonly downloaded: boolean
+  /** Parsed record count (0 when absent or corrupt). */
+  readonly count: number
+  /** Index file size in bytes (0 when absent). */
+  readonly sizeBytes: number
+}
+
+/** Tag index download receipt. */
+export interface NovelaiDownloadTagIndexValue {
+  /** Whether the download succeeded and the file was replaced. */
+  readonly ok: boolean
+  /** Human-readable outcome. */
+  readonly message: string
+  /** Parsed record count (0 on failure). */
+  readonly count: number
+}
+
 /** Library entry content request. */
 export interface NovelaiReadEntryRequest {
   /** Library entry id (the filename stem). */

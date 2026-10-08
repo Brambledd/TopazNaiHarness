@@ -1,4 +1,4 @@
-﻿// @vitest-environment jsdom
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -41,7 +41,7 @@ function mountShell({ collapsed = false, width = 300, viewMode = 'conversation' 
     <SidebarRoot
       collapsed={current.collapsed} width={current.width} viewMode={current.viewMode}
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
-      startSession={startSession} toggleSidebar={toggleSidebar} t={t}
+      startSession={startSession} toggleSidebar={toggleSidebar} setViewMode={vi.fn()} t={t}
       renderSlot={((
         key: string,
         owner: SidebarFooterActionOwnerProps | SidebarSectionOwnerProps | SidebarSettingsOwnerProps,
@@ -105,7 +105,7 @@ describe('SidebarRoot shell', () => {
     const { container } = render(<SidebarRoot
       collapsed={false} width={300} viewMode='conversation'
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
-      startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}
+      startSession={vi.fn()} toggleSidebar={vi.fn()} setViewMode={vi.fn()} t={t}
       renderSlot={((_key: string, _owner: unknown, options?: { fallback?: ReactNode }) =>
         options?.fallback ?? null) as SidebarRootComponentProps['renderSlot']}
     />)
@@ -123,7 +123,7 @@ describe('SidebarRoot shell', () => {
     render(<SidebarRoot
       collapsed={false} width={300} viewMode='conversation'
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
-      startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}
+      startSession={vi.fn()} toggleSidebar={vi.fn()} setViewMode={vi.fn()} t={t}
       renderSlot={((_key: string, _owner: unknown, options?: { fallback?: ReactNode }) =>
         options?.fallback ?? null) as SidebarRootComponentProps['renderSlot']}
     />)
@@ -136,7 +136,7 @@ describe('SidebarRoot shell', () => {
     render(<SidebarRoot
       collapsed={false} width={300} viewMode='conversation'
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
-      startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}
+      startSession={vi.fn()} toggleSidebar={vi.fn()} setViewMode={vi.fn()} t={t}
       renderSlot={((_key: string, _owner: unknown, options?: { fallback?: ReactNode }) =>
         options?.fallback ?? null) as SidebarRootComponentProps['renderSlot']}
     />)

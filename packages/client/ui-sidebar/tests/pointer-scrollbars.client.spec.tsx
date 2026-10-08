@@ -36,7 +36,7 @@ function mountColumn(): { column: HTMLElement; quiet: () => boolean } {
     <SidebarRoot
       collapsed={false} width={300} viewMode='conversation'
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
-      startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}
+      startSession={vi.fn()} toggleSidebar={vi.fn()} setViewMode={vi.fn()} t={t}
       renderSlot={((_key: string, owner: SidebarSectionOwnerProps) =>
         <div data-testid="region" data-wide={owner.wide} />) as SidebarRootComponentProps['renderSlot']}
     />,

@@ -36,6 +36,22 @@
   overflow: hidden;
 }
 
+/* One center surface pane; the frame keeps both occupants mounted across
+   view-mode switches and hides the inactive pane, so a switch never
+   remounts the conversation (its scroll and composer state survive). */
+.centerPane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.centerPaneHidden {
+  display: none;
+}
+
 .detailsCol {
   min-width: 0;
   overflow: hidden;

@@ -1,8 +1,8 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 /**
  * Pointer-revealed scrollbars, the shell's half: which class state the column
  * carries as the pointer crosses it. The stylesheet rule that state drives is
- * asserted in scrollbar-quiet-styles.spec.ts (node environment — a jsdom spec
+ * asserted in scrollbar-quiet-styles.spec.ts (node environment 鈥?a jsdom spec
  * has no file: module URL to read the sheet through).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -34,7 +34,7 @@ afterEach(() => {
 function mountColumn(): { column: HTMLElement; quiet: () => boolean } {
   const view = render(
     <SidebarRoot
-      collapsed={false} width={300}
+      collapsed={false} width={300} viewMode='conversation'
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
       startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}
       renderSlot={((_key: string, owner: SidebarSectionOwnerProps) =>
@@ -83,7 +83,7 @@ describe('SidebarRoot pointer-revealed scrollbars', () => {
   it('draws them only while the pointer is inside, and lingers on the way out', () => {
     vi.useFakeTimers()
     const { column, quiet } = mountColumn()
-    // At rest — the pointer has never been over the column — the bars are off.
+    // At rest 鈥?the pointer has never been over the column 鈥?the bars are off.
     expect(quiet()).toBe(true)
     movePointer(column, 'in')
     expect(quiet()).toBe(false)

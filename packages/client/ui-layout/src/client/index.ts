@@ -15,16 +15,20 @@ import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type { PanelActions } from './service.ts'
 import { AppFrame } from './AppFrame.tsx'
 import { createLayoutStore } from './stores.ts'
+import type { ViewMode } from './stores.ts'
 import { LayoutController } from './service.ts'
 import { ThemePresenter } from './theme-presenter.ts'
 
 // Contract exports only (export-convergence rule: cross-package consumers
 // keep a symbol exported; test-only/package-internal symbols live off /src).
 // ILayout: the ctx.layout face consumers and test fakes type against.
-// OwnerShare contracts below are the render-side halves registrants compose
-// against; the frame components and the store factory are package-internal.
+// ViewMode + WorkbenchOwnerProps: the center-switch vocabulary the workbench
+// feature composes against. OwnerShare contracts below are the render-side
+// halves registrants compose against; the frame components and the store
+// factory are package-internal.
 export { LayoutController } from './service.ts'
 export type { ILayout } from './service.ts'
+export type { ViewMode } from './stores.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -64,6 +68,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'conversation': { kind: 'single'; scope: 'session-maybe'; owner: ConvOwnerProps }
     /**
+     * The workbench center surface (NovelAI image generation). Declared and
+     * rendered by the same register() call that owns the conversation pane:
+     * the frame keeps both center occupants mounted and switches visibility
+     * by the layout store's `viewMode`, so a mode switch never remounts the
+     * conversation. The occupant receives the live mode as its owner share
+     * and writes switches back through `ctx.layout.setViewMode`.
+     */
+    'workbench': { kind: 'single'; scope: 'root'; owner: WorkbenchOwnerProps }
+    /**
      * The right details column, shown when the layout opens it. OCCUPIED by
      * ui-conversation's DetailsPanel, which declares the tool-details seat
      * inside it — registering here replaces the column and takes that seat
@@ -99,10 +112,21 @@ export interface SidebarOwnerProps {
   collapsed: boolean
   /** Rendered column width in px (SIDEBAR_COLLAPSED when collapsed). */
   width: number
+  /** The frame's active center surface, relayed to mode-switch seats. */
+  viewMode: ViewMode
 }
 
 /** Conversation owner share: business state and actions belong to the registrant. */
 export interface ConvOwnerProps {}
+
+/**
+ * Workbench owner share: the active center mode, live from the layout store.
+ * Switching away goes through `ctx.layout.setViewMode('conversation')`.
+ */
+export interface WorkbenchOwnerProps {
+  /** The frame's active center surface. */
+  mode: ViewMode
+}
 
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
 export interface DetailsOwnerProps {}
@@ -126,6 +150,7 @@ export function apply(ctx: ClientContext): void {
       children: {
         'sidebar': { kind: 'single', scope: 'root' },
         'conversation': { kind: 'single', scope: 'session-maybe' },
+        'workbench': { kind: 'single', scope: 'root' },
         'details': { kind: 'single', scope: 'session' },
         'shell.overlay': { kind: 'list', scope: 'root' },
       },

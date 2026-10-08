@@ -9,7 +9,7 @@
  * declared action set, delivered as the registration's bound actions.
  */
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
-import type { createLayoutStore } from './stores.ts'
+import type { createLayoutStore, ViewMode } from './stores.ts'
 
 /** The layout store's bound action set (framework-baked, draft params peeled). */
 export type PanelActions = BoundActions<ReturnType<typeof createLayoutStore>>
@@ -27,6 +27,8 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
+  /** Switch the center surface between the conversation and the workbench. */
+  setViewMode(mode: ViewMode): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -57,6 +59,11 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
+  }
+
+  /** Switch the center surface between the conversation and the workbench. */
+  setViewMode(mode: ViewMode): void {
+    this.#require().setViewMode(mode)
   }
 
   #require(): PanelActions {

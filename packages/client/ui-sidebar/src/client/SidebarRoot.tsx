@@ -52,6 +52,7 @@ function localBuildVersion(): string | undefined {
 export function SidebarRoot({
   collapsed,
   width,
+  viewMode,
   startSession,
   toggleSidebar,
   t,
@@ -211,7 +212,7 @@ export function SidebarRoot({
       {/* Footer actions stack above Settings in both sidebar widths. */}
       <div className={css.footArea}>
         <div className={css.footerActions}>
-          {renderSlot('sidebar.footer.action', { wide })}
+          {renderSlot('sidebar.footer.action', { wide, viewMode })}
         </div>
         <div className={css.settingsArea}>
           {renderSlot('sidebar.settings', { wide })}

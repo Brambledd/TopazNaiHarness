@@ -254,7 +254,22 @@ describe('AppFrame', () => {
 
   it('sidebar slot receives live concession output as owner props', () => {
     const { slotCalls } = mountFrame()
-    expect(slotCalls.find(c => c.key === 'sidebar')!.props).toEqual({ collapsed: false, width: 280 })
+    expect(slotCalls.find(c => c.key === 'sidebar')!.props).toEqual({ collapsed: false, width: 280, viewMode: 'conversation' })
+  })
+
+  it('keeps both center panes mounted and switches visibility by the store mode', () => {
+    const { frame, instance, slotCalls, rerenderFrame } = mountFrame()
+    const panes = frame.querySelectorAll('[class*="centerPane"]')
+    expect(panes).toHaveLength(2)
+    expect(slotCalls.map(c => c.key)).toContain('workbench')
+    expect(slotCalls.find(c => c.key === 'workbench')!.props).toEqual({ mode: 'conversation' })
+    expect(panes[0]!.className).not.toContain('Hidden')
+    expect(panes[1]!.className).toContain('Hidden')
+    act(() => { instance.actions.setViewMode('workbench') })
+    rerenderFrame()
+    expect(panes[0]!.className).toContain('Hidden')
+    expect(panes[1]!.className).not.toContain('Hidden')
+    expect(slotCalls.filter(c => c.key === 'workbench').at(-1)!.props).toEqual({ mode: 'workbench' })
   })
 
   it('sidebar drag widens through rAF-batched pointer moves', () => {
@@ -296,7 +311,7 @@ describe('AppFrame', () => {
     expect(getByTestId('sidebar-content')).toBeTruthy()
     expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
     const lastSidebarCall = slotCalls.filter(c => c.key === 'sidebar').at(-1)!
-    expect(lastSidebarCall.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED })
+    expect(lastSidebarCall.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED, viewMode: 'conversation' })
   })
 
   it('viewport shrink triggers the concession chain via ResizeObserver', () => {
@@ -328,7 +343,7 @@ describe('AppFrame — narrow-viewport auto-collapse', () => {
     const { frame, slotCalls } = mountFrame()
     expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
     expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
-    expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED })
+    expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED, viewMode: 'conversation' })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
   })
 

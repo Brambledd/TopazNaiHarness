@@ -23,7 +23,7 @@ import css from './AppFrame.module.css'
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay'>
+  & PropsRenderSlots<'sidebar' | 'conversation' | 'workbench' | 'details' | 'shell.overlay'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
   & PropsLocale<'common'>
 
@@ -190,19 +190,29 @@ export function AppFrame({
             sidebar keeps the mounted slot at the compact-rail width, and the
             component sees its rendered state as owner params decided here
             (collapsed follows the resolved rail, so a derived auto-collapse
-            renders the rail UI too). */}
+            renders the rail UI too). The active view mode rides along: the
+            sidebar's foot seats relay it to mode-switch occupants. */}
         {renderSlot('sidebar', {
           collapsed: sidebarCollapsed,
           width: cols.sidebar,
+          viewMode: panels.viewMode,
         })}
       </div>
       <>
-        {/* Both column occupants stay at fixed tree positions from first
-            paint — no loading gate: a bare status line reads worse than
-            the shell's own pending rendering. The conversation
-            is session-maybe; SessionProvider withholds the strict details
-            entry while no session is current. */}
-        <CenterColumn>{renderSlot('conversation', {})}</CenterColumn>
+        {/* Both center occupants stay at fixed tree positions from first
+            paint and remain mounted across mode switches (the inactive pane
+            is display:none, so a switch never remounts the conversation).
+            The conversation is session-maybe; SessionProvider withholds the
+            strict details entry while no session is current. The workbench
+            pane receives the live mode as its owner share. */}
+        <CenterColumn>
+          <div className={panels.viewMode === 'conversation' ? css.centerPane : css.centerPaneHidden}>
+            {renderSlot('conversation', {})}
+          </div>
+          <div className={panels.viewMode === 'workbench' ? css.centerPane : css.centerPaneHidden}>
+            {renderSlot('workbench', { mode: panels.viewMode })}
+          </div>
+        </CenterColumn>
         <DetailsColumn>
           <SessionProvider>{renderSlot('details', {})}</SessionProvider>
         </DetailsColumn>

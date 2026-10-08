@@ -10,7 +10,9 @@
 import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 // Type-only: pulls ui-layout's SlotMap merge (the 'sidebar' entry) into every
-// program that sees this contract, so PropsRuntime<'sidebar'> resolves.
+// program that sees this contract, so PropsRuntime<'sidebar'> resolves, and
+// supplies the ViewMode vocabulary the frame relays through owner props.
+import type { ViewMode } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -83,6 +85,8 @@ export interface SidebarSettingsOwnerProps {
 export interface SidebarFooterActionOwnerProps {
   /** Whether the sidebar renders wide content (false = 56px rail). */
   wide: boolean
+  /** The frame's active center surface, relayed for mode-switch affordances. */
+  viewMode: ViewMode
 }
 
 /**

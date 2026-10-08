@@ -3,33 +3,27 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TurnImages } from '../src/client/TurnImages.tsx'
 import type { TurnImage } from '../src/client/turn-images.ts'
+import { AttachmentId, type ImageMediaType } from '@deepseek-ai/dsh-attachment'
 
 type TurnImagesProps = Parameters<typeof TurnImages>[0]
 
 /** Locale seat stub mirroring the framework `t`. */
 const t = ((key: string): string => key) as TurnImagesProps['t']
 
-const imageA = {
-  seq: 11,
-  attachment: {
-    attachmentId: 'sha256:aaa',
-    mediaType: 'image/webp',
+/** A branded fixture reference; the wire shape is what the loader consumes. */
+function ref(attachmentId: string, name?: string): TurnImage['attachment'] {
+  return {
+    attachmentId: AttachmentId(attachmentId),
+    mediaType: 'image/webp' as ImageMediaType,
     bytes: 99_932,
     width: 832,
     height: 1216,
-    name: 'one.png',
-  },
+    ...name === undefined ? {} : { name },
+  }
 }
-const imageB = {
-  seq: 15,
-  attachment: {
-    attachmentId: 'sha256:bbb',
-    mediaType: 'image/webp',
-    bytes: 163_194,
-    width: 832,
-    height: 1216,
-  },
-}
+
+const imageA = { seq: 11, attachment: ref('sha256:aaa', 'one.png') }
+const imageB = { seq: 15, attachment: ref('sha256:bbb') }
 
 const props = (matched: readonly TurnImage[], loadImage: TurnImagesProps['loadImage']) => ({
   matched,

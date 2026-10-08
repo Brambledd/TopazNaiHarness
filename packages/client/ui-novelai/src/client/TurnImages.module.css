@@ -1,0 +1,75 @@
+/* Turn-tail produced-images row: thumbnail strip + zoom lightbox. Semantic
+   aliases over shared --dsw-* tokens only (no literal colors). */
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.thumbButton {
+  padding: 0;
+  border: 1px solid var(--dsw-border-subtle, transparent);
+  border-radius: 8px;
+  background: none;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+
+.thumbnail {
+  display: block;
+  max-width: 240px;
+  max-height: 240px;
+  width: auto;
+  height: auto;
+}
+
+.loading {
+  display: block;
+  width: 160px;
+  height: 120px;
+  background: var(--dsw-surface-raised, transparent);
+}
+
+.loadFailed {
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--dsw-text-danger, inherit);
+  cursor: pointer;
+  align-self: center;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dsw-overlay, rgba(0, 0, 0, 0.72));
+  cursor: zoom-out;
+}
+
+.zoomImage {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+}
+
+.closeButton {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  font-size: 20px;
+  line-height: 1;
+  background: var(--dsw-surface-raised, rgba(255, 255, 255, 0.9));
+  color: var(--dsw-text-primary, inherit);
+  cursor: pointer;
+}

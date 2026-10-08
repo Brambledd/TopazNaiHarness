@@ -1,33 +1,21 @@
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
-import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './NovelaiRow.module.css'
 
 /** Row lifecycle derived solely from the durable call slice. */
 type NovelaiRowState = 'running' | 'ok' | 'error' | 'stopped'
-
-/** The persisted result-metadata image reference after wire validation. */
-interface ImageMeta {
-  attachmentId: string
-  mediaType: string
-  width: number
-  height: number
-  name?: string
-}
 
 /** Compact, replay-stable view model. */
 interface NovelaiRowModel {
   readonly prompt: string
   readonly output: string | null
   readonly errorSummary: string | null
-  readonly image: ImageMeta | undefined
   readonly state: NovelaiRowState
 }
 
 type NovelaiRowProps = ToolCallViewProps & PropsLocale<'novelai'>
-  & InjectFace<{ loadImage: (attachment: ImageAttachmentRef) => Promise<string> }>
 
 /** First physical line of a text block. */
 function firstLine(text: string): string {
@@ -46,21 +34,6 @@ function resultText(block: ToolCallViewProps['block']): string | null {
     parts.push(`${block.error.name}: ${block.error.code}`)
   }
   return parts.join('\n') || null
-}
-
-/** Validate the persisted metadata image reference; undefined when absent or malformed. */
-function imageMeta(meta: unknown): ImageMeta | undefined {
-  if (typeof meta !== 'object' || meta === null) return undefined
-  const image = (meta as Record<string, unknown>).image
-  if (typeof image !== 'object' || image === null) return undefined
-  const { attachmentId, mediaType, width, height, name } = image as Record<string, unknown>
-  if (typeof attachmentId !== 'string' || attachmentId === '') return undefined
-  if (typeof mediaType !== 'string') return undefined
-  if (typeof width !== 'number' || typeof height !== 'number') return undefined
-  if (name !== undefined && typeof name !== 'string') return undefined
-  return name === undefined
-    ? { attachmentId, mediaType, width, height }
-    : { attachmentId, mediaType, width, height, name }
 }
 
 /** Derive the display model without consulting any live service. */
@@ -87,51 +60,20 @@ function novelaiRowModel(block: ToolCallViewProps['block']): NovelaiRowModel {
     prompt: prompt === '' ? block.callId : prompt,
     output,
     errorSummary: state === 'error' && output !== null ? firstLine(output) : null,
-    image: settled ? imageMeta(block.meta) : undefined,
     state,
   }
 }
 
 /**
- * Render one `novelai_generate` call: state row, prompt summary, and — when the
- * settled result carries a durable image reference — a click-to-zoom preview.
- * @param props - keyed toolview payload, locale seat, and the image loader.
- * @returns the dedicated NovelAI row.
+ * Render one `novelai_generate` call as a compact process row. The produced
+ * image itself lives in the turn-tail chain under the closing assistant
+ * message — the answer body — not inside this process fold.
+ * @param props - keyed toolview payload and the locale seat.
+ * @returns the dedicated NovelAI process row.
  */
-export function NovelaiRow({ block, t, loadImage }: NovelaiRowProps) {
-  // The projection caches blocks, so the derived model stays referentially
-  // stable between transcript updates and cannot re-arm the load effect below
-  // on unrelated renders.
-  const model = useMemo(() => novelaiRowModel(block), [block])
-  const [url, setUrl] = useState<string | null>(null)
-  const [failed, setFailed] = useState(false)
-  const [zoomed, setZoomed] = useState(false)
+export function NovelaiRow({ block, t }: NovelaiRowProps) {
+  const model = novelaiRowModel(block)
   const [expanded, setExpanded] = useState(false)
-  // One load attempt per arm; `reload` re-arms after a revoked or broken URL.
-  const [attempt, setAttempt] = useState(0)
-  const reload = useCallback(() => { setAttempt(value => value + 1) }, [])
-
-  useEffect(() => {
-    if (model.image === undefined) return
-    let alive = true
-    setFailed(false)
-    // The reference is the validated wire shape; the brand is type-only.
-    loadImage(model.image as unknown as ImageAttachmentRef).then(
-      (value) => { if (alive) setUrl(value) },
-      () => { if (alive) setFailed(true) },
-    )
-    return () => { alive = false }
-  }, [model.image, loadImage, attempt])
-
-  useEffect(() => {
-    if (!zoomed) return
-    const onKey = (event: globalThis.KeyboardEvent): void => {
-      if (event.key === 'Escape') setZoomed(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [zoomed])
-
   const summary = model.errorSummary ?? model.prompt
   const expandable = model.output !== null
   const open = expanded && expandable
@@ -167,42 +109,11 @@ export function NovelaiRow({ block, t, loadImage }: NovelaiRowProps) {
           {summary}
         </span>
       </div>
-      {model.image !== undefined && url !== null ? (
-        <button
-          type="button"
-          className={css.thumbButton}
-          title={t('row.preview')}
-          aria-label={t('row.preview')}
-          onClick={() => setZoomed(true)}
-        >
-          <img
-            className={css.thumbnail}
-            src={url}
-            alt={model.image.name ?? t('row.title')}
-            onError={reload}
-          />
-        </button>
-      ) : null}
-      {model.image !== undefined && failed ? (
-        <button type="button" className={css.loadFailed} onClick={reload}>{t('row.loadFailed')}</button>
-      ) : null}
       {open ? (
         <section className={css.detailsCard} aria-label={t('row.details')}>
           <div className={css.detailsHeader}>{t('row.details')}</div>
           <pre className={css.details} data-error={model.state === 'error' || undefined}>{model.output}</pre>
         </section>
-      ) : null}
-      {zoomed && url !== null ? (
-        <div
-          className={css.lightbox}
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('row.preview')}
-          onClick={() => setZoomed(false)}
-        >
-          <img className={css.zoomImage} src={url} alt={model.image?.name ?? t('row.title')} />
-          <button type="button" className={css.closeButton} aria-label={t('row.close')}>×</button>
-        </div>
       ) : null}
     </div>
   )

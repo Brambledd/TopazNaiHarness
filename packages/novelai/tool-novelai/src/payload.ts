@@ -68,11 +68,19 @@ export function buildNovelaiPayload(input: NovelaiGenerateInput): NovelaiWirePay
     skip_cfg_above_sigma: null,
   }
   if (isV4Plus(input.model)) {
-    // The API requires the V4+ character-prompt fields to exist even when empty.
-    parameters.char_captions = []
-    parameters.char_prompts = []
-    parameters.use_coords = false
-    parameters.use_coords_default_only = false
+    // V4/V4.5/V5 require the structured prompt objects; a request without them
+    // (or with empty top-level character lists) fails with HTTP 500.
+    parameters.v4_prompt = {
+      caption: { base_caption: input.prompt, char_captions: [] },
+      use_coords: false,
+      use_order: true,
+    }
+    parameters.v4_negative_prompt = {
+      caption: { base_caption: input.negativePrompt, char_captions: [] },
+      use_coords: false,
+      use_order: false,
+      legacy_uc: false,
+    }
   }
   return { input: input.prompt, model: input.model, action: 'generate', parameters }
 }

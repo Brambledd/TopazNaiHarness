@@ -29,8 +29,17 @@ describe('buildNovelaiPayload', () => {
       noise_schedule: 'native',
       uc: 'lowres',
       negative_prompt: 'lowres',
-      char_captions: [],
-      char_prompts: [],
+    })
+    expect(payload.parameters['v4_prompt']).toEqual({
+      caption: { base_caption: '1girl, solo', char_captions: [] },
+      use_coords: false,
+      use_order: true,
+    })
+    expect(payload.parameters['v4_negative_prompt']).toEqual({
+      caption: { base_caption: 'lowres', char_captions: [] },
+      use_coords: false,
+      use_order: false,
+      legacy_uc: false,
     })
   })
 
@@ -67,7 +76,7 @@ describe('buildNovelaiPayload', () => {
     expect(payload.parameters['seed']).toBe(0xffff_ffff)
   })
 
-  it('omits the V4+ character fields on V3 models', () => {
+  it('omits the V4+ structured prompt objects on V3 models', () => {
     const payload = buildNovelaiPayload({
       prompt: 'x',
       negativePrompt: 'y',
@@ -80,7 +89,7 @@ describe('buildNovelaiPayload', () => {
       noiseSchedule: 'native',
       seed: 1,
     })
-    expect(payload.parameters['char_captions']).toBeUndefined()
+    expect(payload.parameters['v4_prompt']).toBeUndefined()
   })
 })
 

@@ -9,7 +9,8 @@ import { isAbsolute, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import { AttachmentId } from '@deepseek-ai/dsh-attachment'
+import type { AttachmentStore, ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import {
   MAX_NOVELAI_SEED,
   NOVELAI_MODELS,
@@ -22,6 +23,41 @@ import {
 } from './types.ts'
 import { DEFAULT_NEGATIVE_PROMPT, buildNovelaiPayload, estimateAnlas, generationFileStem } from './payload.ts'
 import { requestGeneration, resolveProxyUrl } from './client.ts'
+
+/**
+ * Re-brand the schema-projected attachment value into the durable reference an
+ * image content block carries.
+ * @param value - the attachment value recorded in the tool result.
+ * @returns the branded attachment reference.
+ */
+function attachmentRefOf(value: {
+  attachmentId: string
+  mediaType: string
+  bytes: number
+  width: number
+  height: number
+  name?: unknown
+  originalDimensions?: unknown
+}): ImageAttachmentRef {
+  const name = typeof value.name === 'string' ? value.name : undefined
+  const original = value.originalDimensions
+  const originalDimensions = typeof original === 'object' && original !== null
+    && typeof (original as { width?: unknown }).width === 'number'
+    && typeof (original as { height?: unknown }).height === 'number'
+    ? { width: (original as { width: number }).width, height: (original as { height: number }).height }
+    : undefined
+  return {
+    attachmentId: AttachmentId(value.attachmentId),
+    // The canonical schema projects the declared wire string; the block shape
+    // carries the branded media-type union.
+    mediaType: value.mediaType as ImageMediaType,
+    bytes: value.bytes,
+    width: value.width,
+    height: value.height,
+    ...name === undefined ? {} : { name },
+    ...originalDimensions === undefined ? {} : { originalDimensions },
+  }
+}
 
 export const name = 'tool-novelai'
 export const inject = ['tools']
@@ -164,16 +200,22 @@ export function apply(ctx: Context, config: Config): void {
             properties: {
               attachmentId: { type: 'string', required: true },
               mediaType: { type: 'string', required: true },
+              bytes: { type: 'integer', required: true },
               width: { type: 'integer', required: true },
               height: { type: 'integer', required: true },
             },
           },
         },
       },
-      render: (_args, value) => [{
-        type: 'text',
-        text: `Saved ${value.model} image (${value.width}x${value.height}, seed ${value.seed}, ~${value.anlasEstimate} Anlas) to ${value.path}`,
-      }],
+      render: (_args, value) => {
+        const text = `Saved ${value.model} image (${value.width}x${value.height}, seed ${value.seed}, ~${value.anlasEstimate} Anlas) to ${value.path}`
+        // The durable image block in the result CONTENT is what session
+        // attachment authorization scans (`referencedImage` in the web session
+        // controller); result metadata alone never authorizes a read.
+        return value.attachment === undefined
+          ? [{ type: 'text', text }]
+          : [{ type: 'text', text }, { type: 'image', attachment: attachmentRefOf(value.attachment) }]
+      },
       presentationMeta: (_args, value) => value.attachment === undefined ? {} : { image: value.attachment },
     },
     async execute(args, exec) {

@@ -20,6 +20,7 @@ describe('turnImagesDefinition', () => {
     let state = turnImagesDefinition.start(
       {} as never,
       { event: event('turn/start', { turn: 3 }, 10) } as never,
+      { previous: () => undefined },
     )
     state = turnImagesDefinition.update({ state } as never, {
       event: event('tool/call', { callId: 'call-1', name: 'novelai_generate', turn: 3, step: 1 }, 11),
@@ -41,18 +42,22 @@ describe('turnImagesDefinition', () => {
         },
       }, 12),
     } as never)
-    const location = turnImagesDefinition.buildLocationData(
+    const location = turnImagesDefinition.buildLocationData?.(
       { state } as never, 'turn',
     )
     expect(location).not.toBeNull()
-    expect(location?.value.images.length).toBe(1)
-    expect(location?.value.images[0]?.attachment.attachmentId).toBe(ref.attachmentId)
+    if (location === null || location === undefined) return
+    expect(location.key).toBe('novelai-images')
+    const value = location.value as unknown as { images: { attachment: ImageAttachmentRef }[] }
+    expect(value.images.length).toBe(1)
+    expect(value.images[0]?.attachment.attachmentId).toBe(ref.attachmentId)
   })
 
   it('ignores other tools and failed results', () => {
     let state = turnImagesDefinition.start(
       {} as never,
       { event: event('turn/start', { turn: 1 }, 1) } as never,
+      { previous: () => undefined },
     )
     state = turnImagesDefinition.update({ state } as never, {
       event: event('tool/call', { callId: 'c2', name: 'read', turn: 1, step: 1 }, 2),
@@ -63,7 +68,8 @@ describe('turnImagesDefinition', () => {
         message: { source: { callId: 'c2' }, content: [{ type: 'image', attachment: ref }] },
       }, 3),
     } as never)
-    const location = turnImagesDefinition.buildLocationData({ state } as never, 'turn')
-    expect(location?.value.images.length).toBe(0)
+    const location = turnImagesDefinition.buildLocationData?.({ state } as never, 'turn')
+    const value = location?.value as unknown as { images: unknown[] } | null | undefined
+    expect(value?.images.length ?? 0).toBe(0)
   })
 })

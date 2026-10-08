@@ -31,7 +31,7 @@ interface TurnImagesState extends NovelaiImagesTurnData {
   readonly calls: ReadonlyMap<string, boolean>
 }
 
-/** Validate the durable image reference carried by a result content block. */
+/** Validate one durable image reference carried by a result content block. */
 function imageRefOf(block: unknown): ImageAttachmentRef | undefined {
   if (typeof block !== 'object' || block === null) return undefined
   const record = block as { readonly type?: unknown; readonly attachment?: unknown }
@@ -43,6 +43,22 @@ function imageRefOf(block: unknown): ImageAttachmentRef | undefined {
   if (typeof ref.mediaType !== 'string') return undefined
   if (typeof ref.width !== 'number' || typeof ref.height !== 'number') return undefined
   return record.attachment as ImageAttachmentRef
+}
+
+/** Collect image references from a result content list, recursing through nested tool-result blocks. */
+function imageRefsIn(content: unknown): ImageAttachmentRef[] {
+  if (!Array.isArray(content)) return []
+  const found: ImageAttachmentRef[] = []
+  for (const block of content) {
+    if (typeof block !== 'object' || block === null) continue
+    const record = block as { readonly type?: unknown; readonly content?: unknown }
+    if (record.type === 'image') {
+      const ref = imageRefOf(block)
+      if (ref !== undefined) found.push(ref)
+    }
+    if (record.type === 'tool-result') found.push(...imageRefsIn(record.content))
+  }
+  return found
 }
 
 /**
@@ -87,12 +103,9 @@ export const turnImagesDefinition: ConversationNodeDefinition<TurnImagesState> =
     if (match.event.type !== 'tool/result') return context.state
     const callId = String(match.event.data.message.source.callId)
     if (context.state.calls.get(callId) !== true) return context.state
-    const content = match.event.data.message.content
-    const found: TurnImage[] = []
-    for (const block of Array.isArray(content) ? content : []) {
-      const attachment = imageRefOf(block)
-      if (attachment !== undefined) found.push({ seq: match.event.seq, attachment })
-    }
+    const refs = imageRefsIn(match.event.data.message.content)
+    const seq = match.event.seq
+    const found: TurnImage[] = refs.map(attachment => ({ seq, attachment }))
     return found.length === 0
       ? context.state
       : { ...context.state, images: [...context.state.images, ...found] }

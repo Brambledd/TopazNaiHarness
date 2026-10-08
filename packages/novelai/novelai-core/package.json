@@ -20,7 +20,7 @@
     },
     "./node": {
       "types": "./lib/types/node.d.ts",
-      "default": "./lib/node.js"
+      "default": "./lib/types/node.js"
     },
     "./invariant": {
       "types": "./lib/types/invariant.d.ts",
@@ -31,7 +31,6 @@
   },
   "files": [
     "lib/index.js",
-    "lib/node.js",
     "lib/invariant.js",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts"

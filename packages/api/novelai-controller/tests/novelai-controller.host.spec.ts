@@ -70,7 +70,7 @@ describe('NovelaiController verbs', () => {
 
   it('rejects removal of a missing entry with the namespace error', async () => {
     const { controller } = harness()
-    await expect(controller.remove({ id: 'missing' })).rejects.toMatchObject({ code: 'novelai/entry-missing' })
+    await expect(controller.removeEntry({ id: 'missing' })).rejects.toMatchObject({ code: 'novelai/entry-missing' })
   })
 
   it('maps a missing token to the namespace error', async () => {

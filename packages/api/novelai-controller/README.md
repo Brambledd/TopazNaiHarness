@@ -31,7 +31,7 @@ Use this package when a browser surface must generate or browse NovelAI images w
 | `estimate({ width, height, steps })` | Anlas price quote from the official formula |
 | `generate(request)` | Resolve → price → paid submission (never retried) → PNG saved into `outputDir` → index recorded |
 | `history({ offset?, limit? })` | One page of the merged library, newest first, with the total |
-| `remove({ id })` | Delete one entry and its PNG file |
+| `removeEntry({ id })` | Delete one entry and its PNG file |
 
 ### Configuration
 

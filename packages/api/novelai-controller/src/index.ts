@@ -149,8 +149,8 @@ export class NovelaiController extends TypertRemoteService {
    * @param request - the entry to remove.
    * @returns the removal receipt.
    */
-  @Remote('remove')
-  async remove(request: NovelaiRemoveRequest): Promise<NovelaiRemoveValue> {
+  @Remote('removeEntry')
+  async removeEntry(request: NovelaiRemoveRequest): Promise<NovelaiRemoveValue> {
     const removed = await this.library.remove(request.id)
     if (!removed) {
       throw new RemoteError('novelai/entry-missing', `no library entry "${request.id}"`, { id: request.id })

@@ -1,11 +1,118 @@
 /* Workbench panel styles. Semantic --dsw-alias-* tokens only (web-styling rule). */
 
+/* Two-pane studio: the stage column dominates, the control column scrolls. */
+.stageLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr);
+  gap: 16px;
+  height: 100%;
+  padding: 16px;
+}
+
+.stageColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.stageImg {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+.stageEmpty {
+  color: var(--dsw-alias-text-secondary);
+  padding: 24px;
+  text-align: center;
+}
+
+.stageRunning {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dsw-alias-bg-overlay);
+  font-weight: 600;
+}
+
+.stageMeta {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-height: 24px;
+  flex-wrap: wrap;
+}
+
+.stageMetaSeed {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-1);
+  padding: 2px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.stageMetaSeed:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.filmstrip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  flex: none;
+}
+
+.filmThumb {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.filmThumbActive {
+  border-color: var(--dsw-alias-border-l4);
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l4);
+}
+
+/* Narrow windows stack: stage on top, controls scroll below. */
+@media (max-width: 960px) {
+  .stageLayout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(320px, 1fr) auto;
+  }
+}
+
 .root {
   display: flex;
   flex-direction: column;
   gap: 12px;
   height: 100%;
-  padding: 16px;
   overflow-y: auto;
 }
 

@@ -63,7 +63,11 @@ const zh = {
   'senddraft.seed.fixed': '固定种子',
   'senddraft.seed.random': '随机种子',
   'history.label': '历史',
-  'history.empty': '还没有图片',
+  'stage.label': '最新图片',
+  'stage.empty': '写好提示词点生成——最新的图片会出现在这里。',
+  'stage.running': '正在生成…',
+  'stage.zoom': '查看大图',
+  'stage.reuseSeed': '在面板中锁定此种子',
   'lightbox.close': '关闭',
   'lightbox.backfill': '回填参数',
   'lightbox.variant': '变体',
@@ -288,7 +292,7 @@ describe('prompt autocomplete', () => {
     expect(area.value).toBe('1girl, ')
   })
 
-  it('shows the history grid and opens the lightbox', async () => {
+  it('shows the newest entry on the stage, selects from the filmstrip, and opens the lightbox from the stage', async () => {
     const entry = {
       id: 'e1',
       file: 'workspace/novelai/e1.png',
@@ -302,13 +306,51 @@ describe('prompt autocomplete', () => {
     }
     const { props } = makeProps([entry])
     render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
-    const tile = await screen.findByRole('button', { name: 'a cat' }, { timeout: 3000 })
+    // The newest entry lands on the stage by default; the filmstrip tile selects.
+    const stageImage = await screen.findByTitle('查看大图', {}, { timeout: 3000 })
+    expect(stageImage.getAttribute('alt')).toBe('a cat')
+    const tile = screen.getByRole('button', { name: 'a cat' })
     fireEvent.click(tile)
+    expect(screen.getByTitle('查看大图').getAttribute('alt')).toBe('a cat')
+    fireEvent.click(screen.getByTitle('查看大图'))
     const dialog = screen.getByRole('dialog')
     expect(dialog.getAttribute('aria-modal')).toBe('true')
     fireEvent.click(screen.getByRole('button', { name: '回填参数' }))
     const area = screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement
     expect(area.value).toBe('a cat')
+    const seedInput = screen.getByLabelText('种子值') as HTMLInputElement
+    expect(seedInput.value).toBe('42')
+  })
+
+  it('swaps the stage to the filmstrip selection and back to the newest after generating', async () => {
+    const entries: Array<Record<string, unknown>> = [
+      { id: 'e2', file: 'workspace/novelai/e2.png', bytes: 10, width: 832, height: 1216, seed: 7, steps: 28, prompt: 'newest', createdAt: '2026-10-08T01:00:00Z' },
+      { id: 'e1', file: 'workspace/novelai/e1.png', bytes: 10, width: 832, height: 1216, seed: 42, steps: 28, prompt: 'a cat', createdAt: '2026-10-08T00:00:00Z' },
+    ]
+    const { props } = makeProps(entries)
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await screen.findByTitle('查看大图', {}, { timeout: 3000 })
+    expect(screen.getByTitle('查看大图').getAttribute('alt')).toBe('newest')
+    fireEvent.click(screen.getByRole('button', { name: 'a cat' }))
+    expect(screen.getByTitle('查看大图').getAttribute('alt')).toBe('a cat')
+    // A fresh generation follows the newest entry again: the refreshed page
+    // answers from the same array, so the new row lands ahead of the selection.
+    entries.unshift({ id: 'e3', file: 'workspace/novelai/e3.png', bytes: 10, width: 832, height: 1216, seed: 99, steps: 28, prompt: 'fresh', createdAt: '2026-10-08T02:00:00Z' })
+    const area = screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement
+    fireEvent.change(area, { target: { value: 'fresh prompt' } })
+    fireEvent.click(screen.getByRole('button', { name: '生成' }))
+    await waitFor(() => { expect(screen.getByTitle('查看大图').getAttribute('alt')).toBe('fresh') })
+  })
+
+  it('locks the stage seed into the panel from the meta row', async () => {
+    const entry = {
+      id: 'e1', file: 'workspace/novelai/e1.png', bytes: 10, width: 832, height: 1216, seed: 42, steps: 28,
+      prompt: 'a cat', createdAt: '2026-10-08T00:00:00Z',
+    }
+    const { props } = makeProps([entry])
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    const seedButton = await screen.findByTitle('在面板中锁定此种子', {}, { timeout: 3000 })
+    fireEvent.click(seedButton)
     const seedInput = screen.getByLabelText('种子值') as HTMLInputElement
     expect(seedInput.value).toBe('42')
   })
@@ -413,10 +455,11 @@ describe('character prompts', () => {
     render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
     const tile = await screen.findByRole('button', { name: 'park' }, { timeout: 3000 })
     fireEvent.click(tile)
+    fireEvent.click(screen.getByTitle('查看大图'))
     fireEvent.click(screen.getByRole('button', { name: '回填参数' }))
     expect(screen.getByLabelText('角色 1')).toBeTruthy()
     expect((screen.getByLabelText('角色 1') as HTMLTextAreaElement).value).toBe('1girl, blue hair')
-    fireEvent.click(screen.getByRole('button', { name: 'park' }), { detail: 1 })
+    fireEvent.click(screen.getByTitle('查看大图'), { detail: 1 })
     fireEvent.click(await screen.findByRole('button', { name: '变体' }, { timeout: 3000 }))
     await waitFor(() => { expect(generate).toHaveBeenCalledOnce() })
     expect(generate.mock.calls[0]![0].characters).toEqual([

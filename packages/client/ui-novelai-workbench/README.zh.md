@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-novelai-workbench` 是浏览器工作室面：`workbench` 中栏槽位承载提示词面板（模型/尺寸/步数/CFG/采样器/种子）、结构化角色卡、基于共享双语 Danbooru 索引的 tag 联想、带灯箱回填与变体的历史画布，以及 对话/创作台 模式开关。它同时提供 `novelaiWorkbench` 桥（对话面的 `novelai_generate` 卡片经此投递草稿），并把组装好的草稿作为排队的用户消息发进当前对话。全部生成动词走 NovelAI 控制器所有的 `remote.novelai` 命名空间；面板本身不持有生成逻辑。
+`dsh-client-ui-novelai-workbench` 是浏览器工作室面：双栏结构——占主导的舞台展示最新生成的图像（contain 适配、生成中遮罩、点击进灯箱缩放、元信息行带种子复用芯片、历史缩略图胶片带可切换舞台），旁边是独立滚动的控制列，承载提示词面板（模型/尺寸/步数/CFG/采样器/种子）、结构化角色卡、基于共享双语 Danbooru 索引的 tag 联想，以及吸底的估算与生成条。它同时携带 对话/创作台 模式开关，提供 `novelaiWorkbench` 桥（对话面的 `novelai_generate` 卡片经此投递草稿），并把组装好的草稿作为排队的用户消息发进当前对话。全部生成动词走 NovelAI 控制器所有的 `remote.novelai` 命名空间；面板本身不持有生成逻辑。
 
 ## 目录
 

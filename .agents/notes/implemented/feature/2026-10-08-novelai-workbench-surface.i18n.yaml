@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-08-novelai-workbench-surface.md
-2026-10-08-novelai-workbench-surface.md: f44e104074348976e9fcc2d7788e5061182e3e11
-2026-10-08-novelai-workbench-surface.zh.md: ea5273cc2ac862b5afd9c649e0c463962977f9dc
+2026-10-08-novelai-workbench-surface.md: bcc804986cb7a5478c874e6a488e286bca311d28
+2026-10-08-novelai-workbench-surface.zh.md: 10566e9bd5b2ca5c7f6aa5152c3a9583e265f7c5

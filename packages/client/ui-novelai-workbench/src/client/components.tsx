@@ -92,6 +92,8 @@ export function WorkbenchRoot({
   const [done, setDone] = useState<string | undefined>(undefined)
   const [entries, setEntries] = useState<readonly NovelaiGenerationValue[]>([])
   const [lightbox, setLightbox] = useState<NovelaiGenerationValue | undefined>(undefined)
+  /** Filmstrip selection; undefined follows the newest entry. */
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined)
   const urlCache = useRef(new Map<string, string>())
 
   // One-time catalog load seeds every dropdown and the workbench defaults.
@@ -158,6 +160,8 @@ export function WorkbenchRoot({
     generate(request).then((value) => {
       setDone(value.file)
       if (value.seed !== undefined) setLastSeed(value.seed)
+      // Follow the newest entry again: the fresh result lands on the stage.
+      setSelectedId(undefined)
       refreshHistory()
     }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) }).finally(() => { setBusy(false) })
   }
@@ -365,416 +369,457 @@ export function WorkbenchRoot({
     return undefined
   }
 
+  /** The stage's entry: the filmstrip selection, else the newest history row. */
+  const stageEntry = (selectedId !== undefined
+    ? entries.find(entry => entry.id === selectedId)
+    : undefined) ?? entries[0]
+
   return (
-    <div className={css.root}>
-      <button type="button" className={css.backButton} onClick={() => { setViewMode('conversation') }}>
-        {t('mode.conversation')}
-      </button>
-      <div className={css.section}>
-        <div className={css.promptHead}>
-          <span className={css.fieldLabel}>{t('prompt.label')}</span>
-          <div className={css.promptHeadActions}>
-            <button
-              type="button"
-              className={css.charAction}
-              disabled={sending || prompt.trim() === '' || currentSessionId === undefined}
-              title={currentSessionId === undefined ? t('senddraft.noSession') : undefined}
-              onClick={sendDraftToConversation}
-            >
-              {sending ? t('senddraft.sending') : t('senddraft.send')}
-            </button>
-            <button
-              type="button"
-              className={css.charAction}
-              disabled={splitting || prompt.trim() === ''}
-              onClick={splitIntoCharacters}
-            >
-              {splitting ? t('characters.splitting') : t('characters.split')}
-            </button>
-          </div>
+    <div className={css.stageLayout}>
+      <div className={css.stageColumn}>
+        <div className={css.stage} role="region" aria-label={t('stage.label')}>
+          {stageEntry === undefined
+            ? (busy ? null : <div className={css.stageEmpty}>{t('stage.empty')}</div>)
+            : (
+              <img
+                data-entry-id={stageEntry.id}
+                className={css.stageImg}
+                alt={stageEntry.prompt ?? stageEntry.id}
+                src={entryUrl(stageEntry)}
+                title={t('stage.zoom')}
+                onClick={() => { setLightbox(stageEntry) }}
+              />
+            )}
+          {busy && <div className={css.stageRunning} role="status">{t('stage.running')}</div>}
         </div>
-        <PromptTextarea
-          value={prompt}
-          onChange={setPrompt}
-          suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
-          placeholder={t('prompt.placeholder')}
-          ariaLabel={t('prompt.label')}
-          className={css.promptArea}
-        />
-      </div>
-      <div className={css.section}>
-        <span className={css.fieldLabel}>{t('styles.label')}</span>
-        <div className={css.styleRow}>
-          {STYLE_PRESETS.map(style => (
+        {stageEntry !== undefined && (
+          <div className={css.stageMeta}>
             <button
-              key={style.en}
               type="button"
-              className={css.capsuleChip}
-              title={style.en}
-              onClick={() => { prependStyle(style.en) }}
+              className={css.stageMetaSeed}
+              title={t('stage.reuseSeed')}
+              disabled={stageEntry.seed === undefined}
+              onClick={() => {
+                if (stageEntry.seed !== undefined) {
+                  setSeedMode('fixed')
+                  setSeed(stageEntry.seed)
+                }
+              }}
             >
-              {style.zh}
+              {t('seed.mode')} {stageEntry.seed ?? '—'}
+            </button>
+            <span className={css.sizeHint}>
+              {stageEntry.width === undefined ? '' : `${stageEntry.width}×${stageEntry.height} · `}
+              {stageEntry.model === undefined ? '' : `${stageEntry.model} · `}
+              {stageEntry.file}
+            </span>
+          </div>
+        )}
+        <div className={css.filmstrip} aria-label={t('history.label')}>
+          {entries.map(entry => (
+            <button
+              key={entry.id}
+              type="button"
+              className={`${css.filmThumb} ${entry.id === stageEntry?.id ? css.filmThumbActive : ''}`}
+              onClick={() => { setSelectedId(entry.id) }}
+              aria-label={entry.prompt ?? entry.id}
+              aria-current={entry.id === stageEntry?.id}
+            >
+              <img
+                data-entry-id={entry.id}
+                className={css.historyThumb}
+                loading="lazy"
+                alt={entry.prompt ?? entry.id}
+                src={entryUrl(entry)}
+              />
             </button>
           ))}
         </div>
       </div>
-      <div className={css.section}>
-        <button
-          type="button"
-          className={css.foldHeader}
-          aria-expanded={capsuleOpen}
-          onClick={() => { setCapsuleOpen(open => !open) }}
-        >
-          <span className={`${css.chevron} ${capsuleOpen ? css.chevronOpen : ''}`}>▾</span>
-          {t('capsule.label')}
+      <div className={css.root}>
+        <button type="button" className={css.backButton} onClick={() => { setViewMode('conversation') }}>
+          {t('mode.conversation')}
         </button>
-        {capsuleOpen && <CapsuleBrowser onInsert={insertTag} filterLabel={t('capsule.filter')} />}
-      </div>
-      <div className={css.section}>
-        <button
-          type="button"
-          className={css.foldHeader}
-          aria-expanded={negativeOpen}
-          onClick={() => { setNegativeOpen(open => !open) }}
-        >
-          <span className={`${css.chevron} ${negativeOpen ? css.chevronOpen : ''}`}>▾</span>
-          {t('negative.label')}
-        </button>
-        {negativeOpen && (
+        <div className={css.section}>
+          <div className={css.promptHead}>
+            <span className={css.fieldLabel}>{t('prompt.label')}</span>
+            <div className={css.promptHeadActions}>
+              <button
+                type="button"
+                className={css.charAction}
+                disabled={sending || prompt.trim() === '' || currentSessionId === undefined}
+                title={currentSessionId === undefined ? t('senddraft.noSession') : undefined}
+                onClick={sendDraftToConversation}
+              >
+                {sending ? t('senddraft.sending') : t('senddraft.send')}
+              </button>
+              <button
+                type="button"
+                className={css.charAction}
+                disabled={splitting || prompt.trim() === ''}
+                onClick={splitIntoCharacters}
+              >
+                {splitting ? t('characters.splitting') : t('characters.split')}
+              </button>
+            </div>
+          </div>
           <PromptTextarea
-            value={negativePrompt}
-            onChange={setNegativePrompt}
+            value={prompt}
+            onChange={setPrompt}
             suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
-            placeholder={t('negative.placeholder')}
-            ariaLabel={t('negative.label')}
-            className={css.negativeArea}
+            placeholder={t('prompt.placeholder')}
+            ariaLabel={t('prompt.label')}
+            className={css.promptArea}
           />
-        )}
-      </div>
-      {maxCharactersFor(model) > 0 && (
+        </div>
+        <div className={css.section}>
+          <span className={css.fieldLabel}>{t('styles.label')}</span>
+          <div className={css.styleRow}>
+            {STYLE_PRESETS.map(style => (
+              <button
+                key={style.en}
+                type="button"
+                className={css.capsuleChip}
+                title={style.en}
+                onClick={() => { prependStyle(style.en) }}
+              >
+                {style.zh}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className={css.section}>
           <button
             type="button"
             className={css.foldHeader}
-            aria-expanded={charactersOpen}
-            onClick={() => { setCharactersOpen(open => !open) }}
+            aria-expanded={capsuleOpen}
+            onClick={() => { setCapsuleOpen(open => !open) }}
           >
-            <span className={`${css.chevron} ${charactersOpen ? css.chevronOpen : ''}`}>▾</span>
-            {t('characters.label')}{characters.length > 0 ? ` · ${String(characters.length)}` : ''}
+            <span className={`${css.chevron} ${capsuleOpen ? css.chevronOpen : ''}`}>▾</span>
+            {t('capsule.label')}
           </button>
-          {charactersOpen && (
-            <div className={css.charList}>
-              <div className={css.charActions}>
-                <button
-                  type="button"
-                  className={css.charAction}
-                  disabled={characters.length >= maxCharactersFor(model)}
-                  onClick={addCharacter}
-                >
-                  {t('characters.add')}
-                </button>
-                <button
-                  type="button"
-                  className={css.charAction}
-                  disabled={characters.length === 0}
-                  onClick={() => { setCharacters([]) }}
-                >
-                  {t('characters.clear')}
-                </button>
-              </div>
-              {characters.map((draft, index) => (
-                <div key={draft.id} className={css.charRow}>
-                  <div className={css.charHead}>
-                    <strong className={css.charTitle}>{t('characters.role')} {String(index + 1)}</strong>
-                    <label className={css.charCheck}>
-                      <input
-                        type="checkbox"
-                        checked={draft.useCoords}
-                        aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.position.custom')}`}
-                        onChange={(e) => { updateCharacter(draft.id, { useCoords: e.target.checked }) }}
-                      />
-                      {t('characters.position.custom')}
-                    </label>
-                    <button
-                      type="button"
-                      className={css.charAction}
-                      aria-label={`${t('characters.remove')} ${String(index + 1)}`}
-                      onClick={() => { removeCharacter(draft.id) }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <PromptTextarea
-                    value={draft.prompt}
-                    onChange={(next) => { updateCharacter(draft.id, { prompt: next }) }}
-                    suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
-                    placeholder={t('characters.placeholder')}
-                    ariaLabel={`${t('characters.role')} ${String(index + 1)}`}
-                    className={css.charArea}
-                  />
-                  <PromptTextarea
-                    value={draft.negativePrompt}
-                    onChange={(next) => { updateCharacter(draft.id, { negativePrompt: next }) }}
-                    suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
-                    placeholder={t('characters.negativePlaceholder')}
-                    ariaLabel={`${t('characters.role')} ${String(index + 1)} ${t('characters.negative')}`}
-                    className={css.charNeg}
-                  />
-                  {draft.useCoords && (
-                    <div className={css.charCoords}>
-                      <label className={css.field}>
-                        <span className={css.fieldLabel}>{t('characters.x')}</span>
-                        <span className={css.charPercent}>
-                          <input
-                            type="number"
-                            className={css.select}
-                            min={0}
-                            max={100}
-                            step={5}
-                            value={Math.round(draft.x * 100)}
-                            aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.x')}`}
-                            onChange={(e) => { updateCharacter(draft.id, { x: Number(e.target.value) / 100 }) }}
-                          />
-                          <span aria-hidden="true">%</span>
-                        </span>
-                      </label>
-                      <label className={css.field}>
-                        <span className={css.fieldLabel}>{t('characters.y')}</span>
-                        <span className={css.charPercent}>
-                          <input
-                            type="number"
-                            className={css.select}
-                            min={0}
-                            max={100}
-                            step={5}
-                            value={Math.round(draft.y * 100)}
-                            aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.y')}`}
-                            onChange={(e) => { updateCharacter(draft.id, { y: Number(e.target.value) / 100 }) }}
-                          />
-                          <span aria-hidden="true">%</span>
-                        </span>
-                      </label>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+          {capsuleOpen && <CapsuleBrowser onInsert={insertTag} filterLabel={t('capsule.filter')} />}
+        </div>
+        <div className={css.section}>
+          <button
+            type="button"
+            className={css.foldHeader}
+            aria-expanded={negativeOpen}
+            onClick={() => { setNegativeOpen(open => !open) }}
+          >
+            <span className={`${css.chevron} ${negativeOpen ? css.chevronOpen : ''}`}>▾</span>
+            {t('negative.label')}
+          </button>
+          {negativeOpen && (
+            <PromptTextarea
+              value={negativePrompt}
+              onChange={setNegativePrompt}
+              suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
+              placeholder={t('negative.placeholder')}
+              ariaLabel={t('negative.label')}
+              className={css.negativeArea}
+            />
           )}
         </div>
-      )}
-      <div className={css.paramGrid}>
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('param.model')}</span>
-          <select className={css.select} value={model} onChange={(e) => { setModel(e.target.value) }}>
-            {(catalogValue?.models ?? []).map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </label>
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('param.sampler')}</span>
-          <select className={css.select} value={sampler} onChange={(e) => { setSampler(e.target.value) }}>
-            {(catalogValue?.samplers ?? []).map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </label>
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('param.noiseSchedule')}</span>
-          <select className={css.select} value={noiseSchedule} onChange={(e) => { setNoiseSchedule(e.target.value) }}>
-            {(catalogValue?.noiseSchedules ?? []).map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </label>
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('param.tier')}</span>
-          <select
-            className={css.select}
-            value={tier === null ? 'custom' : String(tier)}
-            onChange={(e) => { applyTierRatio(e.target.value === 'custom' ? null : Number(e.target.value) as Tier, ratio ?? '2:3') }}
-          >
-            {RESOLUTION_TIERS.map(value => (
-              <option key={value} value={String(value)}>{t(TIER_LABEL_KEYS[value])}</option>
-            ))}
-            <option value="custom">{t('param.custom')}</option>
-          </select>
-        </label>
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('param.ratio')}</span>
-          <select
-            className={css.select}
-            value={ratio ?? 'custom'}
-            onChange={(e) => { if (tier !== null) applyTierRatio(tier, e.target.value) }}
-          >
-            {RESOLUTION_RATIOS.map(r => <option key={r} value={r}>{r}</option>)}
-            <option value="custom">{t('param.custom')}</option>
-          </select>
-        </label>
-        <div className={css.field}>
-          <span className={css.fieldLabel}>{t('param.size')}</span>
-          <div className={css.sizeRow}>
-            <input
-              type="number"
-              className={css.number}
-              aria-label={t('param.width')}
-              value={width || ''}
-              min={64}
-              max={maxDimensionFor(height)}
-              step={64}
-              onChange={(e) => { setWidth(Number(e.target.value)) }}
-              onBlur={(e) => { setWidth(snapDimensionWithinArea(Number(e.target.value), height, width)) }}
-              onKeyDown={(e) => { if (e.key === 'Enter') setWidth(snapDimensionWithinArea(Number(e.currentTarget.value), height, width)) }}
-            />
-            <span>×</span>
-            <input
-              type="number"
-              className={css.number}
-              aria-label={t('param.height')}
-              value={height || ''}
-              min={64}
-              max={maxDimensionFor(width)}
-              step={64}
-              onChange={(e) => { setHeight(Number(e.target.value)) }}
-              onBlur={(e) => { setHeight(snapDimensionWithinArea(Number(e.target.value), width, height)) }}
-              onKeyDown={(e) => { if (e.key === 'Enter') setHeight(snapDimensionWithinArea(Number(e.currentTarget.value), width, height)) }}
-            />
-          </div>
-          <span className={css.sizeHint}>{t('size.commitHint')}</span>
-        </div>
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('param.steps')}</span>
-          <input
-            type="number"
-            className={css.number}
-            value={steps}
-            min={1}
-            max={50}
-            onChange={(e) => { setSteps(Math.max(1, Math.min(50, Math.round(Number(e.target.value) || 1)))) }}
-          />
-        </label>
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('param.cfgScale')}</span>
-          <input
-            type="number"
-            className={css.number}
-            value={cfgScale}
-            min={0}
-            max={10}
-            step={0.1}
-            onChange={(e) => { setCfgScale(Math.max(0, Math.min(10, Number(e.target.value)))) }}
-          />
-        </label>
-      </div>
-      <div className={css.seedRow}>
-        <span className={css.fieldLabel}>{t('seed.mode')}</span>
-        <div className={css.seedSwitch} role="group" aria-label={t('seed.mode')}>
-          <button
-            type="button"
-            className={`${css.seedSegment} ${seedMode === 'random' ? css.seedSegmentActive : ''}`}
-            aria-pressed={seedMode === 'random'}
-            onClick={() => { setSeedMode('random') }}
-          >
-            🎲 {t('seed.random')}
-          </button>
-          <button
-            type="button"
-            className={`${css.seedSegment} ${seedMode === 'fixed' ? css.seedSegmentActive : ''}`}
-            aria-pressed={seedMode === 'fixed'}
-            onClick={() => { setSeedMode('fixed') }}
-          >
-            🔒 {t('seed.fixed')}
-          </button>
-        </div>
-        {seedMode === 'fixed' && (
-          <>
-            <input
-              type="number"
-              className={`${css.number} ${css.seedValue}`}
-              aria-label={t('seed.fixedValue')}
-              value={seed}
-              min={0}
-              max={catalogValue?.maxSeed}
-              onChange={(e) => { setSeed(Math.max(0, Math.floor(Number(e.target.value) || 0))) }}
-            />
+        {maxCharactersFor(model) > 0 && (
+          <div className={css.section}>
             <button
               type="button"
-              className={css.seedDice}
-              title={t('seed.randomize')}
-              onClick={() => { setSeed(Math.floor(Math.random() * (catalogValue?.maxSeed ?? 4294967295)) + 1) }}
+              className={css.foldHeader}
+              aria-expanded={charactersOpen}
+              onClick={() => { setCharactersOpen(open => !open) }}
             >
-              🎲 {t('seed.randomize')}
+              <span className={`${css.chevron} ${charactersOpen ? css.chevronOpen : ''}`}>▾</span>
+              {t('characters.label')}{characters.length > 0 ? ` · ${String(characters.length)}` : ''}
             </button>
-          </>
-        )}
-        {lastSeed !== undefined && (
-          <span className={css.sizeHint}>{t('seed.lastLabel')} {lastSeed}</span>
-        )}
-      </div>
-      <div className={css.footer}>
-        <span className={css.estimate}>
-          {t('estimate')}: <span className={css.estimateValue}>{anlas === undefined ? '…' : anlas === 0 ? t('estimate.free') : String(anlas)}</span>
-        </span>
-        {error !== undefined && <p className={css.errorText} role="alert">{t('error')}: {error}</p>}
-        {done !== undefined && <p className={css.doneText}>{done}</p>}
-        <button type="button" className={css.generateButton} disabled={busy || prompt.trim() === ''} onClick={submitCurrent}>
-          {busy ? t('generating') : t('generate')}
-        </button>
-      </div>
-      <div className={css.section}>
-        <span className={css.fieldLabel}>{t('history.label')}</span>
-        {entries.length === 0
-          ? <p className={css.doneText}>{t('history.empty')}</p>
-          : (
-            <div className={css.historyGrid}>
-              {entries.map(entry => (
-                <button
-                  key={entry.id}
-                  type="button"
-                  className={css.historyItem}
-                  onClick={() => { setLightbox(entry) }}
-                  aria-label={entry.prompt ?? entry.id}
-                >
-                  <img
-                    data-entry-id={entry.id}
-                    className={css.historyThumb}
-                    loading="lazy"
-                    alt={entry.prompt ?? entry.id}
-                    src={entryUrl(entry)}
-                  />
-                </button>
-              ))}
-            </div>
-          )}
-      </div>
-      {lightbox !== undefined && (
-        <div
-          className={css.lightbox}
-          role="dialog"
-          aria-modal="true"
-          onClick={(event) => { if (event.target === event.currentTarget) setLightbox(undefined) }}
-          onKeyDown={(event) => { if (event.key === 'Escape') setLightbox(undefined) }}
-        >
-          <div className={css.lightboxBody}>
-            <img className={css.lightboxImg} alt={lightbox.prompt ?? lightbox.id} src={entryUrl(lightbox)} />
-            <div className={css.lightboxMeta}>
-              <span className={css.doneText}>{lightbox.file}</span>
-              <span className={css.sizeHint}>
-                {lightbox.width === undefined ? '' : `${lightbox.width}×${lightbox.height} · `}
-                {lightbox.seed === undefined ? '' : `${t('seed.mode')} ${lightbox.seed} · `}
-                {lightbox.steps === undefined ? '' : `${t('param.steps')} ${lightbox.steps}`}
-              </span>
-              <div className={css.lightboxActions}>
-                <button type="button" className={css.backButton} onClick={() => { backfill(lightbox) }}>
-                  {t('lightbox.backfill')}
-                </button>
-                {lightbox.prompt !== undefined && (
-                  <button type="button" className={css.backButton} disabled={busy} onClick={() => { submitVariation(lightbox) }}>
-                    {t('lightbox.variant')}
+            {charactersOpen && (
+              <div className={css.charList}>
+                <div className={css.charActions}>
+                  <button
+                    type="button"
+                    className={css.charAction}
+                    disabled={characters.length >= maxCharactersFor(model)}
+                    onClick={addCharacter}
+                  >
+                    {t('characters.add')}
                   </button>
-                )}
-                <button type="button" className={css.backButton} onClick={() => { setLightbox(undefined) }}>
-                  {t('lightbox.close')}
-                </button>
+                  <button
+                    type="button"
+                    className={css.charAction}
+                    disabled={characters.length === 0}
+                    onClick={() => { setCharacters([]) }}
+                  >
+                    {t('characters.clear')}
+                  </button>
+                </div>
+                {characters.map((draft, index) => (
+                  <div key={draft.id} className={css.charRow}>
+                    <div className={css.charHead}>
+                      <strong className={css.charTitle}>{t('characters.role')} {String(index + 1)}</strong>
+                      <label className={css.charCheck}>
+                        <input
+                          type="checkbox"
+                          checked={draft.useCoords}
+                          aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.position.custom')}`}
+                          onChange={(e) => { updateCharacter(draft.id, { useCoords: e.target.checked }) }}
+                        />
+                        {t('characters.position.custom')}
+                      </label>
+                      <button
+                        type="button"
+                        className={css.charAction}
+                        aria-label={`${t('characters.remove')} ${String(index + 1)}`}
+                        onClick={() => { removeCharacter(draft.id) }}
+                      >
+                      ✕
+                      </button>
+                    </div>
+                    <PromptTextarea
+                      value={draft.prompt}
+                      onChange={(next) => { updateCharacter(draft.id, { prompt: next }) }}
+                      suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
+                      placeholder={t('characters.placeholder')}
+                      ariaLabel={`${t('characters.role')} ${String(index + 1)}`}
+                      className={css.charArea}
+                    />
+                    <PromptTextarea
+                      value={draft.negativePrompt}
+                      onChange={(next) => { updateCharacter(draft.id, { negativePrompt: next }) }}
+                      suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
+                      placeholder={t('characters.negativePlaceholder')}
+                      ariaLabel={`${t('characters.role')} ${String(index + 1)} ${t('characters.negative')}`}
+                      className={css.charNeg}
+                    />
+                    {draft.useCoords && (
+                      <div className={css.charCoords}>
+                        <label className={css.field}>
+                          <span className={css.fieldLabel}>{t('characters.x')}</span>
+                          <span className={css.charPercent}>
+                            <input
+                              type="number"
+                              className={css.select}
+                              min={0}
+                              max={100}
+                              step={5}
+                              value={Math.round(draft.x * 100)}
+                              aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.x')}`}
+                              onChange={(e) => { updateCharacter(draft.id, { x: Number(e.target.value) / 100 }) }}
+                            />
+                            <span aria-hidden="true">%</span>
+                          </span>
+                        </label>
+                        <label className={css.field}>
+                          <span className={css.fieldLabel}>{t('characters.y')}</span>
+                          <span className={css.charPercent}>
+                            <input
+                              type="number"
+                              className={css.select}
+                              min={0}
+                              max={100}
+                              step={5}
+                              value={Math.round(draft.y * 100)}
+                              aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.y')}`}
+                              onChange={(e) => { updateCharacter(draft.id, { y: Number(e.target.value) / 100 }) }}
+                            />
+                            <span aria-hidden="true">%</span>
+                          </span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <div className={css.paramGrid}>
+          <label className={css.field}>
+            <span className={css.fieldLabel}>{t('param.model')}</span>
+            <select className={css.select} value={model} onChange={(e) => { setModel(e.target.value) }}>
+              {(catalogValue?.models ?? []).map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </label>
+          <label className={css.field}>
+            <span className={css.fieldLabel}>{t('param.sampler')}</span>
+            <select className={css.select} value={sampler} onChange={(e) => { setSampler(e.target.value) }}>
+              {(catalogValue?.samplers ?? []).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label className={css.field}>
+            <span className={css.fieldLabel}>{t('param.noiseSchedule')}</span>
+            <select className={css.select} value={noiseSchedule} onChange={(e) => { setNoiseSchedule(e.target.value) }}>
+              {(catalogValue?.noiseSchedules ?? []).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label className={css.field}>
+            <span className={css.fieldLabel}>{t('param.tier')}</span>
+            <select
+              className={css.select}
+              value={tier === null ? 'custom' : String(tier)}
+              onChange={(e) => { applyTierRatio(e.target.value === 'custom' ? null : Number(e.target.value) as Tier, ratio ?? '2:3') }}
+            >
+              {RESOLUTION_TIERS.map(value => (
+                <option key={value} value={String(value)}>{t(TIER_LABEL_KEYS[value])}</option>
+              ))}
+              <option value="custom">{t('param.custom')}</option>
+            </select>
+          </label>
+          <label className={css.field}>
+            <span className={css.fieldLabel}>{t('param.ratio')}</span>
+            <select
+              className={css.select}
+              value={ratio ?? 'custom'}
+              onChange={(e) => { if (tier !== null) applyTierRatio(tier, e.target.value) }}
+            >
+              {RESOLUTION_RATIOS.map(r => <option key={r} value={r}>{r}</option>)}
+              <option value="custom">{t('param.custom')}</option>
+            </select>
+          </label>
+          <div className={css.field}>
+            <span className={css.fieldLabel}>{t('param.size')}</span>
+            <div className={css.sizeRow}>
+              <input
+                type="number"
+                className={css.number}
+                aria-label={t('param.width')}
+                value={width || ''}
+                min={64}
+                max={maxDimensionFor(height)}
+                step={64}
+                onChange={(e) => { setWidth(Number(e.target.value)) }}
+                onBlur={(e) => { setWidth(snapDimensionWithinArea(Number(e.target.value), height, width)) }}
+                onKeyDown={(e) => { if (e.key === 'Enter') setWidth(snapDimensionWithinArea(Number(e.currentTarget.value), height, width)) }}
+              />
+              <span>×</span>
+              <input
+                type="number"
+                className={css.number}
+                aria-label={t('param.height')}
+                value={height || ''}
+                min={64}
+                max={maxDimensionFor(width)}
+                step={64}
+                onChange={(e) => { setHeight(Number(e.target.value)) }}
+                onBlur={(e) => { setHeight(snapDimensionWithinArea(Number(e.target.value), width, height)) }}
+                onKeyDown={(e) => { if (e.key === 'Enter') setHeight(snapDimensionWithinArea(Number(e.currentTarget.value), width, height)) }}
+              />
+            </div>
+            <span className={css.sizeHint}>{t('size.commitHint')}</span>
+          </div>
+          <label className={css.field}>
+            <span className={css.fieldLabel}>{t('param.steps')}</span>
+            <input
+              type="number"
+              className={css.number}
+              value={steps}
+              min={1}
+              max={50}
+              onChange={(e) => { setSteps(Math.max(1, Math.min(50, Math.round(Number(e.target.value) || 1)))) }}
+            />
+          </label>
+          <label className={css.field}>
+            <span className={css.fieldLabel}>{t('param.cfgScale')}</span>
+            <input
+              type="number"
+              className={css.number}
+              value={cfgScale}
+              min={0}
+              max={10}
+              step={0.1}
+              onChange={(e) => { setCfgScale(Math.max(0, Math.min(10, Number(e.target.value)))) }}
+            />
+          </label>
+        </div>
+        <div className={css.seedRow}>
+          <span className={css.fieldLabel}>{t('seed.mode')}</span>
+          <div className={css.seedSwitch} role="group" aria-label={t('seed.mode')}>
+            <button
+              type="button"
+              className={`${css.seedSegment} ${seedMode === 'random' ? css.seedSegmentActive : ''}`}
+              aria-pressed={seedMode === 'random'}
+              onClick={() => { setSeedMode('random') }}
+            >
+            🎲 {t('seed.random')}
+            </button>
+            <button
+              type="button"
+              className={`${css.seedSegment} ${seedMode === 'fixed' ? css.seedSegmentActive : ''}`}
+              aria-pressed={seedMode === 'fixed'}
+              onClick={() => { setSeedMode('fixed') }}
+            >
+            🔒 {t('seed.fixed')}
+            </button>
+          </div>
+          {seedMode === 'fixed' && (
+            <>
+              <input
+                type="number"
+                className={`${css.number} ${css.seedValue}`}
+                aria-label={t('seed.fixedValue')}
+                value={seed}
+                min={0}
+                max={catalogValue?.maxSeed}
+                onChange={(e) => { setSeed(Math.max(0, Math.floor(Number(e.target.value) || 0))) }}
+              />
+              <button
+                type="button"
+                className={css.seedDice}
+                title={t('seed.randomize')}
+                onClick={() => { setSeed(Math.floor(Math.random() * (catalogValue?.maxSeed ?? 4294967295)) + 1) }}
+              >
+              🎲 {t('seed.randomize')}
+              </button>
+            </>
+          )}
+          {lastSeed !== undefined && (
+            <span className={css.sizeHint}>{t('seed.lastLabel')} {lastSeed}</span>
+          )}
+        </div>
+        <div className={css.footer}>
+          <span className={css.estimate}>
+            {t('estimate')}: <span className={css.estimateValue}>{anlas === undefined ? '…' : anlas === 0 ? t('estimate.free') : String(anlas)}</span>
+          </span>
+          {error !== undefined && <p className={css.errorText} role="alert">{t('error')}: {error}</p>}
+          {done !== undefined && <p className={css.doneText}>{done}</p>}
+          <button type="button" className={css.generateButton} disabled={busy || prompt.trim() === ''} onClick={submitCurrent}>
+            {busy ? t('generating') : t('generate')}
+          </button>
+        </div>
+        {lightbox !== undefined && (
+          <div
+            className={css.lightbox}
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => { if (event.target === event.currentTarget) setLightbox(undefined) }}
+            onKeyDown={(event) => { if (event.key === 'Escape') setLightbox(undefined) }}
+          >
+            <div className={css.lightboxBody}>
+              <img className={css.lightboxImg} alt={lightbox.prompt ?? lightbox.id} src={entryUrl(lightbox)} />
+              <div className={css.lightboxMeta}>
+                <span className={css.doneText}>{lightbox.file}</span>
+                <span className={css.sizeHint}>
+                  {lightbox.width === undefined ? '' : `${lightbox.width}×${lightbox.height} · `}
+                  {lightbox.seed === undefined ? '' : `${t('seed.mode')} ${lightbox.seed} · `}
+                  {lightbox.steps === undefined ? '' : `${t('param.steps')} ${lightbox.steps}`}
+                </span>
+                <div className={css.lightboxActions}>
+                  <button type="button" className={css.backButton} onClick={() => { backfill(lightbox) }}>
+                    {t('lightbox.backfill')}
+                  </button>
+                  {lightbox.prompt !== undefined && (
+                    <button type="button" className={css.backButton} disabled={busy} onClick={() => { submitVariation(lightbox) }}>
+                      {t('lightbox.variant')}
+                    </button>
+                  )}
+                  <button type="button" className={css.backButton} onClick={() => { setLightbox(undefined) }}>
+                    {t('lightbox.close')}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

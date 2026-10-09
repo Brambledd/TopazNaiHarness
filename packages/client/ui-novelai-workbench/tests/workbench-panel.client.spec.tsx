@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Workbench panel behavior: catalog seeding, seed modes, negative fold, autocomplete, history. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, act } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import type { NovelaiGenerateRequest, NovelaiTagSuggestion } from '@deepseek-ai/dsh-api-novelai-controller/types'
 import { WorkbenchRoot } from '../src/client/components.tsx'
@@ -51,6 +51,17 @@ const zh = {
   'characters.position.custom': '自定义站位',
   'characters.x': 'X',
   'characters.y': 'Y',
+  'senddraft.send': '发送到对话',
+  'senddraft.sending': '发送中…',
+  'senddraft.sent': '草稿已发送到对话',
+  'senddraft.noSession': '当前没有活动对话',
+  'senddraft.header': '请基于这份创作台草稿继续（可直接调用 novelai_generate 出图）：',
+  'senddraft.positive': '正向提示词',
+  'senddraft.negative': '负面提示词',
+  'senddraft.params': '参数',
+  'senddraft.steps': '步',
+  'senddraft.seed.fixed': '固定种子',
+  'senddraft.seed.random': '随机种子',
   'history.label': '历史',
   'history.empty': '还没有图片',
   'lightbox.close': '关闭',
@@ -102,6 +113,12 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
       { prompt: '1girl, red hair', negativePrompt: 'extra ears', useCoords: false, x: 0.5, y: 0.5 },
     ],
   }))
+  const sendDraft = vi.fn(async (_sessionId: string, _text: string) => {})
+  let backfillSink: ((request: Record<string, unknown>) => void) | undefined
+  const onBackfillRequest = vi.fn((callback: (request: Record<string, unknown>) => void) => {
+    backfillSink = callback
+    return () => { backfillSink = undefined }
+  })
   const suggestions: NovelaiTagSuggestion[] = [
     { tag: '1girl', count: 19_000_000, category: 0, description: '一个女孩' },
     { tag: '1boy', count: 8_000_000, category: 0, description: '一个男孩' },
@@ -114,18 +131,20 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     suggestTags: vi.fn(async () => ({ tags: suggestions })),
     readEntry: vi.fn(async () => ({ data: '', mime: 'image/png' as const })),
     splitCharacters,
+    sendDraft,
+    onBackfillRequest,
     setViewMode: vi.fn(),
-    useSessions: (() => { throw new Error('workbench must not read global hooks') }) as never,
+    useSessions: ((selector: (state: { current: string }) => unknown) => selector({ current: 'session-1' })) as never,
     useWorkspaces: (() => { throw new Error('workbench must not read global hooks') }) as never,
     t: (key: keyof typeof zh) => zh[key],
   }
-  return { props, generate, splitCharacters }
+  return { props, generate, splitCharacters, sendDraft, deliverBackfill: (request: Record<string, unknown>) => backfillSink?.(request) }
 }
 
 function mount() {
-  const { props, generate, splitCharacters } = makeProps()
+  const { props, generate, splitCharacters, sendDraft, deliverBackfill } = makeProps()
   const view = render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
-  return { view, generate, splitCharacters }
+  return { view, generate, splitCharacters, sendDraft, deliverBackfill, setViewMode: props.setViewMode }
 }
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
@@ -295,13 +314,13 @@ describe('prompt autocomplete', () => {
   })
 })
 
-describe('character prompts', () => {
-  /** Open the character fold after the catalog defaults have landed. */
-  async function openCharacters(): Promise<void> {
-    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
-    fireEvent.click(screen.getByRole('button', { name: /角色提示词/ }))
-  }
+/** Open the character fold after the catalog defaults have landed. */
+async function openCharacters(): Promise<void> {
+  await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+  fireEvent.click(screen.getByRole('button', { name: /角色提示词/ }))
+}
 
+describe('character prompts', () => {
   it('adds a character card and submits it with the generation', async () => {
     const { generate } = mount()
     await openCharacters()
@@ -413,5 +432,34 @@ describe('character prompts', () => {
     }
     expect(screen.getByLabelText('角色 6')).toBeTruthy()
     expect((screen.getByRole('button', { name: '添加角色' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('conversation interop', () => {
+  it('delivers the draft with prompt, parameters, and characters', async () => {
+    const { sendDraft } = mount()
+    await openCharacters()
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park, 2girls' } })
+    fireEvent.click(screen.getByRole('button', { name: '添加角色' }))
+    fireEvent.change(screen.getByLabelText('角色 1'), { target: { value: '1girl, blue hair' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送到对话' }))
+    await waitFor(() => { expect(sendDraft).toHaveBeenCalledOnce() })
+    const [sessionId, text] = sendDraft.mock.calls[0] as [string, string]
+    expect(sessionId).toBe('session-1')
+    expect(text).toContain('park, 2girls')
+    expect(text).toContain('1girl, blue hair')
+  })
+
+  it('applies a conversation-side backfill request and switches to the workbench', async () => {
+    const { deliverBackfill, setViewMode } = mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    act(() => {
+      deliverBackfill({ prompt: 'from the chat', negativePrompt: 'lowres', seed: 7, width: 1024, height: 1024 })
+    })
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('from the chat')
+    expect((screen.getByPlaceholderText('lowres, bad anatomy…') as HTMLTextAreaElement).value).toBe('lowres')
+    expect((screen.getByLabelText('种子值') as HTMLInputElement).value).toBe('7')
+    expect((screen.getByLabelText('宽度') as HTMLInputElement).value).toBe('1024')
+    expect(setViewMode).toHaveBeenCalledWith('workbench')
   })
 })

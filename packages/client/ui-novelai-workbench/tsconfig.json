@@ -19,6 +19,12 @@
       "path": "../../api/novelai-controller"
     },
     {
+      "path": "../../api/session-controller/tsconfig.client.json"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
       "path": "../locale"
     },
     {
@@ -29,6 +35,9 @@
     },
     {
       "path": "../ui-layout"
+    },
+    {
+      "path": "../ui-session"
     },
     {
       "path": "../ui-sidebar"

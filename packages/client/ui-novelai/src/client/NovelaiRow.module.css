@@ -79,3 +79,22 @@
 .details[data-error] {
   color: var(--dsw-text-danger, inherit);
 }
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.backfill {
+  border: 1px solid var(--dsw-border-subtle, transparent);
+  border-radius: 6px;
+  background: var(--dsw-surface-raised, transparent);
+  color: var(--dsw-text-secondary, inherit);
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.backfill:hover {
+  background: var(--dsw-interactive-bg-hover, transparent);
+}

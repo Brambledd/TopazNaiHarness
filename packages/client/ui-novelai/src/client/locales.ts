@@ -13,6 +13,7 @@ export const zh = {
   'row.close': '关闭预览',
   'row.loadFailed': '图片加载失败',
   'row.details': '参数',
+  'row.backfill': '回填到创作台',
 } satisfies Record<string, string>
 
 /** The novelai namespace key union. */
@@ -28,4 +29,5 @@ export const en = {
   'row.close': 'Close preview',
   'row.loadFailed': 'Image failed to load',
   'row.details': 'Parameters',
+  'row.backfill': 'Backfill workbench',
 } satisfies Record<NovelaiKey, string>

@@ -1,4 +1,6 @@
 /** Injected callback faces handed to the workbench components. */
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { WorkbenchBackfillRequest } from './bridge.ts'
 import type {
   NovelaiCatalogValue,
   NovelaiEntryContentValue,
@@ -31,6 +33,14 @@ export interface WorkbenchInjected extends ModeSwitchInjected {
   readEntry: (request: NovelaiReadEntryRequest) => Promise<NovelaiEntryContentValue>
   /** Split one merged prompt into base plus per-character captions with the host LLM. */
   splitCharacters: (request: NovelaiSplitCharactersRequest) => Promise<NovelaiSplitCharactersValue>
+  /** Send one composed draft text into the given conversation as a queued user turn. */
+  sendDraft: (sessionId: SessionId, text: string) => Promise<void>
+  /**
+   * Subscribe to conversation-side backfill deliveries while the panel is mounted.
+   * @param callback - invoked with the delivered draft.
+   * @returns the unsubscribe disposer.
+   */
+  onBackfillRequest: (callback: (request: WorkbenchBackfillRequest) => void) => () => void
 }
 
 /** Mode-switch callbacks. */

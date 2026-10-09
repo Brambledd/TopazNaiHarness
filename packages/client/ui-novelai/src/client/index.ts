@@ -26,8 +26,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Required services: the slot registry, the conversation image channel, and the locale service. */
-export const inject = ['slots', 'uiConversation', 'locale']
+/** Required services: the slot registry, the conversation image channel, the
+ * workbench backfill bridge, and the locale service. */
+export const inject = ['slots', 'uiConversation', 'novelaiWorkbench', 'locale']
 
 /**
  * Client plugin body: register the dictionaries, the keyed tool row, the
@@ -41,6 +42,9 @@ export function apply(ctx: ClientContext): void {
     name: 'tool.call.toolview',
     key: 'novelai_generate',
     locale: NS,
+    inject: () => ({
+      requestBackfill: request => ctx.novelaiWorkbench.requestBackfill(request),
+    }),
   }, NovelaiRow))
   // The image itself renders under the closing assistant message, in the
   // turn-tail chain — the answer body, not the tool process fold.

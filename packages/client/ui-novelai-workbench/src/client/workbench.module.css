@@ -377,6 +377,11 @@
   margin-bottom: 4px;
 }
 
+.promptHeadActions {
+  display: flex;
+  gap: 6px;
+}
+
 .charCheck {
   display: flex;
   align-items: center;

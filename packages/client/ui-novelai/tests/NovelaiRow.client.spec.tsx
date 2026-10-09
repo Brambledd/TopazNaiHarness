@@ -32,6 +32,7 @@ const props = (block: NovelaiRowProps['block']) => ({
   toolName: 'novelai_generate',
   block,
   openFile: vi.fn(),
+  requestBackfill: vi.fn(),
   t,
 }) as unknown as NovelaiRowProps
 
@@ -67,5 +68,19 @@ describe('NovelaiRow', () => {
       subCalls: [],
     })} />)
     expect(screen.getByText('wip')).toBeTruthy()
+  })
+
+  it('offers backfill for a settled successful call and delivers the request parameters', () => {
+    const block = settledBlock('Saved nai-diffusion-4-5-full image (832x1216, seed 4242, ~0 Anlas) to x.png')
+    const requestBackfill = vi.fn()
+    render(<NovelaiRow {...({ ...props(block), requestBackfill } as unknown as NovelaiRowProps)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'row.backfill' }))
+    expect(requestBackfill).toHaveBeenCalledWith({ prompt: 'topaz, umbrella', seed: 4242 })
+  })
+
+  it('offers no backfill for a failed call', () => {
+    const block = { ...settledBlock('boom'), isError: true }
+    render(<NovelaiRow {...props(block)} />)
+    expect(screen.queryByRole('button', { name: 'row.backfill' })).toBeNull()
   })
 })

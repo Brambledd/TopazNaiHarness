@@ -7,6 +7,7 @@ import type {
   NovelaiGenerateRequest,
   NovelaiGenerationValue,
 } from '@deepseek-ai/dsh-api-novelai-controller/types'
+import type { WorkbenchBackfillRequest } from './bridge.ts'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   RESOLUTION_RATIOS,
@@ -58,7 +59,10 @@ export function WorkbenchRoot({
   suggestTags,
   readEntry,
   splitCharacters,
+  sendDraft,
+  onBackfillRequest,
   setViewMode,
+  useSessions,
   t,
 }: PropsRuntime<'workbench'> & WorkbenchInjected & PropsLocale<'novelai-workbench'>) {
   const [catalogValue, setCatalogValue] = useState<NovelaiCatalogValue | undefined>(undefined)
@@ -69,7 +73,9 @@ export function WorkbenchRoot({
   const [characters, setCharacters] = useState<CharacterDraft[]>([])
   const [charactersOpen, setCharactersOpen] = useState(false)
   const [splitting, setSplitting] = useState(false)
+  const [sending, setSending] = useState(false)
   const characterIdRef = useRef(0)
+  const currentSessionId = useSessions(state => state.current)
   const [model, setModel] = useState('')
   const [sampler, setSampler] = useState('')
   const [noiseSchedule, setNoiseSchedule] = useState('')
@@ -290,6 +296,60 @@ export function WorkbenchRoot({
     y: character.y,
   })
 
+  /** Apply one conversation-side draft; absent fields keep their panel value. */
+  const applyBackfillRequest = (request: WorkbenchBackfillRequest): void => {
+    if (request.prompt !== undefined) setPrompt(request.prompt)
+    if (request.negativePrompt !== undefined) {
+      setNegativePrompt(request.negativePrompt)
+      if (request.negativePrompt.trim() !== '') setNegativeOpen(true)
+    }
+    if (request.model !== undefined) setModel(request.model)
+    if (request.width !== undefined) setWidth(request.width)
+    if (request.height !== undefined) setHeight(request.height)
+    if (request.steps !== undefined) setSteps(request.steps)
+    if (request.cfgScale !== undefined) setCfgScale(request.cfgScale)
+    if (request.sampler !== undefined) setSampler(request.sampler)
+    if (request.noiseSchedule !== undefined) setNoiseSchedule(request.noiseSchedule)
+    if (request.seed !== undefined) {
+      setSeedMode('fixed')
+      setSeed(request.seed)
+    }
+    setCharacters([])
+    setDone(undefined)
+    setError(undefined)
+    setViewMode('workbench')
+  }
+
+  /** Serialize the current panel into one human-and-model-readable draft text. */
+  const composeDraft = (): string => {
+    const lines: string[] = [t('senddraft.header'), `${t('senddraft.positive')}: ${prompt.trim()}`]
+    if (negativePrompt.trim() !== '') lines.push(`${t('senddraft.negative')}: ${negativePrompt.trim()}`)
+    const seedText = seedMode === 'fixed' ? `${t('senddraft.seed.fixed')} ${String(seed)}` : t('senddraft.seed.random')
+    lines.push(
+      `${t('senddraft.params')}: ${model} · ${String(width)}×${String(height)} · ${String(steps)} ${t('senddraft.steps')} · CFG ${String(cfgScale)} · ${sampler}/${noiseSchedule} · ${seedText}`,
+    )
+    characters.forEach((draft, index) => {
+      const negative = draft.negativePrompt.trim() === '' ? '' : `｜${t('senddraft.negative')}: ${draft.negativePrompt.trim()}`
+      const placement = draft.useCoords ? `｜${t('characters.position.custom')} X ${String(Math.round(draft.x * 100))}% · Y ${String(Math.round(draft.y * 100))}%` : ''
+      lines.push(`${t('characters.role')} ${String(index + 1)}: ${draft.prompt.trim()}${negative}${placement}`)
+    })
+    return lines.join('\n')
+  }
+
+  /** Send the composed draft into the current conversation and switch to it. */
+  const sendDraftToConversation = (): void => {
+    if (currentSessionId === undefined || sending || prompt.trim() === '') return
+    setSending(true)
+    setError(undefined)
+    sendDraft(currentSessionId, composeDraft()).then(() => {
+      setDone(t('senddraft.sent'))
+      setViewMode('conversation')
+    }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) }).finally(() => { setSending(false) })
+  }
+
+  // Conversation-side backfill deliveries apply while the panel stays mounted.
+  useEffect(() => onBackfillRequest(applyBackfillRequest), [onBackfillRequest])
+
   /** Mint (or reuse) the object URL of one entry's PNG. */
   const entryUrl = (entry: NovelaiGenerationValue): string | undefined => {
     const cached = urlCache.current.get(entry.id)
@@ -313,14 +373,25 @@ export function WorkbenchRoot({
       <div className={css.section}>
         <div className={css.promptHead}>
           <span className={css.fieldLabel}>{t('prompt.label')}</span>
-          <button
-            type="button"
-            className={css.charAction}
-            disabled={splitting || prompt.trim() === ''}
-            onClick={splitIntoCharacters}
-          >
-            {splitting ? t('characters.splitting') : t('characters.split')}
-          </button>
+          <div className={css.promptHeadActions}>
+            <button
+              type="button"
+              className={css.charAction}
+              disabled={sending || prompt.trim() === '' || currentSessionId === undefined}
+              title={currentSessionId === undefined ? t('senddraft.noSession') : undefined}
+              onClick={sendDraftToConversation}
+            >
+              {sending ? t('senddraft.sending') : t('senddraft.send')}
+            </button>
+            <button
+              type="button"
+              className={css.charAction}
+              disabled={splitting || prompt.trim() === ''}
+              onClick={splitIntoCharacters}
+            >
+              {splitting ? t('characters.splitting') : t('characters.split')}
+            </button>
+          </div>
         </div>
         <PromptTextarea
           value={prompt}

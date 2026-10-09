@@ -28,6 +28,8 @@
 
 **快捷标签与风格库。** 灵感胶囊库（策展内置批 + 三个自著批，压缩 `en=zh|…` 串加载时解析，按类别/子组合并、类别内按英文去重）驱动折叠式浏览器：类别页签、双语过滤、点击即向提示词追加 `tag, `。风格库一行派生自分类法的「风格画风」类，点击把风格 tag 前置到提示词。
 
+**对话与创作台互通。** 两个界面通过两条定向通道交换草稿。创作台 → 对话：主提示词旁的「发送到对话」按钮把当前草稿（提示词、负面、参数行、逐角色行）序列化成一段可读文本，经 `sessions.scope(id).session.prompt(..., 'queue')` 作为一条真实用户消息进入当前对话排队——不需要新事件类型，模型可见输入本身就是已落盘的 `user/message`。成功后面板切到对话视图。对话 → 创作台：`novelai_generate` 工具卡（ui-novelai）在调用成功落定后显示「回填到创作台」按钮，从调用的持久化参数里抽取请求字段、从结果文本解析实际种子，经创作台包提供的 `novelaiWorkbench` Cordis 服务投递。面板未挂载时投递返回 `false`；已投递的请求只覆盖出现的字段、清空角色卡片（工具调用没有角色）、把种子切到固定档，并把界面切到创作台。两条通道都只经注入服务与纯数据跨包——桥类型归创作台包所有，ui-novelai 以 `import type` 加注入回调消费。
+
 ## 备选方案
 
 **用静态文件路由对外提供图库图片。** 否决：为单一消费方新增一个文件服务面。走既有 Remote 通道传 base64 不改变信任边界，本地回环下每张缩略图只多几百毫秒。
@@ -40,4 +42,4 @@
 
 ## 影响
 
-`packages/client/ui-novelai-workbench`（面板、联想、胶囊、历史、角色卡片）、`packages/api/novelai-controller`（命名空间动词、词典、评分、角色拆分 LLM 调用）与 `packages/novelai/novelai-core`（`requestTagSuggestions`、结构化角色载荷序列化）扩展；api-remotes 的客户端 bundle 内嵌再生成的命名空间，控制器动词变更后必须重建该 bundle——陈旧的 remotes bundle 表现为属性代理静默失配，因此动词新增在重建 bundle 并刷新页面前不算完成。组件 spec 覆盖面板、联想、胶囊、历史与角色卡片行为；宿主 spec 覆盖词典评分、拆分答案解析与竖线回退。已知暂缓项：上述会话推送互通、风格预设持久化，以及可拖拽站位画布（当前卡片以数值 X/Y 输入）。
+`packages/client/ui-novelai-workbench`（面板、联想、胶囊、历史、角色卡片、草稿发送、回填桥）、`packages/client/ui-novelai`（工具卡、回合尾图、卡片回填按钮）、`packages/api/novelai-controller`（命名空间动词、词典、评分、角色拆分 LLM 调用）与 `packages/novelai/novelai-core`（`requestTagSuggestions`、结构化角色载荷序列化）扩展；api-remotes 的客户端 bundle 内嵌再生成的命名空间，控制器动词变更后必须重建该 bundle——陈旧的 remotes bundle 表现为属性代理静默失配，因此动词新增在重建 bundle 并刷新页面前不算完成。组件 spec 覆盖面板、联想、胶囊、历史、角色卡片、草稿发送/回填与工具卡回填行为；宿主 spec 覆盖词典评分、拆分答案解析与竖线回退。已知暂缓项：上述会话推送互通、风格预设持久化，以及可拖拽站位画布（当前卡片以数值 X/Y 输入）。

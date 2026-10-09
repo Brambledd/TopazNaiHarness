@@ -1,8 +1,6 @@
 /** Workbench copy dictionaries (typed keys; i18n gate owns product text). */
 
 export const en = {
-  'mode.conversation': 'Chat',
-  'mode.workbench': 'Studio',
   'prompt.label': 'Prompt',
   'prompt.placeholder': '1girl, solo, masterpiece…',
   'negative.label': 'Negative prompt',
@@ -40,10 +38,10 @@ export const en = {
   'characters.position.custom': 'Custom position',
   'characters.x': 'X',
   'characters.y': 'Y',
-  'senddraft.send': 'Send to chat',
-  'senddraft.sending': 'Sending…',
-  'senddraft.sent': 'Draft sent to the conversation',
+  'senddraft.send': 'To chat input',
+  'senddraft.sent': 'Draft placed in the conversation input',
   'senddraft.noSession': 'No active conversation',
+  'senddraft.noInput': 'The conversation input is unavailable right now',
   'senddraft.header': 'Continue from this workbench draft (you may call novelai_generate to render it):',
   'senddraft.positive': 'Positive prompt',
   'senddraft.negative': 'Negative prompt',
@@ -75,8 +73,6 @@ export const en = {
 } as const
 
 export const zh = {
-  'mode.conversation': '对话',
-  'mode.workbench': '创作台',
   'prompt.label': '提示词',
   'prompt.placeholder': '1girl, solo, masterpiece…',
   'negative.label': '负面提示词',
@@ -114,10 +110,10 @@ export const zh = {
   'characters.position.custom': '自定义站位',
   'characters.x': 'X',
   'characters.y': 'Y',
-  'senddraft.send': '发送到对话',
-  'senddraft.sending': '发送中…',
-  'senddraft.sent': '草稿已发送到对话',
+  'senddraft.send': '放入对话输入栏',
+  'senddraft.sent': '草稿已放入对话输入栏',
   'senddraft.noSession': '当前没有活动对话',
+  'senddraft.noInput': '对话输入栏当前不可用',
   'senddraft.header': '请基于这份创作台草稿继续（可直接调用 novelai_generate 出图）：',
   'senddraft.positive': '正向提示词',
   'senddraft.negative': '负面提示词',

@@ -9,6 +9,9 @@
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+// Type-only: pulls the Conversation service merge (ctx.conversation) that
+// carries the composer-draft seeding path.
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -31,9 +34,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Services required by the workbench plugin. Both the 'remote' aggregate and
  * the dot-path 'remote.novelai' namespace are declared, mirroring the
- * ui-conversation / ui-commands inject pattern; 'sessions' addresses the
- * current conversation for draft delivery. */
-export const inject = ['slots', 'layout', 'remote', 'remote.novelai', 'locale', 'sessions']
+ * ui-conversation / ui-commands inject pattern; 'conversation' seeds the
+ * composer draft of the current session. */
+export const inject = ['slots', 'layout', 'remote', 'remote.novelai', 'conversation', 'locale']
 
 /** Register the workbench seats and dictionaries.
  * @param ctx - client root context.
@@ -98,13 +101,7 @@ export function apply(ctx: ClientContext): void {
             if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
             return result.value
           },
-          sendDraft: async (sessionId, text) => {
-            const scoped = ctx.sessions.scope(sessionId)
-            const session = scoped === undefined ? undefined : ctx.sessions.sessionOf(scoped)
-            if (session === undefined) throw new Error('the target conversation is no longer available')
-            const result = await session.prompt([{ type: 'text', text }], 'queue')
-            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
-          },
+          seedDraft: (sessionId, text) => ctx.conversation.seedDraft(sessionId, text),
           onBackfillRequest: (callback) => {
             backfillSubscribers.add(callback)
             return () => { backfillSubscribers.delete(callback) }

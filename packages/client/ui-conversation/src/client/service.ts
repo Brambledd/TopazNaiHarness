@@ -21,6 +21,7 @@ import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import type { ComposerAttachment } from './contract/slots.ts'
 import type { QueueAction, QueueItemId } from './contract/queue.ts'
 import type { ComposerBlocks } from './contract/composer-blocks.ts'
+import type { InputHub } from './input/hub.ts'
 import type {
   DraftAttachmentId, SessionInputResolver, SubmitImageAttachment, SubmitOutcome,
 } from './contract/input.ts'
@@ -45,6 +46,15 @@ export interface IConversation {
    * @returns completion; business failures reject (and land in promptError).
    */
   send(text: string): Promise<void>
+  /**
+   * Seed the composer draft of one session without sending — the input
+   * facade's documented programmatic write. Nothing is queued and nothing
+   * clears; the caller keeps its own surface state.
+   * @param sessionId - session whose composer receives the draft.
+   * @param text - the full next draft text.
+   * @returns false when the session has no resident composer (no binding).
+   */
+  seedDraft(sessionId: SessionId, text: string): boolean
   /**
    * Apply one edit, remove, or strict steer operation to a pending queue occurrence.
    * @param itemId - agent-owned inbox occurrence identity.
@@ -149,18 +159,21 @@ export class ConversationController extends Service implements IConversation {
   readonly input: SessionInputResolver
   /** The per-session composer-block registry. */
   readonly blocks: ComposerBlocks
+  /** The typed input hub behind {@link input}; id-addressed seeding lives here. */
+  private readonly hub: InputHub
   private readonly draftAttachments = new Map<DraftAttachmentId, ComposerAttachment>()
 
   /**
    * @param ctx - owning root context (the plugin apply context; the service
    * registers itself and follows that fiber's lifetime).
-   * @param config - carries the SessionInputResolver and composer-block registry
+   * @param config - carries the InputHub and composer-block registry
    * constructed by the plugin apply (the same instances the slot inject
    * factories close over).
    */
-  constructor(ctx: Context, config: { input: SessionInputResolver; blocks: ComposerBlocks }) {
+  constructor(ctx: Context, config: { input: InputHub; blocks: ComposerBlocks }) {
     super(ctx, 'conversation')
     this.input = config.input
+    this.hub = config.input
     this.blocks = config.blocks
     ctx.effect(() => () => {
       for (const attachment of this.draftAttachments.values()) {
@@ -180,6 +193,17 @@ export class ConversationController extends Service implements IConversation {
     const session = this.scopedSession('send')
     const result = await session.prompt([{ type: 'text', text }], 'queue')
     if (!result.ok) throw new Error(`conversation.send failed: ${result.error.code}: ${result.error.message}`)
+  }
+
+  /**
+   * Seed the composer draft of one session without sending; see the interface
+   * face for the contract.
+   * @param sessionId - session whose composer receives the draft.
+   * @param text - the full next draft text.
+   * @returns false when the session resolves no resident input.
+   */
+  seedDraft(sessionId: SessionId, text: string): boolean {
+    return this.hub.seedDraft(sessionId, text)
   }
 
   /**

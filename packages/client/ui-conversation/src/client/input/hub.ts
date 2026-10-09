@@ -78,8 +78,7 @@ export class InputHub implements SessionInputResolver {
    * Wires the scoped event listeners + teardown into the session scope.
    * @param binding - session assembly handle.
    * @returns the shell.
-   */
-  shellFor(binding: SessionBinding): SessionInputShell {
+   */  shellFor(binding: SessionBinding): SessionInputShell {
     const existing = this.shells.get(binding.sessionId)
     if (existing !== undefined) return existing
     const { sessionId: id, session, ctx: actx } = binding
@@ -142,6 +141,24 @@ export class InputHub implements SessionInputResolver {
     const binding = this.sessions().binding(id)
     if (binding === undefined) throw new Error(`conversation.input: session "${id}" resolved no binding`)
     return this.shellFor(binding)
+  }
+
+  /**
+   * Seed one session's composer draft without sending — the resident
+   * editor's documented programmatic write.
+   * @param id - session whose composer receives the draft.
+   * @param text - the full next draft text.
+   * @returns false when the session resolves no resident input.
+   */
+  seedDraft(id: SessionId, text: string): boolean {
+    try {
+      this.shell(id).setDraft(text)
+      return true
+    } catch {
+      // shell() throws only while the session resolves no binding — there is
+      // no composer to seed, which the boolean already reports.
+      return false
+    }
   }
 
   /**

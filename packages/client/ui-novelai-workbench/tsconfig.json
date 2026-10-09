@@ -13,10 +13,10 @@
       "path": "../../../vendor/cordis"
     },
     {
-      "path": "../../api/remotes/tsconfig.client.json"
+      "path": "../../api/novelai-controller"
     },
     {
-      "path": "../../api/novelai-controller"
+      "path": "../../api/remotes/tsconfig.client.json"
     },
     {
       "path": "../../api/session-controller/tsconfig.client.json"
@@ -25,16 +25,19 @@
       "path": "../../core/session"
     },
     {
+      "path": "../../runtime-diagnostics/invariants"
+    },
+    {
       "path": "../locale"
     },
     {
-      "path": "../ui-slots"
-    },
-    {
-      "path": "../ui-renderer"
+      "path": "../ui-conversation"
     },
     {
       "path": "../ui-layout"
+    },
+    {
+      "path": "../ui-renderer"
     },
     {
       "path": "../ui-session"
@@ -43,7 +46,7 @@
       "path": "../ui-sidebar"
     },
     {
-      "path": "../../runtime-diagnostics/invariants"
+      "path": "../ui-slots"
     }
   ]
 }

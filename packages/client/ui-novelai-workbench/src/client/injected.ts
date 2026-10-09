@@ -33,8 +33,8 @@ export interface WorkbenchInjected extends ModeSwitchInjected {
   readEntry: (request: NovelaiReadEntryRequest) => Promise<NovelaiEntryContentValue>
   /** Split one merged prompt into base plus per-character captions with the host LLM. */
   splitCharacters: (request: NovelaiSplitCharactersRequest) => Promise<NovelaiSplitCharactersValue>
-  /** Send one composed draft text into the given conversation as a queued user turn. */
-  sendDraft: (sessionId: SessionId, text: string) => Promise<void>
+  /** Seed one composed draft text into the given conversation's composer input; the user sends it from there. */
+  seedDraft: (sessionId: SessionId, text: string) => boolean
   /**
    * Subscribe to conversation-side backfill deliveries while the panel is mounted.
    * @param callback - invoked with the delivered draft.

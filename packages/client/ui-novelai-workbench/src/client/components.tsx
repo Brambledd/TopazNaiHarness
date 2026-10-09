@@ -50,7 +50,7 @@ const TIER_LABEL_KEYS: Record<Tier, 'param.tier.0_4' | 'param.tier.1' | 'param.t
   3: 'param.tier.3',
 }
 
-/** Workbench center surface: prompt, full parameter panel, generation, and history. */
+/** Workbench center surface: the stage column (latest image, filmstrip) and the control column (prompt, parameters, generation). */
 export function WorkbenchRoot({
   catalog,
   estimate,
@@ -59,7 +59,7 @@ export function WorkbenchRoot({
   suggestTags,
   readEntry,
   splitCharacters,
-  sendDraft,
+  seedDraft,
   onBackfillRequest,
   setViewMode,
   useSessions,
@@ -70,10 +70,10 @@ export function WorkbenchRoot({
   const [negativePrompt, setNegativePrompt] = useState('')
   const [negativeOpen, setNegativeOpen] = useState(false)
   const [capsuleOpen, setCapsuleOpen] = useState(false)
+  const [stylesOpen, setStylesOpen] = useState(false)
   const [characters, setCharacters] = useState<CharacterDraft[]>([])
   const [charactersOpen, setCharactersOpen] = useState(false)
   const [splitting, setSplitting] = useState(false)
-  const [sending, setSending] = useState(false)
   const characterIdRef = useRef(0)
   const currentSessionId = useSessions(state => state.current)
   const [model, setModel] = useState('')
@@ -102,13 +102,15 @@ export function WorkbenchRoot({
     catalog().then((value) => {
       if (cancelled) return
       setCatalogValue(value)
-      setModel(current => current || value.defaults.model)
       setSampler(current => current || value.defaults.sampler)
       setNoiseSchedule(current => current || value.defaults.noiseSchedule)
       setWidth(current => current || value.defaults.width)
       setHeight(current => current || value.defaults.height)
       setSteps(value.defaults.steps)
       setCfgScale(value.defaults.cfgScale)
+      // The default checkpoint is the catalog's newest entry (the list is
+      // newest-first), not the host's pricing-friendly default.
+      setModel(current => current || (value.models[0] ?? value.defaults.model))
     }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) })
     return () => { cancelled = true }
   }, [catalog])
@@ -340,15 +342,16 @@ export function WorkbenchRoot({
     return lines.join('\n')
   }
 
-  /** Send the composed draft into the current conversation and switch to it. */
-  const sendDraftToConversation = (): void => {
-    if (currentSessionId === undefined || sending || prompt.trim() === '') return
-    setSending(true)
-    setError(undefined)
-    sendDraft(currentSessionId, composeDraft()).then(() => {
+  /** Place the composed draft into the conversation input without sending it;
+   * the workbench prompt stays untouched for further iteration. */
+  const deliverDraftToInput = (): void => {
+    if (currentSessionId === undefined || prompt.trim() === '') return
+    if (seedDraft(currentSessionId, composeDraft())) {
       setDone(t('senddraft.sent'))
       setViewMode('conversation')
-    }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) }).finally(() => { setSending(false) })
+    } else {
+      setError(t('senddraft.noInput'))
+    }
   }
 
   // Conversation-side backfill deliveries apply while the panel stays mounted.
@@ -373,6 +376,22 @@ export function WorkbenchRoot({
   const stageEntry = (selectedId !== undefined
     ? entries.find(entry => entry.id === selectedId)
     : undefined) ?? entries[0]
+
+  // Wheel-to-horizontal scroll for the filmstrip: a non-passive native
+  // listener, because React roots attach wheel passively and the strip must
+  // consume the delta instead of scrolling the page.
+  const filmstripRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const strip = filmstripRef.current
+    if (strip === null) return undefined
+    const onWheel = (event: WheelEvent): void => {
+      if (event.deltaY === 0) return
+      strip.scrollLeft += event.deltaY
+      event.preventDefault()
+    }
+    strip.addEventListener('wheel', onWheel, { passive: false })
+    return () => { strip.removeEventListener('wheel', onWheel) }
+  }, [])
 
   return (
     <div className={css.stageLayout}>
@@ -415,7 +434,7 @@ export function WorkbenchRoot({
             </span>
           </div>
         )}
-        <div className={css.filmstrip} aria-label={t('history.label')}>
+        <div ref={filmstripRef} className={css.filmstrip} aria-label={t('history.label')}>
           {entries.map(entry => (
             <button
               key={entry.id}
@@ -437,9 +456,6 @@ export function WorkbenchRoot({
         </div>
       </div>
       <div className={css.root}>
-        <button type="button" className={css.backButton} onClick={() => { setViewMode('conversation') }}>
-          {t('mode.conversation')}
-        </button>
         <div className={css.section}>
           <div className={css.promptHead}>
             <span className={css.fieldLabel}>{t('prompt.label')}</span>
@@ -447,11 +463,11 @@ export function WorkbenchRoot({
               <button
                 type="button"
                 className={css.charAction}
-                disabled={sending || prompt.trim() === '' || currentSessionId === undefined}
+                disabled={prompt.trim() === '' || currentSessionId === undefined}
                 title={currentSessionId === undefined ? t('senddraft.noSession') : undefined}
-                onClick={sendDraftToConversation}
+                onClick={deliverDraftToInput}
               >
-                {sending ? t('senddraft.sending') : t('senddraft.send')}
+                {t('senddraft.send')}
               </button>
               <button
                 type="button"
@@ -473,20 +489,30 @@ export function WorkbenchRoot({
           />
         </div>
         <div className={css.section}>
-          <span className={css.fieldLabel}>{t('styles.label')}</span>
-          <div className={css.styleRow}>
-            {STYLE_PRESETS.map(style => (
-              <button
-                key={style.en}
-                type="button"
-                className={css.capsuleChip}
-                title={style.en}
-                onClick={() => { prependStyle(style.en) }}
-              >
-                {style.zh}
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            className={css.foldHeader}
+            aria-expanded={stylesOpen}
+            onClick={() => { setStylesOpen(open => !open) }}
+          >
+            <span className={`${css.chevron} ${stylesOpen ? css.chevronOpen : ''}`}>▾</span>
+            {t('styles.label')}
+          </button>
+          {stylesOpen && (
+            <div className={css.styleRow}>
+              {STYLE_PRESETS.map(style => (
+                <button
+                  key={style.en}
+                  type="button"
+                  className={css.capsuleChip}
+                  title={style.en}
+                  onClick={() => { prependStyle(style.en) }}
+                >
+                  {style.zh}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className={css.section}>
           <button
@@ -571,7 +597,7 @@ export function WorkbenchRoot({
                         aria-label={`${t('characters.remove')} ${String(index + 1)}`}
                         onClick={() => { removeCharacter(draft.id) }}
                       >
-                      ✕
+                        ✕
                       </button>
                     </div>
                     <PromptTextarea
@@ -739,7 +765,7 @@ export function WorkbenchRoot({
               aria-pressed={seedMode === 'random'}
               onClick={() => { setSeedMode('random') }}
             >
-            🎲 {t('seed.random')}
+              🎲 {t('seed.random')}
             </button>
             <button
               type="button"
@@ -747,7 +773,7 @@ export function WorkbenchRoot({
               aria-pressed={seedMode === 'fixed'}
               onClick={() => { setSeedMode('fixed') }}
             >
-            🔒 {t('seed.fixed')}
+              🔒 {t('seed.fixed')}
             </button>
           </div>
           {seedMode === 'fixed' && (
@@ -767,7 +793,7 @@ export function WorkbenchRoot({
                 title={t('seed.randomize')}
                 onClick={() => { setSeed(Math.floor(Math.random() * (catalogValue?.maxSeed ?? 4294967295)) + 1) }}
               >
-              🎲 {t('seed.randomize')}
+                🎲 {t('seed.randomize')}
               </button>
             </>
           )}

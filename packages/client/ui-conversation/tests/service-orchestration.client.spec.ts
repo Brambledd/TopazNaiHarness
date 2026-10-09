@@ -50,6 +50,16 @@ describe('ConversationController', () => {
     await b.runtime.dispose()
   })
 
+  it('seeds a session draft without sending and reports unbound sessions', async () => {
+    const b = await bench()
+    expect(b.root.seedDraft('s1' as never, 'workbench draft')).toBe(true)
+    expect(b.shell.state.getSnapshot().draft).toBe('workbench draft')
+    // Nothing crossed the wire: the draft is input state, not a queued turn.
+    expect(b.prompt).not.toHaveBeenCalled()
+    expect(b.root.seedDraft('missing' as never, 'x')).toBe(false)
+    await b.runtime.dispose()
+  })
+
   it('folds Session business failures into callback rejections', async () => {
     const b = await bench()
     b.prompt.mockResolvedValueOnce({ ok: false, error: new RemoteError('session/agent-busy', 'busy', { reason: 'busy' }) } as never)

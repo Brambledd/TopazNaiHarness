@@ -51,10 +51,10 @@ const zh = {
   'characters.position.custom': '自定义站位',
   'characters.x': 'X',
   'characters.y': 'Y',
-  'senddraft.send': '发送到对话',
-  'senddraft.sending': '发送中…',
-  'senddraft.sent': '草稿已发送到对话',
+  'senddraft.send': '放入对话输入栏',
+  'senddraft.sent': '草稿已放入对话输入栏',
   'senddraft.noSession': '当前没有活动对话',
+  'senddraft.noInput': '对话输入栏当前不可用',
   'senddraft.header': '请基于这份创作台草稿继续（可直接调用 novelai_generate 出图）：',
   'senddraft.positive': '正向提示词',
   'senddraft.negative': '负面提示词',
@@ -86,7 +86,7 @@ const zh = {
 } as const
 
 const catalog = {
-  models: ['nai-diffusion-4-5-full', 'nai-diffusion-4-full'],
+  models: ['nai-diffusion-5-full', 'nai-diffusion-4-5-full', 'nai-diffusion-4-full'],
   samplers: ['k_euler_ancestral', 'k_euler'],
   noiseSchedules: ['karras', 'exponential'],
   maxSeed: 4294967295,
@@ -117,7 +117,7 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
       { prompt: '1girl, red hair', negativePrompt: 'extra ears', useCoords: false, x: 0.5, y: 0.5 },
     ],
   }))
-  const sendDraft = vi.fn(async (_sessionId: string, _text: string) => {})
+  const seedDraft = vi.fn((_sessionId: string, _text: string) => true)
   let backfillSink: ((request: Record<string, unknown>) => void) | undefined
   const onBackfillRequest = vi.fn((callback: (request: Record<string, unknown>) => void) => {
     backfillSink = callback
@@ -135,20 +135,19 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     suggestTags: vi.fn(async () => ({ tags: suggestions })),
     readEntry: vi.fn(async () => ({ data: '', mime: 'image/png' as const })),
     splitCharacters,
-    sendDraft,
-    onBackfillRequest,
+    seedDraft,    onBackfillRequest,
     setViewMode: vi.fn(),
     useSessions: ((selector: (state: { current: string }) => unknown) => selector({ current: 'session-1' })) as never,
     useWorkspaces: (() => { throw new Error('workbench must not read global hooks') }) as never,
     t: (key: keyof typeof zh) => zh[key],
   }
-  return { props, generate, splitCharacters, sendDraft, deliverBackfill: (request: Record<string, unknown>) => backfillSink?.(request) }
+  return { props, generate, splitCharacters, seedDraft, deliverBackfill: (request: Record<string, unknown>) => backfillSink?.(request) }
 }
 
 function mount() {
-  const { props, generate, splitCharacters, sendDraft, deliverBackfill } = makeProps()
+  const { props, generate, splitCharacters, seedDraft, deliverBackfill } = makeProps()
   const view = render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
-  return { view, generate, splitCharacters, sendDraft, deliverBackfill, setViewMode: props.setViewMode }
+  return { view, generate, splitCharacters, seedDraft, deliverBackfill, setViewMode: props.setViewMode }
 }
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
@@ -158,7 +157,8 @@ describe('workbench panel', () => {
     mount()
     await waitFor(() => {
       const model = screen.getByLabelText('模型') as HTMLSelectElement
-      expect(model.value).toBe('nai-diffusion-4-5-full')
+      // The default checkpoint is the catalog's newest entry, not the host default.
+      expect(model.value).toBe('nai-diffusion-5-full')
     })
     const sampler = screen.getByLabelText('采样器') as HTMLSelectElement
     expect(sampler.value).toBe('k_euler_ancestral')
@@ -174,6 +174,18 @@ describe('workbench panel', () => {
     expect(screen.queryByPlaceholderText('lowres, bad anatomy…')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /负面提示词/ }))
     expect(screen.getByPlaceholderText('lowres, bad anatomy…')).toBeTruthy()
+  })
+
+  it('folds the style presets until expanded and prepends on pick', async () => {
+    mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park' } })
+    fireEvent.click(screen.getByRole('button', { name: /风格库/ }))
+    const chip = screen.getAllByRole('button', { name: '写实' })[0]!
+    fireEvent.click(chip)
+    const area = screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement
+    expect(area.value.startsWith('realistic')).toBe(true)
+    expect(area.value).toContain('park')
   })
 
   it('omits the seed in random mode and sends it in fixed mode', async () => {
@@ -253,9 +265,12 @@ describe('inspiration capsule (desktop parity)', () => {
     expect(onInsert).toHaveBeenCalledTimes(2)
   })
 
-  it('offers style presets and appends them on click from the workbench', async () => {
+  it('offers style presets behind a fold and appends them on click from the workbench', async () => {
     mount()
     await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    // The presets stay folded like the capsule browser until expanded.
+    expect(screen.queryAllByRole('button', { name: '写实' })).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: /风格库/ }))
     const styleChip = screen.getAllByRole('button', { name: '写实' })[0]!
     fireEvent.click(styleChip)
     const area = screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement
@@ -285,7 +300,7 @@ describe('prompt autocomplete', () => {
     const area = screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement
     fireEvent.change(area, { target: { value: '1gi' } })
     await waitFor(() => {
-      expect(props.suggestTags).toHaveBeenCalledWith({ prompt: '1gi', model: 'nai-diffusion-4-5-full' })
+      expect(props.suggestTags).toHaveBeenCalledWith({ prompt: '1gi', model: 'nai-diffusion-5-full' })
     }, { timeout: 3000 })
     const option = await screen.findByRole('option', { name: /1girl/ }, { timeout: 3000 })
     fireEvent.mouseDown(option)
@@ -469,6 +484,9 @@ describe('character prompts', () => {
 
   it('enforces the V4.5 capacity of six cards', async () => {
     mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    // The default checkpoint is V5 (32 cards); switch down to V4.5 for the cap.
+    fireEvent.change(screen.getByLabelText('模型'), { target: { value: 'nai-diffusion-4-5-full' } })
     await openCharacters()
     for (let i = 0; i < 6; i += 1) {
       fireEvent.click(screen.getByRole('button', { name: '添加角色' }))
@@ -479,18 +497,32 @@ describe('character prompts', () => {
 })
 
 describe('conversation interop', () => {
-  it('delivers the draft with prompt, parameters, and characters', async () => {
-    const { sendDraft } = mount()
+  it('seeds the composed draft into the conversation input without clearing the panel', async () => {
+    const { seedDraft, setViewMode } = mount()
     await openCharacters()
     fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park, 2girls' } })
     fireEvent.click(screen.getByRole('button', { name: '添加角色' }))
     fireEvent.change(screen.getByLabelText('角色 1'), { target: { value: '1girl, blue hair' } })
-    fireEvent.click(screen.getByRole('button', { name: '发送到对话' }))
-    await waitFor(() => { expect(sendDraft).toHaveBeenCalledOnce() })
-    const [sessionId, text] = sendDraft.mock.calls[0] as [string, string]
+    fireEvent.click(screen.getByRole('button', { name: '放入对话输入栏' }))
+    expect(seedDraft).toHaveBeenCalledOnce()
+    const [sessionId, text] = seedDraft.mock.calls[0] as [string, string]
     expect(sessionId).toBe('session-1')
     expect(text).toContain('park, 2girls')
     expect(text).toContain('1girl, blue hair')
+    // The workbench prompt survives the delivery; the user sends from the chat.
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('park, 2girls')
+    expect(setViewMode).toHaveBeenCalledWith('conversation')
+  })
+
+  it('reports an unavailable conversation input instead of switching views', async () => {
+    const { props } = makeProps()
+    props.seedDraft.mockReturnValue(false)
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park' } })
+    fireEvent.click(screen.getByRole('button', { name: '放入对话输入栏' }))
+    expect(screen.getByRole('alert').textContent).toContain('对话输入栏当前不可用')
+    expect(props.setViewMode).not.toHaveBeenCalled()
   })
 
   it('applies a conversation-side backfill request and switches to the workbench', async () => {

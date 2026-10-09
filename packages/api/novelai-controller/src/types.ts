@@ -192,6 +192,8 @@ export interface NovelaiEnhanceRequest {
   readonly noiseSchedule?: string
   /** Denoise strength 0–1; conservative values keep the source pose and composition. */
   readonly strength: number
+  /** V5-only official server-side upscaled enhance; forced off for non-V5 checkpoints. */
+  readonly upscaledEnhance?: boolean
   /** Seed; a random seed applies when omitted. */
   readonly seed?: number
 }

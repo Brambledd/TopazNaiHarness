@@ -100,6 +100,8 @@ export interface NovelaiImg2ImgInput extends NovelaiGenerateInput {
   strength: number
   /** Extra noise seed; a fresh random applies when omitted. */
   extraNoiseSeed?: number
+  /** V5-only official server-side upscaled enhance (`upscaled_enhance`). */
+  upscaledEnhance?: boolean
 }
 
 /** Canonical result of one successful generation. */

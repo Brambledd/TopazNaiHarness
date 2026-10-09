@@ -93,7 +93,7 @@ export function WorkbenchRoot({
   /** Enhance panel: open state, magnitude 1–10, and the output scale. */
   const [enhanceOpen, setEnhanceOpen] = useState(false)
   const [magnitude, setMagnitude] = useState(3)
-  const [enhanceScale, setEnhanceScale] = useState<1 | 2>(1)
+  const [enhanceScale, setEnhanceScale] = useState<1 | 2 | 'max'>(1)
   const [anlas, setAnlas] = useState<number | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
@@ -404,7 +404,7 @@ export function WorkbenchRoot({
   /** The enhance run's output target for the stage entry at the picked scale. */
   const enhanceTarget = stageEntry?.width === undefined || stageEntry.height === undefined
     ? undefined
-    : enhanceOutputSize(stageEntry.width, stageEntry.height, enhanceScale)
+    : enhanceOutputSize(stageEntry.width, stageEntry.height, enhanceScale, model.startsWith('nai-diffusion-5-'))
 
   /** One enhance run: resize the stage image to the target, then submit img2img. */
   const runEnhance = (): void => {
@@ -425,6 +425,9 @@ export function WorkbenchRoot({
         sampler,
         noiseSchedule,
         strength: enhanceStrength(magnitude),
+        // The official V5 upscaled enhance submits at the fitted source size
+        // and lets the server deliver the upscaled output.
+        ...(enhanceTarget.upscaled ? { upscaledEnhance: true } : {}),
       })
     }).then((value) => {
       setDone(t('enhance.done'))
@@ -516,12 +519,22 @@ export function WorkbenchRoot({
               >
                 {t('enhance.scale2')}
               </button>
+              <button
+                type="button"
+                className={`${css.seedSegment} ${enhanceScale === 'max' ? css.seedSegmentActive : ''}`}
+                aria-pressed={enhanceScale === 'max'}
+                title={t('enhance.maxHint')}
+                onClick={() => { setEnhanceScale('max') }}
+              >
+                MAX
+              </button>
             </div>
             {enhanceTarget !== undefined && (
               <p className={enhanceTarget.exceedsLimit ? css.errorText : css.sizeHint}>
                 {enhanceTarget.exceedsLimit
                   ? t('enhance.limit')
-                  : `${stageEntry.width ?? '?'}×${stageEntry.height ?? '?'} → ${enhanceTarget.width}×${enhanceTarget.height}`}
+                  : `${stageEntry.width ?? '?'}×${stageEntry.height ?? '?'} → ${enhanceTarget.displayWidth}×${enhanceTarget.displayHeight}`
+                    + (enhanceTarget.upscaled ? ` · ${t('enhance.upscaled')}` : '')}
               </p>
             )}
             <div className={css.seedRow}>

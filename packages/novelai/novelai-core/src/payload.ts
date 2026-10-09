@@ -152,6 +152,11 @@ export function buildNovelaiImg2ImgPayload(
   payload.parameters.strength = Math.min(1, Math.max(0, input.strength))
   payload.parameters.noise = 0
   payload.parameters.extra_noise_seed = input.extraNoiseSeed ?? Math.floor(random() * MAX_NOVELAI_SEED)
+  if (input.upscaledEnhance === true && input.model.startsWith('nai-diffusion-5-')) {
+    // The official V5 upscaled enhance: the server upscales the enhanced
+    // output while the request itself stays at the fitted source size.
+    payload.parameters.upscaled_enhance = true
+  }
   return payload
 }
 

@@ -48,6 +48,8 @@ const zh = {
   'enhance.scale': '输出倍率',
   'enhance.scale1': '1× 保持分辨率',
   'enhance.scale2': '2× 同时放大',
+  'enhance.maxHint': 'MAX：V5 检查点走官方服务端放大增强，其余为 2× 自适应放大',
+  'enhance.upscaled': '官方服务端放大',
   'enhance.limit': '放大后的目标尺寸超过 NovelAI 像素上限；请选择 1× 或换用更小的原图。',
   'enhance.run': '增强图像',
   'enhance.close': '收起',
@@ -259,6 +261,37 @@ describe('workbench panel', () => {
     expect(screen.getByText(/超过 NovelAI 像素上限/)).toBeTruthy()
     expect((screen.getByRole('button', { name: '增强图像' }) as HTMLButtonElement).disabled).toBe(true)
     expect(enhance).not.toHaveBeenCalled()
+  })
+
+  it('submits the official V5 upscaled enhance from the MAX scale', async () => {
+    const entries = [{
+      id: 'e1', file: 'workspace/novelai/e1.png', bytes: 10, width: 832, height: 1216, seed: 42, steps: 28,
+      prompt: 'a cat', createdAt: '2026-10-08T00:00:00Z',
+    }]
+    const { props } = makeProps(entries)
+    props.enhance.mockImplementation(async (_request: Record<string, unknown>) => ({
+      id: 'x', file: 'f', bytes: 1, seed: 99, anlasEstimate: 0, createdAt: '2026-10-09T00:00:00Z',
+    }))
+    const enhance = props.enhance
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    const img = await waitFor(() => {
+      const node = document.querySelector('img[data-entry-id="e1"]') as HTMLImageElement
+      expect(node).toBeTruthy()
+      expect(node.getAttribute('src')).toBeTruthy()
+      return node
+    }, { timeout: 3000 })
+    void img
+    // The catalog default is V5, so MAX takes the official upscaled path.
+    fireEvent.click(screen.getByRole('button', { name: '增强' }))
+    fireEvent.click(screen.getByRole('button', { name: 'MAX' }))
+    expect(screen.getByText(/官方服务端放大/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '增强图像' }))
+    await waitFor(() => { expect(enhance).toHaveBeenCalledOnce() })
+    const request = enhance.mock.calls[0]![0] as Record<string, unknown>
+    expect(request.upscaledEnhance).toBe(true)
+    // The submission stays at the fitted source size; the server upscales.
+    expect(request.width).toBe(832)
+    expect(request.height).toBe(1216)
   })
 
   it('omits the seed in random mode and sends it in fixed mode', async () => {

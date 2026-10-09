@@ -12,7 +12,7 @@ export const NAI_MIN_DIMENSION = 64
 /** Official custom-size ceiling: the pair may not exceed 3 Mi pixels. */
 export const NAI_MAX_PIXEL_AREA = 3_145_728
 
-/** The enhance run's output target: 64-snapped sides plus the ceiling verdict. */
+/** The enhance run's output target plus the official V5 upscaled-enhance verdict. */
 export interface EnhanceTarget {
   /** Output width in pixels, a multiple of 64. */
   width: number
@@ -20,23 +20,80 @@ export interface EnhanceTarget {
   height: number
   /** Whether the target exceeds the official pixel-area ceiling (run disabled). */
   exceedsLimit: boolean
+  /** Whether this is the official V5 server-side upscaled enhance (`upscaled_enhance`). */
+  upscaled: boolean
+  /** The preview size the run actually delivers (server-side upscale for V5 MAX). */
+  displayWidth: number
+  displayHeight: number
 }
 
 /**
- * The enhance output size for one source at one scale: both sides scaled and
- * snapped to the 64-pixel lattice; a target past the area ceiling reports
- * `exceedsLimit` instead of silently shrinking (desktop reference parity).
+ * Fit one image size into the supported lattice: snap to 64-pixel steps, then
+ * shrink proportionally when the pair passes the area ceiling (the desktop
+ * reference's `adaptiveNAIImageSize`).
+ * @param width - source width in pixels.
+ * @param height - source height in pixels.
+ * @returns the fitted size.
+ */
+export function adaptiveFitSize(width: number, height: number): { width: number; height: number } {
+  const snap = (value: number): number =>
+    Math.max(NAI_MIN_DIMENSION, Math.round(value / NAI_DIMENSION_STEP) * NAI_DIMENSION_STEP)
+  const snapped = { width: snap(width), height: snap(height) }
+  if (snapped.width * snapped.height <= NAI_MAX_PIXEL_AREA) return snapped
+  const factor = Math.sqrt(NAI_MAX_PIXEL_AREA / (snapped.width * snapped.height))
+  return {
+    width: Math.max(NAI_MIN_DIMENSION, Math.floor((snapped.width * factor) / NAI_DIMENSION_STEP) * NAI_DIMENSION_STEP),
+    height: Math.max(NAI_MIN_DIMENSION, Math.floor((snapped.height * factor) / NAI_DIMENSION_STEP) * NAI_DIMENSION_STEP),
+  }
+}
+
+/** Official Max enhance preview: up to 2×, capped by the generation pixel area. */
+function maxEnhancePreview(width: number, height: number): { width: number; height: number } {
+  const factor = Math.min(2, Math.sqrt(NAI_MAX_PIXEL_AREA / (width * height)))
+  return { width: Math.floor(width * factor), height: Math.floor(height * factor) }
+}
+
+/**
+ * The enhance output size for one source at one scale (desktop reference
+ * parity). `1` keeps the resolution; `2` doubles it and reports the ceiling
+ * verdict instead of silently shrinking; `max` is the official V5 server-side
+ * upscaled enhance (submits at the fitted source size with
+ * `upscaled_enhance`, delivering up to 2×) and, on non-V5 checkpoints, a 2×
+ * adaptive fit that stays inside the ceiling.
  * @param sourceWidth - source image width in pixels.
  * @param sourceHeight - source image height in pixels.
- * @param scale - 1 keeps the resolution, 2 doubles it.
- * @returns the snapped target and its ceiling verdict.
+ * @param scale - 1, 2, or `max`.
+ * @param v5 - whether the checkpoint is V5 (the only family with the official
+ *   upscaled-enhance capability).
+ * @returns the submission target, the ceiling verdict, and the preview size.
  */
-export function enhanceOutputSize(sourceWidth: number, sourceHeight: number, scale: 1 | 2): EnhanceTarget {
+export function enhanceOutputSize(
+  sourceWidth: number,
+  sourceHeight: number,
+  scale: 1 | 2 | 'max',
+  v5: boolean,
+): EnhanceTarget {
+  if (scale === 'max') {
+    if (v5) {
+      const fitted = adaptiveFitSize(sourceWidth, sourceHeight)
+      const preview = maxEnhancePreview(fitted.width, fitted.height)
+      return { ...fitted, exceedsLimit: false, upscaled: true, displayWidth: preview.width, displayHeight: preview.height }
+    }
+    const fitted = adaptiveFitSize(sourceWidth * 2, sourceHeight * 2)
+    return { ...fitted, exceedsLimit: false, upscaled: false, displayWidth: fitted.width, displayHeight: fitted.height }
+  }
   const snap = (value: number): number =>
     Math.max(NAI_MIN_DIMENSION, Math.round((value * scale) / NAI_DIMENSION_STEP) * NAI_DIMENSION_STEP)
   const width = snap(sourceWidth)
   const height = snap(sourceHeight)
-  return { width, height, exceedsLimit: width * height > NAI_MAX_PIXEL_AREA }
+  return {
+    width,
+    height,
+    exceedsLimit: width * height > NAI_MAX_PIXEL_AREA,
+    upscaled: false,
+    displayWidth: width,
+    displayHeight: height,
+  }
 }
 
 /**

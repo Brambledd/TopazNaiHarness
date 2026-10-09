@@ -132,6 +132,27 @@ describe('buildNovelaiPayload', () => {
     }, () => 0.9)
     expect(payload.parameters['extra_noise_seed']).toBe(42)
   })
+
+  it('carries the official upscaled enhance on V5 only', () => {
+    const base = {
+      prompt: 'x',
+      negativePrompt: 'y',
+      width: 832,
+      height: 1216,
+      steps: 28,
+      cfgScale: 5,
+      sampler: 'k_euler' as const,
+      noiseSchedule: 'native' as const,
+      seed: 1,
+      image: 'aGVsbG8=',
+      strength: 0.2,
+      upscaledEnhance: true,
+    }
+    const v5 = buildNovelaiImg2ImgPayload({ ...base, model: 'nai-diffusion-5-full' }, () => 0.1)
+    expect(v5.parameters['upscaled_enhance']).toBe(true)
+    const v4 = buildNovelaiImg2ImgPayload({ ...base, model: 'nai-diffusion-4-5-full' }, () => 0.1)
+    expect(v4.parameters['upscaled_enhance']).toBeUndefined()
+  })
 })
 
 describe('estimateAnlas', () => {

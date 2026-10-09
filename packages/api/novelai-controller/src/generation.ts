@@ -199,10 +199,15 @@ export async function runEnhancement(
   deps: GenerationDeps,
 ): Promise<NovelaiGenerationValue> {
   if (deps.token.trim() === '') throw new Error('no NovelAI token configured')
+  const resolved = resolveGenerationRequest(request)
   const input: NovelaiImg2ImgInput = {
-    ...resolveGenerationRequest(request),
+    ...resolved,
     image: request.image,
     strength: request.strength,
+    // The official upscaled enhance is a V5-only API capability.
+    ...(request.upscaledEnhance === true && resolved.model.startsWith('nai-diffusion-5-')
+      ? { upscaledEnhance: true }
+      : {}),
   }
   const submit = deps.submit ?? requestGeneration
   const images = await submit({

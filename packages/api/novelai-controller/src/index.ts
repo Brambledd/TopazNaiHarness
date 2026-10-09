@@ -62,6 +62,8 @@ export interface NovelaiControllerConfig {
   splitProvider: string
   /** LLM model used by the character-split auxiliary call. */
   splitModel: string
+  /** Output token budget of the character-split auxiliary call. */
+  splitMaxTokens: number
 }
 
 /** Host service backing the generated `ctx.remote.novelai` namespace. */
@@ -73,6 +75,7 @@ export class NovelaiController extends TypertRemoteService {
     tagIndexPath: z.string().default('workspace/novelai/danbooru-cn.csv'),
     splitProvider: z.string().default('zai-coding-cn'),
     splitModel: z.string().default('glm-5.3-flash'),
+    splitMaxTokens: z.number().default(4096),
   })
 
   private readonly config: NovelaiControllerConfig
@@ -265,17 +268,22 @@ export class NovelaiController extends TypertRemoteService {
   async splitCharacters(request: NovelaiSplitCharactersRequest): Promise<NovelaiSplitCharactersValue> {
     const prompt = request.prompt.trim()
     if (prompt === '') return { prompt: '', characters: [] }
+    const { text, finishKind } = await this.completeSplit(prompt)
     try {
-      const text = await this.completeSplit(prompt)
       return parseSplitResponse(text, prompt)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      // A complete JSON answer is accepted regardless of the finish reason; only an
+      // unusable answer surfaces the reason, with an actionable hint on truncation.
+      const raw = error instanceof Error ? error.message : String(error)
+      const message = finishKind === 'max-tokens'
+        ? `拆分输出在 ${String(this.config.splitMaxTokens)} token 处被截断；请在 cordis.yml 调大 novelaiController 的 splitMaxTokens 后重试`
+        : raw
       throw new RemoteError('novelai/split-failed', message, { message })
     }
   }
 
-  /** Run one auxiliary LLM completion for the split and return its text output. */
-  private async completeSplit(prompt: string): Promise<string> {
+  /** Run one auxiliary LLM completion for the split and return its text output plus the finish reason. */
+  private async completeSplit(prompt: string): Promise<{ text: string; finishKind: string | undefined }> {
     const system
       = 'You split anime image-generation prompts into per-character captions. '
       + 'Answer with STRICT JSON only, no markdown, no explanation: '
@@ -293,7 +301,7 @@ export class NovelaiController extends TypertRemoteService {
       model: this.config.splitModel,
       messages,
       system,
-      maxTokens: 1024,
+      maxTokens: this.config.splitMaxTokens,
       purpose: 'novelai-split-characters',
       signal: new AbortController().signal,
     }
@@ -302,16 +310,16 @@ export class NovelaiController extends TypertRemoteService {
       assembler.push(chunk)
     }
     const finish = assembler.finish as { kind?: unknown } | undefined
-    if (finish !== undefined && finish['kind'] !== undefined && finish['kind'] !== 'stop') {
-      throw new Error(`split model finished with "${String(finish['kind'])}"`)
-    }
+    const finishKind = typeof finish?.['kind'] === 'string' ? finish['kind'] : undefined
     const text = assembler.blocks()
       .filter(block => block.type === 'text')
       .map(block => block.text)
       .join(' ')
       .trim()
-    if (text === '') throw new Error('split model produced no text')
-    return text
+    if (text === '') {
+      throw new Error(finishKind === undefined ? 'split model produced no text' : `split model finished with "${finishKind}" without text`)
+    }
+    return { text, finishKind }
   }
 
   /**
@@ -349,7 +357,8 @@ export class NovelaiController extends TypertRemoteService {
 }
 
 /**
- * Parse one split-model answer into the wire value, tolerating prose around the JSON.
+ * Parse one split-model answer into the wire value, tolerating prose around the
+ * JSON and salvaging the complete character entries of a token-truncated answer.
  * @param text - the model's text output.
  * @param fallbackPrompt - the original prompt, used when the model omits the base prompt.
  * @returns the base prompt and ordered character captions.
@@ -358,12 +367,9 @@ export function parseSplitResponse(text: string, fallbackPrompt: string): Novela
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
   if (start === -1 || end <= start) throw new Error('split model answer contains no JSON object')
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text.slice(start, end + 1))
-  } catch {
-    throw new Error('split model answer is not valid JSON')
-  }
+  const body = text.slice(start, end + 1)
+  const parsed = tryParseJson(body) ?? tryParseJson(salvageTruncatedJson(body))
+  if (parsed === undefined) throw new Error('split model answer is not valid JSON')
   if (typeof parsed !== 'object' || parsed === null) throw new Error('split model answer is not an object')
   const record = parsed as Record<string, unknown>
   const base = typeof record['prompt'] === 'string' ? record['prompt'].trim() : ''
@@ -384,24 +390,45 @@ export function parseSplitResponse(text: string, fallbackPrompt: string): Novela
   return { prompt: base === '' ? fallbackPrompt : base, characters }
 }
 
-/** Project a library entry onto the wire value. */
-function toGenerationValue(entry: Awaited<ReturnType<NovelaiImageLibrary['list']>>[number]): NovelaiGenerationValue {  return {
-  id: entry.id,
-  file: entry.file,
-  bytes: entry.bytes,
-  ...(entry.width === undefined ? {} : { width: entry.width }),
-  ...(entry.height === undefined ? {} : { height: entry.height }),
-  ...(entry.seed === undefined ? {} : { seed: entry.seed }),
-  ...(entry.model === undefined ? {} : { model: entry.model }),
-  ...(entry.steps === undefined ? {} : { steps: entry.steps }),
-  ...(entry.prompt === undefined ? {} : { prompt: entry.prompt }),
-  ...(entry.negativePrompt === undefined ? {} : { negativePrompt: entry.negativePrompt }),
-  ...(entry.characters === undefined ? {} : { characters: entry.characters }),
-  createdAt: entry.createdAt,
-  anlasEstimate: entry.width === undefined || entry.height === undefined || entry.steps === undefined
-    ? 0
-    : estimateAnlas(entry.width, entry.height, entry.steps),
+/** Parse one JSON candidate, reporting failure as `undefined` instead of throwing. */
+function tryParseJson(candidate: string): unknown {
+  try {
+    return JSON.parse(candidate)
+  } catch {
+    return undefined
+  }
 }
+
+/**
+ * Cut a truncated `{"prompt":...,"characters":[...]}` body back to the last
+ * complete character entry and close the array; usable when the model hit the
+ * token cap mid-list.
+ */
+function salvageTruncatedJson(body: string): string {
+  const cut = body.lastIndexOf('}')
+  if (cut <= 0) return body
+  return `${body.slice(0, cut + 1).trimEnd().replace(/,\s*$/, '')}]}`
+}
+
+/** Project a library entry onto the wire value. */
+function toGenerationValue(entry: Awaited<ReturnType<NovelaiImageLibrary['list']>>[number]): NovelaiGenerationValue {
+  return {
+    id: entry.id,
+    file: entry.file,
+    bytes: entry.bytes,
+    ...(entry.width === undefined ? {} : { width: entry.width }),
+    ...(entry.height === undefined ? {} : { height: entry.height }),
+    ...(entry.seed === undefined ? {} : { seed: entry.seed }),
+    ...(entry.model === undefined ? {} : { model: entry.model }),
+    ...(entry.steps === undefined ? {} : { steps: entry.steps }),
+    ...(entry.prompt === undefined ? {} : { prompt: entry.prompt }),
+    ...(entry.negativePrompt === undefined ? {} : { negativePrompt: entry.negativePrompt }),
+    ...(entry.characters === undefined ? {} : { characters: entry.characters }),
+    createdAt: entry.createdAt,
+    anlasEstimate: entry.width === undefined || entry.height === undefined || entry.steps === undefined
+      ? 0
+      : estimateAnlas(entry.width, entry.height, entry.steps),
+  }
 }
 
 export default NovelaiController

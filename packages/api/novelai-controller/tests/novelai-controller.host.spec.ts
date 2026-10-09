@@ -15,8 +15,9 @@ afterEach(async () => {
 })
 
 /** Service harness over a temporary output directory.
- * @param llmText - text streamed back by the fake LLM for the split call. */
-function harness(llmText = ''): { controller: NovelaiController; library: NovelaiImageLibrary; dir: string } {
+ * @param llmText - text streamed back by the fake LLM for the split call.
+ * @param finishKind - finish reason the fake LLM reports. */
+function harness(llmText = '', finishKind: 'stop' | 'max-tokens' = 'stop'): { controller: NovelaiController; library: NovelaiImageLibrary; dir: string } {
   const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-novelai-controller-')))
   const ctx = new Context()
   roots.push(ctx)
@@ -27,11 +28,21 @@ function harness(llmText = ''): { controller: NovelaiController; library: Novela
   ctx.provide('llm', {
     stream: async function* () {
       yield { type: 'text-delta', index: 0, text: llmText }
-      yield { type: 'finish', reason: { kind: 'stop' } }
+      yield { type: 'finish', reason: { kind: finishKind } }
     },
   } as never)
   const library = new NovelaiImageLibrary(dir)
-  return { controller: new NovelaiController(ctx, { outputDir: dir, tagIndexPath: join(dir, 'tag-index.csv'), splitProvider: 'mock', splitModel: 'mock' }), library, dir }
+  return {
+    controller: new NovelaiController(ctx, {
+      outputDir: dir,
+      tagIndexPath: join(dir, 'tag-index.csv'),
+      splitProvider: 'mock',
+      splitModel: 'mock',
+      splitMaxTokens: 4096,
+    }),
+    library,
+    dir,
+  }
 }
 
 describe('NovelaiController verbs', () => {
@@ -99,6 +110,28 @@ describe('NovelaiController verbs', () => {
   it('maps an unusable split answer to the namespace error', async () => {
     const { controller } = harness('I cannot do that')
     await expect(controller.splitCharacters({ prompt: '1girl' })).rejects.toMatchObject({ code: 'novelai/split-failed' })
+  })
+
+  it('accepts a complete split answer even when the finish reason is max-tokens', async () => {
+    const text = '{"prompt":"park","characters":[{"prompt":"1girl, blue hair"}]}'
+    const { controller } = harness(text, 'max-tokens')
+    const value = await controller.splitCharacters({ prompt: 'park, 1girl' })
+    expect(value.characters).toHaveLength(1)
+  })
+
+  it('salvages the complete character entries of a token-truncated answer', async () => {
+    const truncated = '{"prompt":"park","characters":[{"prompt":"1girl, blue hair"},{"prompt":"1g'
+    const { controller } = harness(truncated, 'max-tokens')
+    const value = await controller.splitCharacters({ prompt: 'park' })
+    expect(value.prompt).toBe('park')
+    expect(value.characters).toEqual([
+      { prompt: '1girl, blue hair', negativePrompt: '', useCoords: false, x: 0.5, y: 0.5 },
+    ])
+  })
+
+  it('reports truncation with the configured budget when nothing survives', async () => {
+    const { controller } = harness('{"prompt":"par', 'max-tokens')
+    await expect(controller.splitCharacters({ prompt: 'park' })).rejects.toThrow(/splitMaxTokens/)
   })
 
   it('answers a blank split request without calling the model', async () => {

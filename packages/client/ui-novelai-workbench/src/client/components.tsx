@@ -60,6 +60,7 @@ export function WorkbenchRoot({
   generate,
   enhance,
   reverse,
+  inspect,
   history,
   suggestTags,
   readEntry,
@@ -98,6 +99,8 @@ export function WorkbenchRoot({
   /** Reverse tab: the imported source, options, and the answer. */
   const [workbenchTab, setWorkbenchTab] = useState<'generate' | 'reverse'>('generate')
   const [reverseSource, setReverseSource] = useState<{ image: string; previewUrl: string } | undefined>(undefined)
+  /** Raw file bytes of the imported source; the restore path reads the embedded parameters from them. */
+  const reverseRawRef = useRef<string | undefined>(undefined)
   const [reverseMode, setReverseMode] = useState<'tags' | 'natural' | 'mixed'>('tags')
   const [reverseScope, setReverseScope] = useState<'full' | 'character' | 'object' | 'scene'>('full')
   const [reverseHint, setReverseHint] = useState('')
@@ -450,11 +453,25 @@ export function WorkbenchRoot({
     }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) }).finally(() => { setBusy(false) })
   }
 
+  /** Read one blob's bytes as a bare base64 string. */
+  const readAsBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      resolve(result.slice(result.indexOf(',') + 1))
+    }
+    reader.onerror = () => { reject(reader.error ?? new Error('file read failed')) }
+    reader.readAsDataURL(blob)
+  })
+
   /** Import one picked file as the reverse source (downscaled for the vision call). */
   const acceptReverseFile = (file: File): void => {
     if (reverseSource !== undefined) URL.revokeObjectURL(reverseSource.previewUrl)
     setReverseError(undefined)
-    prepareReverseImage(file).then((source) => {
+    readAsBase64(file).then((raw) => {
+      reverseRawRef.current = raw
+      return prepareReverseImage(file)
+    }).then((source) => {
       setReverseSource(source)
     }).catch((e: unknown) => { setReverseError(e instanceof Error ? e.message : String(e)) })
   }
@@ -465,9 +482,46 @@ export function WorkbenchRoot({
     if (url === undefined) return
     if (reverseSource !== undefined) URL.revokeObjectURL(reverseSource.previewUrl)
     setReverseError(undefined)
-    fetch(url).then(response => response.blob()).then(blob => prepareReverseImage(blob)).then((source) => {
+    fetch(url).then(response => response.blob()).then((blob) => {
+      return readAsBase64(blob).then((raw) => {
+        reverseRawRef.current = raw
+        return prepareReverseImage(blob)
+      })
+    }).then((source) => {
       setReverseSource(source)
     }).catch((e: unknown) => { setReverseError(e instanceof Error ? e.message : String(e)) })
+  }
+
+  /** Restore the NovelAI-embedded parameters of the imported image into the generate panel. */
+  const restoreFromImage = (): void => {
+    const raw = reverseRawRef.current
+    if (raw === undefined || reverseBusy) return
+    setReverseBusy(true)
+    setReverseError(undefined)
+    inspect({ image: raw }).then((value) => {
+      if (!value.hasMeta) {
+        setReverseError(t('restore.missing'))
+        return
+      }
+      if (value.prompt !== undefined) setPrompt(value.prompt)
+      if (value.negativePrompt !== undefined && value.negativePrompt.trim() !== '') {
+        setNegativePrompt(value.negativePrompt)
+        setNegativeOpen(true)
+      }
+      if (value.model !== undefined && catalogValue?.models.includes(value.model) === true) setModel(value.model)
+      if (value.width !== undefined) setWidth(value.width)
+      if (value.height !== undefined) setHeight(value.height)
+      if (value.steps !== undefined) setSteps(value.steps)
+      if (value.cfgScale !== undefined) setCfgScale(value.cfgScale)
+      if (value.sampler !== undefined && catalogValue?.samplers.includes(value.sampler as never) === true) setSampler(value.sampler)
+      if (value.seed !== undefined) {
+        setSeedMode('fixed')
+        setSeed(value.seed)
+      }
+      setWorkbenchTab('generate')
+      setDone(t('restore.ok'))
+    }).catch((e: unknown) => { setReverseError(e instanceof Error ? e.message : String(e)) })
+      .finally(() => { setReverseBusy(false) })
   }
 
   /** Drop the reverse source and its preview URL. */
@@ -813,7 +867,7 @@ export function WorkbenchRoot({
                           aria-label={`${t('characters.remove')} ${String(index + 1)}`}
                           onClick={() => { removeCharacter(draft.id) }}
                         >
-                        ✕
+                          ✕
                         </button>
                       </div>
                       <PromptTextarea
@@ -981,7 +1035,7 @@ export function WorkbenchRoot({
                 aria-pressed={seedMode === 'random'}
                 onClick={() => { setSeedMode('random') }}
               >
-              🎲 {t('seed.random')}
+                🎲 {t('seed.random')}
               </button>
               <button
                 type="button"
@@ -989,7 +1043,7 @@ export function WorkbenchRoot({
                 aria-pressed={seedMode === 'fixed'}
                 onClick={() => { setSeedMode('fixed') }}
               >
-              🔒 {t('seed.fixed')}
+                🔒 {t('seed.fixed')}
               </button>
             </div>
             {seedMode === 'fixed' && (
@@ -1009,7 +1063,7 @@ export function WorkbenchRoot({
                   title={t('seed.randomize')}
                   onClick={() => { setSeed(Math.floor(Math.random() * (catalogValue?.maxSeed ?? 4294967295)) + 1) }}
                 >
-                🎲 {t('seed.randomize')}
+                  🎲 {t('seed.randomize')}
                 </button>
               </>
             )}
@@ -1117,6 +1171,15 @@ export function WorkbenchRoot({
               onClick={runReverse}
             >
               {reverseBusy ? t('reverse.running') : t('reverse.run')}
+            </button>
+            <button
+              type="button"
+              className={css.charAction}
+              disabled={reverseSource === undefined || reverseBusy}
+              title={t('restore.tip')}
+              onClick={restoreFromImage}
+            >
+              {t('restore.action')}
             </button>
             {reverseResult !== '' && (
               <div className={css.section}>

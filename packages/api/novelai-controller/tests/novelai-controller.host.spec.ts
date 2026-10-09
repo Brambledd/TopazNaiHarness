@@ -184,6 +184,57 @@ describe('NovelaiController verbs', () => {
     })).rejects.toMatchObject({ code: 'novelai/reverse-failed' })
   })
 
+  it('reads the NovelAI-embedded parameters of an imported PNG', async () => {
+    const { controller } = harness()
+    // signature + IHDR (832×1216) + tEXt Title + tEXt Description + tEXt Comment + IEND.
+    const parts: Uint8Array[] = [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])]
+    const chunk = (type: string, data: Uint8Array): Uint8Array => {
+      const out = new Uint8Array(12 + data.length)
+      new DataView(out.buffer).setUint32(0, data.length)
+      out.set(new Uint8Array([...type].map(ch => ch.charCodeAt(0))), 4)
+      out.set(data, 8)
+      return out
+    }
+    const text = (keyword: string, value: string): Uint8Array => {
+      const bytes = new Uint8Array(keyword.length + 1 + value.length)
+      bytes.set(new Uint8Array([...keyword].map(ch => ch.charCodeAt(0))), 0)
+      bytes.set(new Uint8Array([...value].map(ch => ch.charCodeAt(0))), keyword.length + 1)
+      return bytes
+    }
+    const ihdr = new Uint8Array(13)
+    const view = new DataView(ihdr.buffer)
+    view.setUint32(0, 832)
+    view.setUint32(4, 1216)
+    parts.push(chunk('IHDR', ihdr))
+    parts.push(chunk('tEXt', text('Title', '1girl, solo')))
+    parts.push(chunk('tEXt', text('Description', 'lowres')))
+    parts.push(chunk('tEXt', text('Comment', '{"prompt":"1girl, solo","seed":42,"steps":28,"sampler":"k_euler","scale":5}')))
+    parts.push(chunk('IEND', new Uint8Array()))
+    const png = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0))
+    let offset = 0
+    for (const part of parts) {
+      png.set(part, offset)
+      offset += part.length
+    }
+    const base64 = Buffer.from(png).toString('base64')
+    await expect(controller.inspectImage({ image: base64 })).resolves.toEqual({
+      hasMeta: true,
+      prompt: '1girl, solo',
+      negativePrompt: 'lowres',
+      seed: 42,
+      steps: 28,
+      sampler: 'k_euler',
+      cfgScale: 5,
+      width: 832,
+      height: 1216,
+    })
+  })
+
+  it('reports a parameter-less image honestly', async () => {
+    const { controller } = harness()
+    await expect(controller.inspectImage({ image: 'aGVsbG8=' })).resolves.toEqual({ hasMeta: false })
+  })
+
   it('maps a missing token to the namespace error', async () => {
     const { controller } = harness()
     const previous = process.env['NOVELAI_TOKEN']

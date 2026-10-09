@@ -15,6 +15,8 @@ import {
   NOVELAI_NOISE_SCHEDULES,
   NOVELAI_SAMPLERS,
   estimateAnlas,
+  parseNovelaiPngMeta,
+  readPngSize,
 } from '@deepseek-ai/dsh-novelai-core'
 import { requestTagSuggestions, resolveProxyUrl } from '@deepseek-ai/dsh-novelai-core/node'
 import { NovelaiImageLibrary } from './library.ts'
@@ -27,6 +29,8 @@ import type {
   NovelaiDownloadTagIndexValue,
   NovelaiEnhanceRequest,
   NovelaiEntryContentValue,
+  NovelaiInspectRequest,
+  NovelaiInspectValue,
   NovelaiReverseRequest,
   NovelaiReverseValue,
   NovelaiEstimateRequest,
@@ -457,6 +461,33 @@ export class NovelaiController extends TypertRemoteService {
       throw new Error(finishKind === undefined ? 'split model produced no text' : `split model finished with "${finishKind}" without text`)
     }
     return { text, finishKind }
+  }
+
+  /**
+   * Read the parameters NovelAI embeds in one imported PNG (prompt, negative,
+   * seed, sampler, and friends) and report them for panel restoration. Pure
+   * parsing: no NovelAI call, no Anlas, works offline.
+   * @param request - the original file bytes.
+   * @returns the found parameters; `hasMeta` false when none embedded.
+   */
+  @Remote('inspectImage')
+  async inspectImage(request: NovelaiInspectRequest): Promise<NovelaiInspectValue> {
+    const bytes = Uint8Array.from(atob(request.image), ch => ch.charCodeAt(0))
+    const size = readPngSize(bytes)
+    const meta = parseNovelaiPngMeta(bytes)
+    const value: NovelaiInspectValue = {
+      hasMeta: meta.prompt !== undefined || meta.negativePrompt !== undefined || meta.seed !== undefined
+        || meta.steps !== undefined || meta.sampler !== undefined || meta.cfgScale !== undefined || meta.model !== undefined,
+      ...(meta.prompt === undefined ? {} : { prompt: meta.prompt }),
+      ...(meta.negativePrompt === undefined ? {} : { negativePrompt: meta.negativePrompt }),
+      ...(meta.model === undefined ? {} : { model: meta.model }),
+      ...(meta.seed === undefined ? {} : { seed: meta.seed }),
+      ...(meta.steps === undefined ? {} : { steps: meta.steps }),
+      ...(meta.sampler === undefined ? {} : { sampler: meta.sampler }),
+      ...(meta.cfgScale === undefined ? {} : { cfgScale: meta.cfgScale }),
+      ...(size === undefined ? {} : { width: size.width, height: size.height }),
+    }
+    return value
   }
 
   /**

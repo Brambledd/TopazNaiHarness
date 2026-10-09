@@ -85,6 +85,10 @@ const zh = {
   'reverse.nameVariant': '角色名版',
   'reverse.featureVariant': '特征版',
   'reverse.reuse': '复用至生成面板',
+  'restore.action': '↩ 从图片还原参数',
+  'restore.tip': '读取 NovelAI 内嵌在 PNG 里的提示词、种子、采样器等参数；不消耗 Anlas，不调用外部 AI。',
+  'restore.ok': '已从图片还原参数。',
+  'restore.missing': '未检测到 NovelAI 参数（图片可能被压缩或来自其它来源）。',
   'characters.label': '角色提示词',
   'characters.role': '角色',
   'characters.split': 'AI 拆分角色',
@@ -169,6 +173,17 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
   const reverse = vi.fn(async (_request: Record<string, unknown>) => ({
     prompt: '1girl, solo, white background',
   }))
+  const inspect = vi.fn(async (_request: Record<string, unknown>) => ({
+    hasMeta: true,
+    prompt: 'restored prompt',
+    negativePrompt: 'lowres',
+    seed: 42,
+    steps: 30,
+    cfgScale: 6,
+    sampler: 'k_euler',
+    width: 1024,
+    height: 1024,
+  }))
   const splitCharacters = vi.fn(async (_request: { prompt: string }) => ({
     prompt: 'park, masterpiece',
     characters: [
@@ -192,6 +207,7 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     generate,
     enhance,
     reverse,
+    inspect,
     history: vi.fn(async () => ({ entries: historyEntries, total: historyEntries.length })),
     suggestTags: vi.fn(async () => ({ tags: suggestions })),
     readEntry: vi.fn(async () => ({ data: '', mime: 'image/png' as const })),
@@ -345,6 +361,43 @@ describe('workbench panel', () => {
     await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
     fireEvent.click(screen.getByRole('tab', { name: '反推' }))
     expect((screen.getByRole('button', { name: 'AI 反推提示词' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('restores NovelAI-embedded parameters into the generate panel', async () => {
+    const { props } = makeProps()
+    const inspect = props.inspect
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.click(screen.getByRole('tab', { name: '反推' }))
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(fileInput, { target: { files: [new File([new Uint8Array([1, 2, 3])], 'novel.png', { type: 'image/png' })] } })
+    await waitFor(() => { expect(document.querySelector('img[alt="反推图"]')).toBeTruthy() }, { timeout: 3000 })
+    fireEvent.click(screen.getByRole('button', { name: '↩ 从图片还原参数' }))
+    await waitFor(() => { expect(inspect).toHaveBeenCalledOnce() })
+    // Every found parameter landed in the generate panel and the tab switched back.
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('restored prompt')
+    })
+    expect((screen.getByPlaceholderText('lowres, bad anatomy…') as HTMLTextAreaElement).value).toBe('lowres')
+    expect((screen.getByLabelText('宽度') as HTMLInputElement).value).toBe('1024')
+    expect((screen.getByLabelText('高度') as HTMLInputElement).value).toBe('1024')
+    expect((screen.getByLabelText('步数') as HTMLInputElement).value).toBe('30')
+    expect((screen.getByLabelText('种子值') as HTMLInputElement).value).toBe('42')
+    expect(screen.getByRole('tab', { name: '生成' }).getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('reports an image without NovelAI parameters instead of restoring', async () => {
+    const { props } = makeProps()
+    props.inspect.mockImplementation(async (_request: Record<string, unknown>) => ({ hasMeta: false }) as never)
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.click(screen.getByRole('tab', { name: '反推' }))
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(fileInput, { target: { files: [new File([new Uint8Array([1])], 'x.png', { type: 'image/png' })] } })
+    await waitFor(() => { expect(document.querySelector('img[alt="反推图"]')).toBeTruthy() }, { timeout: 3000 })
+    fireEvent.click(screen.getByRole('button', { name: '↩ 从图片还原参数' }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toContain('未检测到 NovelAI 参数') })
+    expect(screen.getByRole('tab', { name: '反推' }).getAttribute('aria-selected')).toBe('true')
   })
 
   it('submits the official V5 upscaled enhance from the MAX scale', async () => {    const entries = [{

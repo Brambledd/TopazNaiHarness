@@ -264,6 +264,36 @@ export interface NovelaiRemoveValue {
   readonly removed: boolean
 }
 
+/** One inspect (restore-parameters) request over an imported PNG's raw bytes. */
+export interface NovelaiInspectRequest {
+  /** Base64 of the original file bytes; the canvas pipeline must not touch them. */
+  readonly image: string
+}
+
+/** The NovelAI-embedded parameters found in one imported image. */
+export interface NovelaiInspectValue {
+  /** Whether any NovelAI parameter chunk was found. */
+  readonly hasMeta: boolean
+  /** Positive prompt from the `Title` chunk. */
+  readonly prompt?: string
+  /** Negative prompt from the `Description` chunk. */
+  readonly negativePrompt?: string
+  /** Checkpoint id from the `Comment` JSON, when present. */
+  readonly model?: string
+  /** Seed from the `Comment` JSON, when present. */
+  readonly seed?: number
+  /** Step count from the `Comment` JSON, when present. */
+  readonly steps?: number
+  /** Sampler id from the `Comment` JSON, when present. */
+  readonly sampler?: string
+  /** CFG scale from the `Comment` JSON, when present. */
+  readonly cfgScale?: number
+  /** Pixel width declared by the IHDR chunk. */
+  readonly width?: number
+  /** Pixel height declared by the IHDR chunk. */
+  readonly height?: number
+}
+
 /** One reverse-prompt (image interrogation) request over an imported image. */
 export interface NovelaiReverseRequest {
   /** Base64 PNG of the image, already downscaled by the client for the vision call. */

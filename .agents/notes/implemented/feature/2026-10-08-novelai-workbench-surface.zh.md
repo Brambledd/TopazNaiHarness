@@ -30,6 +30,8 @@
 
 **增强（桌面版对齐）。** 舞台元信息行携带「增强」动作，展开内联面板：1–10 幅度旋钮映射桌面版的保守强度曲线（`min(0.48, 0.10 + m×0.034)`——更高值行为接近重绘），以及三档输出倍率——1×（对齐 64 像素栅格）、2×（翻倍并如实报告像素上限判定而非静默缩小）、**MAX**（V5 上为官方服务端放大增强：按缩放后的源尺寸提交并携带 `upscaled_enhance`，服务端交付最高 2×；非 V5 上为保持在上限内的 2× 自适应放大）。运行前由浏览器画布把舞台图缩放到精确目标像素（`enhance-image.ts`）。新的 `enhance` Remote 动词（`runEnhancement`）解析工作台参数、附加 base64 源图并提交一次 img2img 线体——`action: "img2img"`，携带 `parameters.image`、收敛后的 `strength`、官方客户端固定的 `noise: 0`、全新 `extra_noise_seed`，以及 V5 钳制后的 `upscaled_enhance`——随后与文生图完全一致地落库。控制器的令牌解析改走 credential 缝（`NOVELAI_TOKEN` credential，再环境变量），设置行保存的令牌无需重启即对工作台生成生效。
 
+**反推页签（桌面版对齐）。** 工作台控制列带 生成/反推 页签切换。反推页签经拖放区、文件选择或舞台当前库条目导入图片；浏览器把最长边降到 1280 像素（视觉 token 经济）后将 base64 交给新的 `reversePrompt` Remote 动词。控制器把字节存入附件库、以 `ImageBlock` 挂在指令文本旁，并运行一次视觉模型调用（`reverseProvider`/`reverseModel`/`reverseMaxTokens`，purpose `novelai-reverse-prompt`），系统提示为桌面版对齐的可复现性指令：逐项核对、成熟稳定的 Danbooru tag 优先于主观描述、tag 排序、pointing 条款守卫、范围收窄（整图/角色/物品/场景加目标提示）。已知角色模式以宽松解析的 `NAME PROMPT:`/`FEATURE PROMPT:` 段落作答并呈现为两张变体卡；任一结果一键复用为生成面板的提示词。导入的预览在页签激活期间渲染在舞台上。
+
 **对话与创作台互通。** 两个界面通过两条定向通道交换草稿。创作台 → 对话：主提示词旁的「放入对话输入栏」按钮把当前草稿（提示词、负面、参数行、逐角色行）序列化成一段可读文本，经 `conversation.seedDraft(sessionId, text)` **种入**对话的输入栏——InputHub 按会话 id 取常驻编辑器，走其文档化的编程 `setDraft` 写入。不排队、不发送（由用户在对话里发送），创作台提示词原样保留；会话未绑定时返回 `false`，面板以行内错误呈现。对话 → 创作台：`novelai_generate` 工具卡（ui-novelai）在调用成功落定后显示「回填到创作台」按钮，从调用的持久化参数里抽取请求字段、从结果文本解析实际种子，经创作台包提供的 `novelaiWorkbench` Cordis 服务投递。面板未挂载时投递返回 `false`；已投递的请求只覆盖出现的字段、清空角色卡片（工具调用没有角色）、把种子切到固定档，并把界面切到创作台。两条通道都只经注入服务与纯数据跨包——桥类型归创作台包所有，ui-novelai 以 `import type` 加注入回调消费。
 
 ## 备选方案

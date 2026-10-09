@@ -15,6 +15,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'novelai/entry-missing': { readonly id: string }
     /** The character-split auxiliary model call failed or returned unusable output. */
     'novelai/split-failed': { readonly message: string }
+    /** The reverse-prompt vision call failed or returned unusable output. */
+    'novelai/reverse-failed': { readonly message: string }
   }
 }
 
@@ -260,4 +262,28 @@ export interface NovelaiRemoveRequest {
 export interface NovelaiRemoveValue {
   /** Whether the entry and its file were removed. */
   readonly removed: boolean
+}
+
+/** One reverse-prompt (image interrogation) request over an imported image. */
+export interface NovelaiReverseRequest {
+  /** Base64 PNG of the image, already downscaled by the client for the vision call. */
+  readonly image: string
+  /** Output style of the reversed prompt. */
+  readonly mode: 'tags' | 'natural' | 'mixed'
+  /** What part of the image the reverse covers. */
+  readonly scope: 'full' | 'character' | 'object' | 'scene'
+  /** Optional target/character hint narrowing the reverse. */
+  readonly hint?: string
+  /** Whether the subject is a known character (identity + appearance variants). */
+  readonly knownCharacter: boolean
+}
+
+/** The reversed prompt answer. */
+export interface NovelaiReverseValue {
+  /** The combined (or single) prompt text. */
+  readonly prompt: string
+  /** Identity-tagged variant, when the known-character mode answered both sections. */
+  readonly namePrompt?: string
+  /** Appearance-only variant, when the known-character mode answered both sections. */
+  readonly featurePrompt?: string
 }

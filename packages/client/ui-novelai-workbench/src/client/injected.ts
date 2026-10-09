@@ -5,6 +5,8 @@ import type {
   NovelaiCatalogValue,
   NovelaiEnhanceRequest,
   NovelaiEntryContentValue,
+  NovelaiReverseRequest,
+  NovelaiReverseValue,
   NovelaiEstimateRequest,
   NovelaiEstimateValue,
   NovelaiGenerateRequest,
@@ -28,6 +30,8 @@ export interface WorkbenchInjected extends ModeSwitchInjected {
   generate: (request: NovelaiGenerateRequest) => Promise<NovelaiGenerationValue>
   /** Submit one paid enhance (img2img) run over the client-resized source. */
   enhance: (request: NovelaiEnhanceRequest) => Promise<NovelaiGenerationValue>
+  /** Reverse one imported image into a prompt through the configured vision model. */
+  reverse: (request: NovelaiReverseRequest) => Promise<NovelaiReverseValue>
   /** Read the first library page (newest first). */
   history: () => Promise<NovelaiHistoryValue>
   /** Suggest Danbooru tags for one partial prompt word. */

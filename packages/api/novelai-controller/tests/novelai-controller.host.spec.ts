@@ -31,6 +31,15 @@ function harness(llmText = '', finishKind: 'stop' | 'max-tokens' = 'stop'): { co
       yield { type: 'finish', reason: { kind: finishKind } }
     },
   } as never)
+  ctx.provide('attachments', {
+    saveImage: async (input: { data: Uint8Array; mediaType: string }) => ({
+      attachmentId: 'att-1',
+      mediaType: input.mediaType,
+      bytes: input.data.byteLength,
+      width: 64,
+      height: 64,
+    }),
+  } as never)
   const library = new NovelaiImageLibrary(dir)
   return {
     controller: new NovelaiController(ctx, {
@@ -39,6 +48,9 @@ function harness(llmText = '', finishKind: 'stop' | 'max-tokens' = 'stop'): { co
       splitProvider: 'mock',
       splitModel: 'mock',
       splitMaxTokens: 4096,
+      reverseProvider: 'mock',
+      reverseModel: 'mock',
+      reverseMaxTokens: 7000,
     }),
     library,
     dir,
@@ -137,6 +149,39 @@ describe('NovelaiController verbs', () => {
   it('answers a blank split request without calling the model', async () => {
     const { controller } = harness()
     expect(await controller.splitCharacters({ prompt: '   ' })).toEqual({ prompt: '', characters: [] })
+  })
+
+  it('reverses an imported image into a prompt', async () => {
+    const { controller } = harness('1girl, solo, white background, full body, standing')
+    await expect(controller.reversePrompt({
+      image: 'aGVsbG8=',
+      mode: 'tags',
+      scope: 'full',
+      knownCharacter: false,
+    })).resolves.toEqual({ prompt: '1girl, solo, white background, full body, standing' })
+  })
+
+  it('splits a known-character answer into identity and appearance variants', async () => {
+    const { controller } = harness('NAME PROMPT:\ntopaz (honkai: star rail)\n\nFEATURE PROMPT:\nsilver hair, blue eyes, school uniform')
+    const value = await controller.reversePrompt({
+      image: 'aGVsbG8=',
+      mode: 'tags',
+      scope: 'character',
+      knownCharacter: true,
+    })
+    expect(value.namePrompt).toBe('topaz (honkai: star rail)')
+    expect(value.featurePrompt).toBe('silver hair, blue eyes, school uniform')
+    expect(value.prompt).toBe('topaz (honkai: star rail), silver hair, blue eyes, school uniform')
+  })
+
+  it('rejects an answer without text as the namespace error', async () => {
+    const { controller } = harness('', 'stop')
+    await expect(controller.reversePrompt({
+      image: 'aGVsbG8=',
+      mode: 'tags',
+      scope: 'full',
+      knownCharacter: false,
+    })).rejects.toMatchObject({ code: 'novelai/reverse-failed' })
   })
 
   it('maps a missing token to the namespace error', async () => {

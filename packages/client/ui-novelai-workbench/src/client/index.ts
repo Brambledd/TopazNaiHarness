@@ -86,6 +86,11 @@ export function apply(ctx: ClientContext): void {
             if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
             return result.value
           },
+          reverse: async (request) => {
+            const result = await ctx.remote.novelai.reversePrompt(request)
+            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+            return result.value
+          },
           history: async () => {
             const result = await ctx.remote.novelai.history({ limit: 30 })
             if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)

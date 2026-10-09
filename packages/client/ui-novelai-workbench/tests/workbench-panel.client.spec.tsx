@@ -4,6 +4,7 @@
 // spec replaces it with a fixed base64 answer.
 vi.mock('../src/client/enhance-image.ts', () => ({
   resizeUrlToBase64: async (_url: string, _width: number, _height: number) => 'cmVzaXplZA==',
+  prepareReverseImage: async (_blob: Blob) => ({ image: 'cmV2ZXJzZQ==', previewUrl: 'blob:reverse-preview' }),
 }))
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, act } from '@testing-library/react'
@@ -18,6 +19,9 @@ import { resolutionForTier, snapDimensionWithinArea, maxDimensionFor } from '../
 const zh = {
   'mode.conversation': '对话',
   'mode.workbench': '创作台',
+  'tab.label': '工作台模式',
+  'tab.generate': '生成',
+  'tab.reverse': '反推',
   'prompt.label': '提示词',
   'prompt.placeholder': '1girl, solo, masterpiece…',
   'negative.label': '负面提示词',
@@ -54,6 +58,33 @@ const zh = {
   'enhance.run': '增强图像',
   'enhance.close': '收起',
   'enhance.done': '增强图像已保存。',
+  'reverse.imageAlt': '反推图',
+  'reverse.dropHint': '拖入图片到此处，或点击下方按钮打开',
+  'reverse.openFile': '打开文件',
+  'reverse.fromStage': '用舞台当前图',
+  'reverse.clear': '清除图片',
+  'reverse.mode': '输出风格',
+  'reverse.mode.tags': 'Tag',
+  'reverse.mode.natural': '自然语言',
+  'reverse.mode.mixed': '混合',
+  'reverse.scope': '反推范围',
+  'reverse.scope.full': '整张图片',
+  'reverse.scope.full.tip': '反推完整画面、人物、场景和构图',
+  'reverse.scope.character': '角色',
+  'reverse.scope.character.tip': '只反推指定角色的外观、服装、姿态',
+  'reverse.scope.object': '物品',
+  'reverse.scope.object.tip': '只反推指定物品或道具',
+  'reverse.scope.scene': '场景',
+  'reverse.scope.scene.tip': '只反推背景、光照、空间和氛围',
+  'reverse.hint': '目标/角色提示（可选）',
+  'reverse.hintPlaceholder': '例如：左边的女孩',
+  'reverse.known': '这是网络/游戏/动漫角色，生成角色名版和特征版',
+  'reverse.run': 'AI 反推提示词',
+  'reverse.running': '反推中…',
+  'reverse.result': '反推结果',
+  'reverse.nameVariant': '角色名版',
+  'reverse.featureVariant': '特征版',
+  'reverse.reuse': '复用至生成面板',
   'characters.label': '角色提示词',
   'characters.role': '角色',
   'characters.split': 'AI 拆分角色',
@@ -135,6 +166,9 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     anlasEstimate: 0,
     createdAt: '2026-10-08T00:00:00Z',
   }))
+  const reverse = vi.fn(async (_request: Record<string, unknown>) => ({
+    prompt: '1girl, solo, white background',
+  }))
   const splitCharacters = vi.fn(async (_request: { prompt: string }) => ({
     prompt: 'park, masterpiece',
     characters: [
@@ -157,6 +191,7 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     estimate: vi.fn(async () => ({ anlas: 0 })),
     generate,
     enhance,
+    reverse,
     history: vi.fn(async () => ({ entries: historyEntries, total: historyEntries.length })),
     suggestTags: vi.fn(async () => ({ tags: suggestions })),
     readEntry: vi.fn(async () => ({ data: '', mime: 'image/png' as const })),
@@ -263,35 +298,83 @@ describe('workbench panel', () => {
     expect(enhance).not.toHaveBeenCalled()
   })
 
-  it('submits the official V5 upscaled enhance from the MAX scale', async () => {
-    const entries = [{
-      id: 'e1', file: 'workspace/novelai/e1.png', bytes: 10, width: 832, height: 1216, seed: 42, steps: 28,
-      prompt: 'a cat', createdAt: '2026-10-08T00:00:00Z',
-    }]
-    const { props } = makeProps(entries)
-    props.enhance.mockImplementation(async (_request: Record<string, unknown>) => ({
-      id: 'x', file: 'f', bytes: 1, seed: 99, anlasEstimate: 0, createdAt: '2026-10-09T00:00:00Z',
+  it('reuses a reversed prompt into the generate panel', async () => {
+    const { props } = makeProps()
+    props.reverse.mockImplementation(async () => ({
+      prompt: '1girl, solo, white background',
+      namePrompt: 'topaz (honkai: star rail)',
+      featurePrompt: 'silver hair, blue eyes',
     }))
-    const enhance = props.enhance
+    const reverse = props.reverse
+    const { setViewMode: _unused } = { setViewMode: props.setViewMode }
+    void _unused
     render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
-    const img = await waitFor(() => {
-      const node = document.querySelector('img[data-entry-id="e1"]') as HTMLImageElement
-      expect(node).toBeTruthy()
-      expect(node.getAttribute('src')).toBeTruthy()
-      return node
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    // Switch to the reverse tab and import a file through the hidden input.
+    fireEvent.click(screen.getByRole('tab', { name: '反推' }))
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    expect(fileInput).toBeTruthy()
+    fireEvent.change(fileInput, { target: { files: [new File([new Uint8Array([1, 2, 3])], 'src.png', { type: 'image/png' })] } })
+    const preview = await waitFor(() => {
+      const img = document.querySelector('img[alt="反推图"]') as HTMLImageElement
+      expect(img).toBeTruthy()
+      return img
     }, { timeout: 3000 })
-    void img
-    // The catalog default is V5, so MAX takes the official upscaled path.
-    fireEvent.click(screen.getByRole('button', { name: '增强' }))
-    fireEvent.click(screen.getByRole('button', { name: 'MAX' }))
-    expect(screen.getByText(/官方服务端放大/)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '增强图像' }))
-    await waitFor(() => { expect(enhance).toHaveBeenCalledOnce() })
-    const request = enhance.mock.calls[0]![0] as Record<string, unknown>
-    expect(request.upscaledEnhance).toBe(true)
-    // The submission stays at the fitted source size; the server upscales.
-    expect(request.width).toBe(832)
-    expect(request.height).toBe(1216)
+    expect(preview.getAttribute('src')).toBe('blob:reverse-preview')
+    fireEvent.click(screen.getByRole('button', { name: 'AI 反推提示词' }))
+    await waitFor(() => { expect(reverse).toHaveBeenCalledOnce() })
+    const request = reverse.mock.calls[0]![0] as Record<string, unknown>
+    expect(request.image).toBe('cmV2ZXJzZQ==')
+    expect(request.mode).toBe('tags')
+    expect(request.scope).toBe('full')
+    // The result box and both known-character variants render.
+    const reuseButtons = screen.getAllByRole('button', { name: '复用至生成面板' })
+    expect(reuseButtons).toHaveLength(3)
+    expect(screen.getByDisplayValue('1girl, solo, white background')).toBeTruthy()
+    expect(screen.getByText('角色名版')).toBeTruthy()
+    expect(screen.getByText('特征版')).toBeTruthy()
+    // Reusing lands the prompt in the generate panel and switches back.
+    fireEvent.click(reuseButtons[reuseButtons.length - 1]!)
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value)
+      .toBe('1girl, solo, white background')
+    expect(screen.getByRole('tab', { name: '生成' }).getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('keeps the reverse run disabled until a source is imported', async () => {
+    mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.click(screen.getByRole('tab', { name: '反推' }))
+    expect((screen.getByRole('button', { name: 'AI 反推提示词' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('submits the official V5 upscaled enhance from the MAX scale', async () => {    const entries = [{
+    id: 'e1', file: 'workspace/novelai/e1.png', bytes: 10, width: 832, height: 1216, seed: 42, steps: 28,
+    prompt: 'a cat', createdAt: '2026-10-08T00:00:00Z',
+  }]
+  const { props } = makeProps(entries)
+  props.enhance.mockImplementation(async (_request: Record<string, unknown>) => ({
+    id: 'x', file: 'f', bytes: 1, seed: 99, anlasEstimate: 0, createdAt: '2026-10-09T00:00:00Z',
+  }))
+  const enhance = props.enhance
+  render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+  const img = await waitFor(() => {
+    const node = document.querySelector('img[data-entry-id="e1"]') as HTMLImageElement
+    expect(node).toBeTruthy()
+    expect(node.getAttribute('src')).toBeTruthy()
+    return node
+  }, { timeout: 3000 })
+  void img
+  // The catalog default is V5, so MAX takes the official upscaled path.
+  fireEvent.click(screen.getByRole('button', { name: '增强' }))
+  fireEvent.click(screen.getByRole('button', { name: 'MAX' }))
+  expect(screen.getByText(/官方服务端放大/)).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: '增强图像' }))
+  await waitFor(() => { expect(enhance).toHaveBeenCalledOnce() })
+  const request = enhance.mock.calls[0]![0] as Record<string, unknown>
+  expect(request.upscaledEnhance).toBe(true)
+  // The submission stays at the fitted source size; the server upscales.
+  expect(request.width).toBe(832)
+  expect(request.height).toBe(1216)
   })
 
   it('omits the seed in random mode and sends it in fixed mode', async () => {

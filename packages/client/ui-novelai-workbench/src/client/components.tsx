@@ -22,7 +22,7 @@ import {
 } from './resolution.ts'
 import { PromptTextarea } from './autocomplete.tsx'
 import { CapsuleBrowser, STYLE_PRESETS } from './capsule-picker.tsx'
-import { resizeUrlToBase64 } from './enhance-image.ts'
+import { prepareReverseImage, resizeUrlToBase64 } from './enhance-image.ts'
 import type { WorkbenchInjected } from './injected.ts'
 import css from './workbench.module.css'
 
@@ -59,6 +59,7 @@ export function WorkbenchRoot({
   estimate,
   generate,
   enhance,
+  reverse,
   history,
   suggestTags,
   readEntry,
@@ -94,6 +95,17 @@ export function WorkbenchRoot({
   const [enhanceOpen, setEnhanceOpen] = useState(false)
   const [magnitude, setMagnitude] = useState(3)
   const [enhanceScale, setEnhanceScale] = useState<1 | 2 | 'max'>(1)
+  /** Reverse tab: the imported source, options, and the answer. */
+  const [workbenchTab, setWorkbenchTab] = useState<'generate' | 'reverse'>('generate')
+  const [reverseSource, setReverseSource] = useState<{ image: string; previewUrl: string } | undefined>(undefined)
+  const [reverseMode, setReverseMode] = useState<'tags' | 'natural' | 'mixed'>('tags')
+  const [reverseScope, setReverseScope] = useState<'full' | 'character' | 'object' | 'scene'>('full')
+  const [reverseHint, setReverseHint] = useState('')
+  const [reverseKnown, setReverseKnown] = useState(false)
+  const [reverseResult, setReverseResult] = useState('')
+  const [reverseVariants, setReverseVariants] = useState<{ namePrompt: string; featurePrompt: string } | undefined>(undefined)
+  const [reverseBusy, setReverseBusy] = useState(false)
+  const [reverseError, setReverseError] = useState<string | undefined>(undefined)
   const [anlas, setAnlas] = useState<number | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
@@ -438,22 +450,87 @@ export function WorkbenchRoot({
     }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) }).finally(() => { setBusy(false) })
   }
 
+  /** Import one picked file as the reverse source (downscaled for the vision call). */
+  const acceptReverseFile = (file: File): void => {
+    if (reverseSource !== undefined) URL.revokeObjectURL(reverseSource.previewUrl)
+    setReverseError(undefined)
+    prepareReverseImage(file).then((source) => {
+      setReverseSource(source)
+    }).catch((e: unknown) => { setReverseError(e instanceof Error ? e.message : String(e)) })
+  }
+
+  /** Import the current stage entry as the reverse source. */
+  const importStageForReverse = (): void => {
+    const url = stageEntry === undefined ? undefined : urlCache.current.get(stageEntry.id)
+    if (url === undefined) return
+    if (reverseSource !== undefined) URL.revokeObjectURL(reverseSource.previewUrl)
+    setReverseError(undefined)
+    fetch(url).then(response => response.blob()).then(blob => prepareReverseImage(blob)).then((source) => {
+      setReverseSource(source)
+    }).catch((e: unknown) => { setReverseError(e instanceof Error ? e.message : String(e)) })
+  }
+
+  /** Drop the reverse source and its preview URL. */
+  const clearReverseSource = (): void => {
+    if (reverseSource !== undefined) URL.revokeObjectURL(reverseSource.previewUrl)
+    setReverseSource(undefined)
+    setReverseResult('')
+    setReverseVariants(undefined)
+    setReverseError(undefined)
+  }
+
+  /** Run one reverse-prompt call over the imported source. */
+  const runReverse = (): void => {
+    if (reverseSource === undefined || reverseBusy) return
+    setReverseBusy(true)
+    setReverseError(undefined)
+    reverse({
+      image: reverseSource.image,
+      mode: reverseMode,
+      scope: reverseScope,
+      ...(reverseHint.trim() === '' ? {} : { hint: reverseHint.trim() }),
+      knownCharacter: reverseKnown,
+    }).then((value) => {
+      setReverseResult(value.prompt)
+      setReverseVariants(value.namePrompt !== undefined && value.featurePrompt !== undefined
+        ? { namePrompt: value.namePrompt, featurePrompt: value.featurePrompt }
+        : undefined)
+    }).catch((e: unknown) => { setReverseError(e instanceof Error ? e.message : String(e)) })
+      .finally(() => { setReverseBusy(false) })
+  }
+
+  /** Reuse one reversed prompt as the generation panel's positive prompt. */
+  const reuseReverseResult = (text: string): void => {
+    const trimmed = text.trim()
+    if (trimmed === '') return
+    setPrompt(trimmed)
+    setWorkbenchTab('generate')
+  }
+
   return (
     <div className={css.stageLayout}>
       <div className={css.stageColumn}>
         <div className={css.stage} role="region" aria-label={t('stage.label')}>
-          {stageEntry === undefined
-            ? (busy ? null : <div className={css.stageEmpty}>{t('stage.empty')}</div>)
-            : (
+          {workbenchTab === 'reverse' && reverseSource !== undefined
+            ? (
               <img
-                data-entry-id={stageEntry.id}
                 className={css.stageImg}
-                alt={stageEntry.prompt ?? stageEntry.id}
-                src={entryUrl(stageEntry)}
-                title={t('stage.zoom')}
-                onClick={() => { setLightbox(stageEntry) }}
+                alt={t('reverse.imageAlt')}
+                src={reverseSource.previewUrl}
               />
-            )}
+            )
+            : stageEntry === undefined
+              ? (busy ? null : <div className={css.stageEmpty}>{t('stage.empty')}</div>)
+              : (
+                <img
+                  data-entry-id={stageEntry.id}
+                  className={css.stageImg}
+                  alt={stageEntry.prompt ?? stageEntry.id}
+                  src={entryUrl(stageEntry)}
+                  title={t('stage.zoom')}
+                  onClick={() => { setLightbox(stageEntry) }}
+                />
+              )}
           {busy && <div className={css.stageRunning} role="status">{t('stage.running')}</div>}
         </div>
         {stageEntry !== undefined && (
@@ -574,361 +651,502 @@ export function WorkbenchRoot({
         </div>
       </div>
       <div className={css.root}>
-        <div className={css.section}>
-          <div className={css.promptHead}>
-            <span className={css.fieldLabel}>{t('prompt.label')}</span>
-            <div className={css.promptHeadActions}>
-              <button
-                type="button"
-                className={css.charAction}
-                disabled={prompt.trim() === '' || currentSessionId === undefined}
-                title={currentSessionId === undefined ? t('senddraft.noSession') : undefined}
-                onClick={deliverDraftToInput}
-              >
-                {t('senddraft.send')}
-              </button>
-              <button
-                type="button"
-                className={css.charAction}
-                disabled={splitting || prompt.trim() === ''}
-                onClick={splitIntoCharacters}
-              >
-                {splitting ? t('characters.splitting') : t('characters.split')}
-              </button>
-            </div>
-          </div>
-          <PromptTextarea
-            value={prompt}
-            onChange={setPrompt}
-            suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
-            placeholder={t('prompt.placeholder')}
-            ariaLabel={t('prompt.label')}
-            className={css.promptArea}
-          />
-        </div>
-        <div className={css.section}>
+        <div className={css.seedRow} role="tablist" aria-label={t('tab.label')}>
           <button
             type="button"
-            className={css.foldHeader}
-            aria-expanded={stylesOpen}
-            onClick={() => { setStylesOpen(open => !open) }}
+            role="tab"
+            aria-selected={workbenchTab === 'generate'}
+            className={`${css.seedSegment} ${workbenchTab === 'generate' ? css.seedSegmentActive : ''}`}
+            onClick={() => { setWorkbenchTab('generate') }}
           >
-            <span className={`${css.chevron} ${stylesOpen ? css.chevronOpen : ''}`}>▾</span>
-            {t('styles.label')}
+            {t('tab.generate')}
           </button>
-          {stylesOpen && (
-            <div className={css.styleRow}>
-              {STYLE_PRESETS.map(style => (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={workbenchTab === 'reverse'}
+            className={`${css.seedSegment} ${workbenchTab === 'reverse' ? css.seedSegmentActive : ''}`}
+            onClick={() => { setWorkbenchTab('reverse') }}
+          >
+            {t('tab.reverse')}
+          </button>
+        </div>
+        {workbenchTab === 'generate' && (<>
+          <div className={css.section}>
+            <div className={css.promptHead}>
+              <span className={css.fieldLabel}>{t('prompt.label')}</span>
+              <div className={css.promptHeadActions}>
                 <button
-                  key={style.en}
                   type="button"
-                  className={css.capsuleChip}
-                  title={style.en}
-                  onClick={() => { prependStyle(style.en) }}
+                  className={css.charAction}
+                  disabled={prompt.trim() === '' || currentSessionId === undefined}
+                  title={currentSessionId === undefined ? t('senddraft.noSession') : undefined}
+                  onClick={deliverDraftToInput}
                 >
-                  {style.zh}
+                  {t('senddraft.send')}
                 </button>
-              ))}
+                <button
+                  type="button"
+                  className={css.charAction}
+                  disabled={splitting || prompt.trim() === ''}
+                  onClick={splitIntoCharacters}
+                >
+                  {splitting ? t('characters.splitting') : t('characters.split')}
+                </button>
+              </div>
             </div>
-          )}
-        </div>
-        <div className={css.section}>
-          <button
-            type="button"
-            className={css.foldHeader}
-            aria-expanded={capsuleOpen}
-            onClick={() => { setCapsuleOpen(open => !open) }}
-          >
-            <span className={`${css.chevron} ${capsuleOpen ? css.chevronOpen : ''}`}>▾</span>
-            {t('capsule.label')}
-          </button>
-          {capsuleOpen && <CapsuleBrowser onInsert={insertTag} filterLabel={t('capsule.filter')} />}
-        </div>
-        <div className={css.section}>
-          <button
-            type="button"
-            className={css.foldHeader}
-            aria-expanded={negativeOpen}
-            onClick={() => { setNegativeOpen(open => !open) }}
-          >
-            <span className={`${css.chevron} ${negativeOpen ? css.chevronOpen : ''}`}>▾</span>
-            {t('negative.label')}
-          </button>
-          {negativeOpen && (
             <PromptTextarea
-              value={negativePrompt}
-              onChange={setNegativePrompt}
+              value={prompt}
+              onChange={setPrompt}
               suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
-              placeholder={t('negative.placeholder')}
-              ariaLabel={t('negative.label')}
-              className={css.negativeArea}
+              placeholder={t('prompt.placeholder')}
+              ariaLabel={t('prompt.label')}
+              className={css.promptArea}
             />
-          )}
-        </div>
-        {maxCharactersFor(model) > 0 && (
+          </div>
           <div className={css.section}>
             <button
               type="button"
               className={css.foldHeader}
-              aria-expanded={charactersOpen}
-              onClick={() => { setCharactersOpen(open => !open) }}
+              aria-expanded={stylesOpen}
+              onClick={() => { setStylesOpen(open => !open) }}
             >
-              <span className={`${css.chevron} ${charactersOpen ? css.chevronOpen : ''}`}>▾</span>
-              {t('characters.label')}{characters.length > 0 ? ` · ${String(characters.length)}` : ''}
+              <span className={`${css.chevron} ${stylesOpen ? css.chevronOpen : ''}`}>▾</span>
+              {t('styles.label')}
             </button>
-            {charactersOpen && (
-              <div className={css.charList}>
-                <div className={css.charActions}>
+            {stylesOpen && (
+              <div className={css.styleRow}>
+                {STYLE_PRESETS.map(style => (
                   <button
+                    key={style.en}
                     type="button"
-                    className={css.charAction}
-                    disabled={characters.length >= maxCharactersFor(model)}
-                    onClick={addCharacter}
+                    className={css.capsuleChip}
+                    title={style.en}
+                    onClick={() => { prependStyle(style.en) }}
                   >
-                    {t('characters.add')}
+                    {style.zh}
                   </button>
-                  <button
-                    type="button"
-                    className={css.charAction}
-                    disabled={characters.length === 0}
-                    onClick={() => { setCharacters([]) }}
-                  >
-                    {t('characters.clear')}
-                  </button>
-                </div>
-                {characters.map((draft, index) => (
-                  <div key={draft.id} className={css.charRow}>
-                    <div className={css.charHead}>
-                      <strong className={css.charTitle}>{t('characters.role')} {String(index + 1)}</strong>
-                      <label className={css.charCheck}>
-                        <input
-                          type="checkbox"
-                          checked={draft.useCoords}
-                          aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.position.custom')}`}
-                          onChange={(e) => { updateCharacter(draft.id, { useCoords: e.target.checked }) }}
-                        />
-                        {t('characters.position.custom')}
-                      </label>
-                      <button
-                        type="button"
-                        className={css.charAction}
-                        aria-label={`${t('characters.remove')} ${String(index + 1)}`}
-                        onClick={() => { removeCharacter(draft.id) }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <PromptTextarea
-                      value={draft.prompt}
-                      onChange={(next) => { updateCharacter(draft.id, { prompt: next }) }}
-                      suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
-                      placeholder={t('characters.placeholder')}
-                      ariaLabel={`${t('characters.role')} ${String(index + 1)}`}
-                      className={css.charArea}
-                    />
-                    <PromptTextarea
-                      value={draft.negativePrompt}
-                      onChange={(next) => { updateCharacter(draft.id, { negativePrompt: next }) }}
-                      suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
-                      placeholder={t('characters.negativePlaceholder')}
-                      ariaLabel={`${t('characters.role')} ${String(index + 1)} ${t('characters.negative')}`}
-                      className={css.charNeg}
-                    />
-                    {draft.useCoords && (
-                      <div className={css.charCoords}>
-                        <label className={css.field}>
-                          <span className={css.fieldLabel}>{t('characters.x')}</span>
-                          <span className={css.charPercent}>
-                            <input
-                              type="number"
-                              className={css.select}
-                              min={0}
-                              max={100}
-                              step={5}
-                              value={Math.round(draft.x * 100)}
-                              aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.x')}`}
-                              onChange={(e) => { updateCharacter(draft.id, { x: Number(e.target.value) / 100 }) }}
-                            />
-                            <span aria-hidden="true">%</span>
-                          </span>
-                        </label>
-                        <label className={css.field}>
-                          <span className={css.fieldLabel}>{t('characters.y')}</span>
-                          <span className={css.charPercent}>
-                            <input
-                              type="number"
-                              className={css.select}
-                              min={0}
-                              max={100}
-                              step={5}
-                              value={Math.round(draft.y * 100)}
-                              aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.y')}`}
-                              onChange={(e) => { updateCharacter(draft.id, { y: Number(e.target.value) / 100 }) }}
-                            />
-                            <span aria-hidden="true">%</span>
-                          </span>
-                        </label>
-                      </div>
-                    )}
-                  </div>
                 ))}
               </div>
             )}
           </div>
-        )}
-        <div className={css.paramGrid}>
-          <label className={css.field}>
-            <span className={css.fieldLabel}>{t('param.model')}</span>
-            <select className={css.select} value={model} onChange={(e) => { setModel(e.target.value) }}>
-              {(catalogValue?.models ?? []).map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </label>
-          <label className={css.field}>
-            <span className={css.fieldLabel}>{t('param.sampler')}</span>
-            <select className={css.select} value={sampler} onChange={(e) => { setSampler(e.target.value) }}>
-              {(catalogValue?.samplers ?? []).map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </label>
-          <label className={css.field}>
-            <span className={css.fieldLabel}>{t('param.noiseSchedule')}</span>
-            <select className={css.select} value={noiseSchedule} onChange={(e) => { setNoiseSchedule(e.target.value) }}>
-              {(catalogValue?.noiseSchedules ?? []).map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </label>
-          <label className={css.field}>
-            <span className={css.fieldLabel}>{t('param.tier')}</span>
-            <select
-              className={css.select}
-              value={tier === null ? 'custom' : String(tier)}
-              onChange={(e) => { applyTierRatio(e.target.value === 'custom' ? null : Number(e.target.value) as Tier, ratio ?? '2:3') }}
-            >
-              {RESOLUTION_TIERS.map(value => (
-                <option key={value} value={String(value)}>{t(TIER_LABEL_KEYS[value])}</option>
-              ))}
-              <option value="custom">{t('param.custom')}</option>
-            </select>
-          </label>
-          <label className={css.field}>
-            <span className={css.fieldLabel}>{t('param.ratio')}</span>
-            <select
-              className={css.select}
-              value={ratio ?? 'custom'}
-              onChange={(e) => { if (tier !== null) applyTierRatio(tier, e.target.value) }}
-            >
-              {RESOLUTION_RATIOS.map(r => <option key={r} value={r}>{r}</option>)}
-              <option value="custom">{t('param.custom')}</option>
-            </select>
-          </label>
-          <div className={css.field}>
-            <span className={css.fieldLabel}>{t('param.size')}</span>
-            <div className={css.sizeRow}>
-              <input
-                type="number"
-                className={css.number}
-                aria-label={t('param.width')}
-                value={width || ''}
-                min={64}
-                max={maxDimensionFor(height)}
-                step={64}
-                onChange={(e) => { setWidth(Number(e.target.value)) }}
-                onBlur={(e) => { setWidth(snapDimensionWithinArea(Number(e.target.value), height, width)) }}
-                onKeyDown={(e) => { if (e.key === 'Enter') setWidth(snapDimensionWithinArea(Number(e.currentTarget.value), height, width)) }}
-              />
-              <span>×</span>
-              <input
-                type="number"
-                className={css.number}
-                aria-label={t('param.height')}
-                value={height || ''}
-                min={64}
-                max={maxDimensionFor(width)}
-                step={64}
-                onChange={(e) => { setHeight(Number(e.target.value)) }}
-                onBlur={(e) => { setHeight(snapDimensionWithinArea(Number(e.target.value), width, height)) }}
-                onKeyDown={(e) => { if (e.key === 'Enter') setHeight(snapDimensionWithinArea(Number(e.currentTarget.value), width, height)) }}
-              />
-            </div>
-            <span className={css.sizeHint}>{t('size.commitHint')}</span>
-          </div>
-          <label className={css.field}>
-            <span className={css.fieldLabel}>{t('param.steps')}</span>
-            <input
-              type="number"
-              className={css.number}
-              value={steps}
-              min={1}
-              max={50}
-              onChange={(e) => { setSteps(Math.max(1, Math.min(50, Math.round(Number(e.target.value) || 1)))) }}
-            />
-          </label>
-          <label className={css.field}>
-            <span className={css.fieldLabel}>{t('param.cfgScale')}</span>
-            <input
-              type="number"
-              className={css.number}
-              value={cfgScale}
-              min={0}
-              max={10}
-              step={0.1}
-              onChange={(e) => { setCfgScale(Math.max(0, Math.min(10, Number(e.target.value)))) }}
-            />
-          </label>
-        </div>
-        <div className={css.seedRow}>
-          <span className={css.fieldLabel}>{t('seed.mode')}</span>
-          <div className={css.seedSwitch} role="group" aria-label={t('seed.mode')}>
+          <div className={css.section}>
             <button
               type="button"
-              className={`${css.seedSegment} ${seedMode === 'random' ? css.seedSegmentActive : ''}`}
-              aria-pressed={seedMode === 'random'}
-              onClick={() => { setSeedMode('random') }}
+              className={css.foldHeader}
+              aria-expanded={capsuleOpen}
+              onClick={() => { setCapsuleOpen(open => !open) }}
             >
-              🎲 {t('seed.random')}
+              <span className={`${css.chevron} ${capsuleOpen ? css.chevronOpen : ''}`}>▾</span>
+              {t('capsule.label')}
             </button>
+            {capsuleOpen && <CapsuleBrowser onInsert={insertTag} filterLabel={t('capsule.filter')} />}
+          </div>
+          <div className={css.section}>
             <button
               type="button"
-              className={`${css.seedSegment} ${seedMode === 'fixed' ? css.seedSegmentActive : ''}`}
-              aria-pressed={seedMode === 'fixed'}
-              onClick={() => { setSeedMode('fixed') }}
+              className={css.foldHeader}
+              aria-expanded={negativeOpen}
+              onClick={() => { setNegativeOpen(open => !open) }}
             >
-              🔒 {t('seed.fixed')}
+              <span className={`${css.chevron} ${negativeOpen ? css.chevronOpen : ''}`}>▾</span>
+              {t('negative.label')}
             </button>
-          </div>
-          {seedMode === 'fixed' && (
-            <>
-              <input
-                type="number"
-                className={`${css.number} ${css.seedValue}`}
-                aria-label={t('seed.fixedValue')}
-                value={seed}
-                min={0}
-                max={catalogValue?.maxSeed}
-                onChange={(e) => { setSeed(Math.max(0, Math.floor(Number(e.target.value) || 0))) }}
+            {negativeOpen && (
+              <PromptTextarea
+                value={negativePrompt}
+                onChange={setNegativePrompt}
+                suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
+                placeholder={t('negative.placeholder')}
+                ariaLabel={t('negative.label')}
+                className={css.negativeArea}
               />
+            )}
+          </div>
+          {maxCharactersFor(model) > 0 && (
+            <div className={css.section}>
               <button
                 type="button"
-                className={css.seedDice}
-                title={t('seed.randomize')}
-                onClick={() => { setSeed(Math.floor(Math.random() * (catalogValue?.maxSeed ?? 4294967295)) + 1) }}
+                className={css.foldHeader}
+                aria-expanded={charactersOpen}
+                onClick={() => { setCharactersOpen(open => !open) }}
               >
-                🎲 {t('seed.randomize')}
+                <span className={`${css.chevron} ${charactersOpen ? css.chevronOpen : ''}`}>▾</span>
+                {t('characters.label')}{characters.length > 0 ? ` · ${String(characters.length)}` : ''}
               </button>
-            </>
+              {charactersOpen && (
+                <div className={css.charList}>
+                  <div className={css.charActions}>
+                    <button
+                      type="button"
+                      className={css.charAction}
+                      disabled={characters.length >= maxCharactersFor(model)}
+                      onClick={addCharacter}
+                    >
+                      {t('characters.add')}
+                    </button>
+                    <button
+                      type="button"
+                      className={css.charAction}
+                      disabled={characters.length === 0}
+                      onClick={() => { setCharacters([]) }}
+                    >
+                      {t('characters.clear')}
+                    </button>
+                  </div>
+                  {characters.map((draft, index) => (
+                    <div key={draft.id} className={css.charRow}>
+                      <div className={css.charHead}>
+                        <strong className={css.charTitle}>{t('characters.role')} {String(index + 1)}</strong>
+                        <label className={css.charCheck}>
+                          <input
+                            type="checkbox"
+                            checked={draft.useCoords}
+                            aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.position.custom')}`}
+                            onChange={(e) => { updateCharacter(draft.id, { useCoords: e.target.checked }) }}
+                          />
+                          {t('characters.position.custom')}
+                        </label>
+                        <button
+                          type="button"
+                          className={css.charAction}
+                          aria-label={`${t('characters.remove')} ${String(index + 1)}`}
+                          onClick={() => { removeCharacter(draft.id) }}
+                        >
+                        ✕
+                        </button>
+                      </div>
+                      <PromptTextarea
+                        value={draft.prompt}
+                        onChange={(next) => { updateCharacter(draft.id, { prompt: next }) }}
+                        suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
+                        placeholder={t('characters.placeholder')}
+                        ariaLabel={`${t('characters.role')} ${String(index + 1)}`}
+                        className={css.charArea}
+                      />
+                      <PromptTextarea
+                        value={draft.negativePrompt}
+                        onChange={(next) => { updateCharacter(draft.id, { negativePrompt: next }) }}
+                        suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
+                        placeholder={t('characters.negativePlaceholder')}
+                        ariaLabel={`${t('characters.role')} ${String(index + 1)} ${t('characters.negative')}`}
+                        className={css.charNeg}
+                      />
+                      {draft.useCoords && (
+                        <div className={css.charCoords}>
+                          <label className={css.field}>
+                            <span className={css.fieldLabel}>{t('characters.x')}</span>
+                            <span className={css.charPercent}>
+                              <input
+                                type="number"
+                                className={css.select}
+                                min={0}
+                                max={100}
+                                step={5}
+                                value={Math.round(draft.x * 100)}
+                                aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.x')}`}
+                                onChange={(e) => { updateCharacter(draft.id, { x: Number(e.target.value) / 100 }) }}
+                              />
+                              <span aria-hidden="true">%</span>
+                            </span>
+                          </label>
+                          <label className={css.field}>
+                            <span className={css.fieldLabel}>{t('characters.y')}</span>
+                            <span className={css.charPercent}>
+                              <input
+                                type="number"
+                                className={css.select}
+                                min={0}
+                                max={100}
+                                step={5}
+                                value={Math.round(draft.y * 100)}
+                                aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.y')}`}
+                                onChange={(e) => { updateCharacter(draft.id, { y: Number(e.target.value) / 100 }) }}
+                              />
+                              <span aria-hidden="true">%</span>
+                            </span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
-          {lastSeed !== undefined && (
-            <span className={css.sizeHint}>{t('seed.lastLabel')} {lastSeed}</span>
-          )}
-        </div>
-        <div className={css.footer}>
-          <span className={css.estimate}>
-            {t('estimate')}: <span className={css.estimateValue}>{anlas === undefined ? '…' : anlas === 0 ? t('estimate.free') : String(anlas)}</span>
-          </span>
-          {error !== undefined && <p className={css.errorText} role="alert">{t('error')}: {error}</p>}
-          {done !== undefined && <p className={css.doneText}>{done}</p>}
-          <button type="button" className={css.generateButton} disabled={busy || prompt.trim() === ''} onClick={submitCurrent}>
-            {busy ? t('generating') : t('generate')}
-          </button>
-        </div>
+          <div className={css.paramGrid}>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('param.model')}</span>
+              <select className={css.select} value={model} onChange={(e) => { setModel(e.target.value) }}>
+                {(catalogValue?.models ?? []).map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </label>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('param.sampler')}</span>
+              <select className={css.select} value={sampler} onChange={(e) => { setSampler(e.target.value) }}>
+                {(catalogValue?.samplers ?? []).map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </label>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('param.noiseSchedule')}</span>
+              <select className={css.select} value={noiseSchedule} onChange={(e) => { setNoiseSchedule(e.target.value) }}>
+                {(catalogValue?.noiseSchedules ?? []).map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </label>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('param.tier')}</span>
+              <select
+                className={css.select}
+                value={tier === null ? 'custom' : String(tier)}
+                onChange={(e) => { applyTierRatio(e.target.value === 'custom' ? null : Number(e.target.value) as Tier, ratio ?? '2:3') }}
+              >
+                {RESOLUTION_TIERS.map(value => (
+                  <option key={value} value={String(value)}>{t(TIER_LABEL_KEYS[value])}</option>
+                ))}
+                <option value="custom">{t('param.custom')}</option>
+              </select>
+            </label>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('param.ratio')}</span>
+              <select
+                className={css.select}
+                value={ratio ?? 'custom'}
+                onChange={(e) => { if (tier !== null) applyTierRatio(tier, e.target.value) }}
+              >
+                {RESOLUTION_RATIOS.map(r => <option key={r} value={r}>{r}</option>)}
+                <option value="custom">{t('param.custom')}</option>
+              </select>
+            </label>
+            <div className={css.field}>
+              <span className={css.fieldLabel}>{t('param.size')}</span>
+              <div className={css.sizeRow}>
+                <input
+                  type="number"
+                  className={css.number}
+                  aria-label={t('param.width')}
+                  value={width || ''}
+                  min={64}
+                  max={maxDimensionFor(height)}
+                  step={64}
+                  onChange={(e) => { setWidth(Number(e.target.value)) }}
+                  onBlur={(e) => { setWidth(snapDimensionWithinArea(Number(e.target.value), height, width)) }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') setWidth(snapDimensionWithinArea(Number(e.currentTarget.value), height, width)) }}
+                />
+                <span>×</span>
+                <input
+                  type="number"
+                  className={css.number}
+                  aria-label={t('param.height')}
+                  value={height || ''}
+                  min={64}
+                  max={maxDimensionFor(width)}
+                  step={64}
+                  onChange={(e) => { setHeight(Number(e.target.value)) }}
+                  onBlur={(e) => { setHeight(snapDimensionWithinArea(Number(e.target.value), width, height)) }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') setHeight(snapDimensionWithinArea(Number(e.currentTarget.value), width, height)) }}
+                />
+              </div>
+              <span className={css.sizeHint}>{t('size.commitHint')}</span>
+            </div>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('param.steps')}</span>
+              <input
+                type="number"
+                className={css.number}
+                value={steps}
+                min={1}
+                max={50}
+                onChange={(e) => { setSteps(Math.max(1, Math.min(50, Math.round(Number(e.target.value) || 1)))) }}
+              />
+            </label>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('param.cfgScale')}</span>
+              <input
+                type="number"
+                className={css.number}
+                value={cfgScale}
+                min={0}
+                max={10}
+                step={0.1}
+                onChange={(e) => { setCfgScale(Math.max(0, Math.min(10, Number(e.target.value)))) }}
+              />
+            </label>
+          </div>
+          <div className={css.seedRow}>
+            <span className={css.fieldLabel}>{t('seed.mode')}</span>
+            <div className={css.seedSwitch} role="group" aria-label={t('seed.mode')}>
+              <button
+                type="button"
+                className={`${css.seedSegment} ${seedMode === 'random' ? css.seedSegmentActive : ''}`}
+                aria-pressed={seedMode === 'random'}
+                onClick={() => { setSeedMode('random') }}
+              >
+              🎲 {t('seed.random')}
+              </button>
+              <button
+                type="button"
+                className={`${css.seedSegment} ${seedMode === 'fixed' ? css.seedSegmentActive : ''}`}
+                aria-pressed={seedMode === 'fixed'}
+                onClick={() => { setSeedMode('fixed') }}
+              >
+              🔒 {t('seed.fixed')}
+              </button>
+            </div>
+            {seedMode === 'fixed' && (
+              <>
+                <input
+                  type="number"
+                  className={`${css.number} ${css.seedValue}`}
+                  aria-label={t('seed.fixedValue')}
+                  value={seed}
+                  min={0}
+                  max={catalogValue?.maxSeed}
+                  onChange={(e) => { setSeed(Math.max(0, Math.floor(Number(e.target.value) || 0))) }}
+                />
+                <button
+                  type="button"
+                  className={css.seedDice}
+                  title={t('seed.randomize')}
+                  onClick={() => { setSeed(Math.floor(Math.random() * (catalogValue?.maxSeed ?? 4294967295)) + 1) }}
+                >
+                🎲 {t('seed.randomize')}
+                </button>
+              </>
+            )}
+            {lastSeed !== undefined && (
+              <span className={css.sizeHint}>{t('seed.lastLabel')} {lastSeed}</span>
+            )}
+          </div>
+          <div className={css.footer}>
+            <span className={css.estimate}>
+              {t('estimate')}: <span className={css.estimateValue}>{anlas === undefined ? '…' : anlas === 0 ? t('estimate.free') : String(anlas)}</span>
+            </span>
+            {error !== undefined && <p className={css.errorText} role="alert">{t('error')}: {error}</p>}
+            {done !== undefined && <p className={css.doneText}>{done}</p>}
+            <button type="button" className={css.generateButton} disabled={busy || prompt.trim() === ''} onClick={submitCurrent}>
+              {busy ? t('generating') : t('generate')}
+            </button>
+          </div>
+        </>)}
+        {workbenchTab === 'reverse' && (
+          <div className={css.section}>
+            <div
+              className={css.reverseDrop}
+              onDragOver={(event) => { event.preventDefault() }}
+              onDrop={(event) => {
+                event.preventDefault()
+                const file = event.dataTransfer.files[0]
+                if (file !== undefined) acceptReverseFile(file)
+              }}
+            >
+              {reverseSource !== undefined
+                ? <img className={css.reverseThumb} alt={t('reverse.imageAlt')} src={reverseSource.previewUrl} />
+                : <span className={css.sizeHint}>{t('reverse.dropHint')}</span>}
+              <label className={css.charAction}>
+                {t('reverse.openFile')}
+                <input
+                  type="file"
+                  hidden
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file !== undefined) { acceptReverseFile(file); event.target.value = '' }
+                  }}
+                />
+              </label>
+              {stageEntry !== undefined && reverseSource === undefined && (
+                <button type="button" className={css.charAction} onClick={importStageForReverse}>
+                  {t('reverse.fromStage')}
+                </button>
+              )}
+              {reverseSource !== undefined && (
+                <button type="button" className={css.charAction} onClick={clearReverseSource}>
+                  {t('reverse.clear')}
+                </button>
+              )}
+            </div>
+            {reverseError !== undefined && <p className={css.errorText} role="alert">{reverseError}</p>}
+            <div className={css.seedRow} role="group" aria-label={t('reverse.mode')}>
+              {(['tags', 'natural', 'mixed'] as const).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`${css.seedSegment} ${reverseMode === mode ? css.seedSegmentActive : ''}`}
+                  aria-pressed={reverseMode === mode}
+                  onClick={() => { setReverseMode(mode) }}
+                >
+                  {t(`reverse.mode.${mode}` as const)}
+                </button>
+              ))}
+            </div>
+            <div className={css.seedRow} role="group" aria-label={t('reverse.scope')}>
+              {(['full', 'character', 'object', 'scene'] as const).map(scope => (
+                <button
+                  key={scope}
+                  type="button"
+                  className={`${css.seedSegment} ${reverseScope === scope ? css.seedSegmentActive : ''}`}
+                  aria-pressed={reverseScope === scope}
+                  title={t(`reverse.scope.${scope}.tip` as const)}
+                  onClick={() => { setReverseScope(scope) }}
+                >
+                  {t(`reverse.scope.${scope}` as const)}
+                </button>
+              ))}
+            </div>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('reverse.hint')}</span>
+              <input
+                className={css.number}
+                value={reverseHint}
+                placeholder={t('reverse.hintPlaceholder')}
+                onChange={(event) => { setReverseHint(event.target.value) }}
+              />
+            </label>
+            <label className={css.charCheck}>
+              <input
+                type="checkbox"
+                checked={reverseKnown}
+                onChange={(event) => { setReverseKnown(event.target.checked) }}
+              />
+              {t('reverse.known')}
+            </label>
+            <button
+              type="button"
+              className={css.generateButton}
+              disabled={reverseSource === undefined || reverseBusy}
+              onClick={runReverse}
+            >
+              {reverseBusy ? t('reverse.running') : t('reverse.run')}
+            </button>
+            {reverseResult !== '' && (
+              <div className={css.section}>
+                <span className={css.fieldLabel}>{t('reverse.result')}</span>
+                <textarea className={css.promptArea} value={reverseResult} onChange={(event) => { setReverseResult(event.target.value) }} />
+                {reverseVariants !== undefined && (
+                  <div className={css.charList}>
+                    <div className={css.charRow}>
+                      <strong className={css.charTitle}>{t('reverse.nameVariant')}</strong>
+                      <textarea className={css.charArea} value={reverseVariants.namePrompt} readOnly />
+                      <button type="button" className={css.charAction} onClick={() => { reuseReverseResult(reverseVariants.namePrompt) }}>
+                        {t('reverse.reuse')}
+                      </button>
+                    </div>
+                    <div className={css.charRow}>
+                      <strong className={css.charTitle}>{t('reverse.featureVariant')}</strong>
+                      <textarea className={css.charArea} value={reverseVariants.featurePrompt} readOnly />
+                      <button type="button" className={css.charAction} onClick={() => { reuseReverseResult(reverseVariants.featurePrompt) }}>
+                        {t('reverse.reuse')}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <button type="button" className={css.charAction} onClick={() => { reuseReverseResult(reverseResult) }}>
+                  {t('reverse.reuse')}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {lightbox !== undefined && (
           <div
             className={css.lightbox}

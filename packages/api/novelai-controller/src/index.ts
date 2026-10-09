@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import { Remote, TypertRemoteService, RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -17,6 +19,7 @@ import {
 import { requestTagSuggestions, resolveProxyUrl } from '@deepseek-ai/dsh-novelai-core/node'
 import { NovelaiImageLibrary } from './library.ts'
 import { NOVELAI_WORKBENCH_DEFAULTS, runEnhancement, runGeneration } from './generation.ts'
+import { buildReverseSystemPrompt, buildReverseUserText, parseReverseAnswer } from './reverse.ts'
 import { suggestTagsFromDictionary } from './tags.ts'
 import { TagIndexStore } from './tag-index.ts'
 import type {
@@ -24,6 +27,8 @@ import type {
   NovelaiDownloadTagIndexValue,
   NovelaiEnhanceRequest,
   NovelaiEntryContentValue,
+  NovelaiReverseRequest,
+  NovelaiReverseValue,
   NovelaiEstimateRequest,
   NovelaiEstimateValue,
   NovelaiGenerateRequest,
@@ -66,6 +71,12 @@ export interface NovelaiControllerConfig {
   splitModel: string
   /** Output token budget of the character-split auxiliary call. */
   splitMaxTokens: number
+  /** LLM provider used by the reverse-prompt vision call. */
+  reverseProvider: string
+  /** Vision-capable LLM model used by the reverse-prompt call. */
+  reverseModel: string
+  /** Output token budget of the reverse-prompt call. */
+  reverseMaxTokens: number
 }
 
 /** Host service backing the generated `ctx.remote.novelai` namespace. */
@@ -78,6 +89,9 @@ export class NovelaiController extends TypertRemoteService {
     splitProvider: z.string().default('zai-coding-cn'),
     splitModel: z.string().default('glm-5.3-flash'),
     splitMaxTokens: z.number().default(4096),
+    reverseProvider: z.string().default('zai-coding-cn'),
+    reverseModel: z.string().default('glm-5.3-flash'),
+    reverseMaxTokens: z.number().default(7000),
   })
 
   private readonly config: NovelaiControllerConfig
@@ -331,6 +345,77 @@ export class NovelaiController extends TypertRemoteService {
         ? `拆分输出在 ${String(this.config.splitMaxTokens)} token 处被截断；请在 cordis.yml 调大 novelaiController 的 splitMaxTokens 后重试`
         : raw
       throw new RemoteError('novelai/split-failed', message, { message })
+    }
+  }
+
+  /**
+   * Reverse one imported image into a NovelAI prompt through the configured
+   * vision model (desktop reference parity: reproducible Danbooru output).
+   * @param request - the image and reverse options.
+   * @returns the reversed prompt, plus the identity/appearance variants in
+   *   known-character mode.
+   * @throws RemoteError when no attachment store is mounted or the vision
+   *   call fails or answers unusably.
+   */
+  @Remote('reversePrompt')
+  async reversePrompt(request: NovelaiReverseRequest): Promise<NovelaiReverseValue> {
+    const attachments = this.ctx.get('attachments') as AttachmentStore | undefined
+    if (attachments === undefined) {
+      const message = 'no attachment store mounted: reverse needs one to carry the image to the model'
+      throw new RemoteError('novelai/reverse-failed', message, { message })
+    }
+    const bytes = Uint8Array.from(atob(request.image), ch => ch.charCodeAt(0))
+    let attachment: ImageAttachmentRef
+    try {
+      attachment = await attachments.saveImage({ data: bytes, mediaType: 'image/png', name: 'reverse-source.png' })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new RemoteError('novelai/reverse-failed', message, { message })
+    }
+    const messages: Message[] = [createUserMessage({
+      content: [
+        { type: 'image', attachment },
+        { type: 'text', text: buildReverseUserText(request) },
+      ],
+      source: { kind: 'plugin', plugin: 'dsh-api-novelai-controller' },
+    })]
+    const options: GenerateOptions = {
+      provider: this.config.reverseProvider,
+      model: this.config.reverseModel,
+      messages,
+      system: buildReverseSystemPrompt(request),
+      maxTokens: this.config.reverseMaxTokens,
+      purpose: 'novelai-reverse-prompt',
+      signal: new AbortController().signal,
+    }
+    const assembler = new BlockAssembler()
+    let finishKind: string | undefined
+    try {
+      for await (const chunk of this.ctx.llm.stream(options)) {
+        assembler.push(chunk)
+      }
+      const finish = assembler.finish as { kind?: unknown } | undefined
+      finishKind = typeof finish?.['kind'] === 'string' ? finish['kind'] : undefined
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new RemoteError('novelai/reverse-failed', message, { message })
+    }
+    const text = assembler.blocks()
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join(' ')
+      .trim()
+    if (text === '') {
+      const message = finishKind === 'max-tokens'
+        ? `反推输出在 ${String(this.config.reverseMaxTokens)} token 处被截断；请在 cordis.yml 调大 novelaiController 的 reverseMaxTokens 后重试`
+        : finishKind === undefined ? '反推模型没有返回文本' : `反推模型以 "${finishKind}" 结束且没有文本`
+      throw new RemoteError('novelai/reverse-failed', message, { message })
+    }
+    const answer = parseReverseAnswer(text, request.knownCharacter)
+    return {
+      prompt: answer.prompt,
+      ...(answer.namePrompt === undefined ? {} : { namePrompt: answer.namePrompt }),
+      ...(answer.featurePrompt === undefined ? {} : { featurePrompt: answer.featurePrompt }),
     }
   }
 

@@ -114,4 +114,34 @@ describe('runEnhancement', () => {
       image: 'c291cmNl', width: 512, height: 512, prompt: 'x', strength: 0.2,
     }, { ...base, token: '', outputDir: '.' })).rejects.toThrow(/token/)
   })
+
+  it('records the delivered pixels of an upscaled enhance at the request price', async () => {
+    // A minimal valid PNG declaring 1664×2432 — what the official V5
+    // upscaled enhance returns for an 832×1216 submission.
+    const png = new Uint8Array(33)
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0)
+    png.set([0, 0, 0, 13], 8)
+    png.set([0x49, 0x48, 0x44, 0x52], 12)
+    const view = new DataView(png.buffer)
+    view.setUint32(16, 1664)
+    view.setUint32(20, 2432)
+    const value = await runEnhancement({
+      image: 'c291cmNl',
+      width: 832,
+      height: 1216,
+      prompt: 'solo',
+      model: 'nai-diffusion-5-full',
+      strength: 0.2,
+      upscaledEnhance: true,
+      seed: 3,
+    }, {
+      ...base,
+      outputDir: '.',
+      submit: async () => [png],
+    })
+    expect(value.width).toBe(1664)
+    expect(value.height).toBe(2432)
+    // Pricing stays at the submitted request size.
+    expect(value.anlasEstimate).toBe(estimateAnlas(832, 1216, 28))
+  })
 })

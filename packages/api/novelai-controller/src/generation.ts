@@ -14,6 +14,7 @@ import {
   estimateAnlas,
   generationFileStem,
   maxNovelaiCharacters,
+  readPngSize,
   type NovelaiCharacterInput,
   type NovelaiGenerateInput,
   type NovelaiImg2ImgInput,
@@ -161,6 +162,7 @@ async function settleGeneration(
   input: NovelaiGenerateInput,
   images: readonly Uint8Array[],
   deps: GenerationDeps,
+  delivered?: { width: number; height: number },
 ): Promise<NovelaiGenerationValue> {
   const png = images[0]
   if (png === undefined) throw new Error('the API answered without an image')
@@ -171,8 +173,8 @@ async function settleGeneration(
     id: stem,
     file,
     bytes: png.byteLength,
-    width: input.width,
-    height: input.height,
+    width: delivered?.width ?? input.width,
+    height: delivered?.height ?? input.height,
     seed: input.seed,
     model: input.model,
     steps: input.steps,
@@ -218,7 +220,11 @@ export async function runEnhancement(
     signal: new AbortController().signal,
     proxyUrl: resolveProxyUrl(deps.proxyUrl),
   })
-  return settleGeneration(input, images, deps)
+  // The official upscaled enhance delivers a larger PNG than the submitted
+  // request; the library records the delivered pixels (desktop reference
+  // parity: `actualImageSize`), while pricing stays at the request size.
+  const delivered = input.upscaledEnhance === true ? readPngSize(images[0] ?? new Uint8Array()) : undefined
+  return settleGeneration(input, images, deps, delivered)
 }
 
 /** Human-readable text of one thrown failure, for status matching. */

@@ -166,10 +166,34 @@ export interface NovelaiGenerateRequest {
   readonly seed?: number
   /** Per-character captions; V4+ checkpoints only, capped at 6 (V4/V4.5) or 32 (V5). */
   readonly characters?: readonly NovelaiCharacterPromptRequest[]
-  /** Quality-tag enhancement preset; the workbench default (`standard`) applies when omitted. */
-  readonly qualityPreset?: 'standard' | 'light' | 'none'
-  /** V5-only transparent-background request; forced off for non-V5 checkpoints. */
-  readonly transparentBackground?: boolean
+}
+
+/** One enhance (img2img) request: the generation parameters plus the resized source. */
+export interface NovelaiEnhanceRequest {
+  /** Base64 PNG of the source image, already resized to `width`×`height`. */
+  readonly image: string
+  /** Output width in pixels; the client resized the source to exactly this. */
+  readonly width: number
+  /** Output height in pixels; the client resized the source to exactly this. */
+  readonly height: number
+  /** Positive prompt text; enhancement re-renders the source under this prompt. */
+  readonly prompt: string
+  /** Negative prompt; the host merges its default when omitted or blank. */
+  readonly negativePrompt?: string
+  /** Checkpoint id; a workbench default applies when omitted. */
+  readonly model?: string
+  /** Step count, 1–50. */
+  readonly steps?: number
+  /** CFG scale, 0–10. */
+  readonly cfgScale?: number
+  /** Sampler id. */
+  readonly sampler?: string
+  /** Noise schedule id. */
+  readonly noiseSchedule?: string
+  /** Denoise strength 0–1; conservative values keep the source pose and composition. */
+  readonly strength: number
+  /** Seed; a random seed applies when omitted. */
+  readonly seed?: number
 }
 
 /** One completed generation, recorded in the shared library. Fields the PNG or index row does not carry stay absent. */

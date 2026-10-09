@@ -3,6 +3,7 @@
 import { readFile } from 'node:fs/promises'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import { Remote, TypertRemoteService, RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -15,12 +16,13 @@ import {
 } from '@deepseek-ai/dsh-novelai-core'
 import { requestTagSuggestions, resolveProxyUrl } from '@deepseek-ai/dsh-novelai-core/node'
 import { NovelaiImageLibrary } from './library.ts'
-import { NOVELAI_WORKBENCH_DEFAULTS, runGeneration } from './generation.ts'
+import { NOVELAI_WORKBENCH_DEFAULTS, runEnhancement, runGeneration } from './generation.ts'
 import { suggestTagsFromDictionary } from './tags.ts'
 import { TagIndexStore } from './tag-index.ts'
 import type {
   NovelaiCatalogValue,
   NovelaiDownloadTagIndexValue,
+  NovelaiEnhanceRequest,
   NovelaiEntryContentValue,
   NovelaiEstimateRequest,
   NovelaiEstimateValue,
@@ -125,13 +127,26 @@ export class NovelaiController extends TypertRemoteService {
   }
 
   /**
+   * Resolve the authenticating token through the credential seam — the
+   * `NOVELAI_TOKEN` credential (store over `.env` and environment) first, the
+   * bare environment when no provider is mounted — so a token saved from the
+   * settings row reaches the next workbench generation without a restart.
+   * @returns the token; empty means the host has none configured.
+   */
+  private async resolveToken(): Promise<string> {
+    const credentials = this.ctx.get('credentials')
+    const resolved = await credentials?.resolve(credentialRef('NOVELAI_TOKEN'))
+    return resolved?.value ?? process.env['NOVELAI_TOKEN'] ?? ''
+  }
+
+  /**
    * Submit one paid text-to-image generation and record it in the shared library.
    * @param request - the workbench's partial generation request.
    * @returns the completed generation value.
    */
   @Remote('generate')
   async generate(request: NovelaiGenerateRequest): Promise<NovelaiGenerationValue> {
-    const token = process.env['NOVELAI_TOKEN'] ?? ''
+    const token = await this.resolveToken()
     try {
       await this.library.ensure()
       const value = await runGeneration(request, {
@@ -153,6 +168,43 @@ export class NovelaiController extends TypertRemoteService {
         ...(value.prompt === undefined ? {} : { prompt: value.prompt }),
         ...(value.negativePrompt === undefined ? {} : { negativePrompt: value.negativePrompt }),
         ...(value.characters === undefined ? {} : { characters: value.characters }),
+        createdAt: value.createdAt,
+      })
+      return value
+    } catch (error) {
+      throw this.asRemoteError(error)
+    }
+  }
+
+  /**
+   * Submit one paid enhance (img2img) run over the client-resized source and
+   * record the result in the shared library.
+   * @param request - the workbench's enhance request.
+   * @returns the completed generation value of the enhanced image.
+   */
+  @Remote('enhance')
+  async enhance(request: NovelaiEnhanceRequest): Promise<NovelaiGenerationValue> {
+    const token = await this.resolveToken()
+    try {
+      await this.library.ensure()
+      const value = await runEnhancement(request, {
+        token,
+        proxyUrl: '',
+        baseUrl: 'https://image.novelai.net',
+        timeoutMs: 180_000,
+        outputDir: this.config.outputDir,
+      })
+      await this.library.record({
+        id: value.id,
+        file: value.file,
+        bytes: value.bytes,
+        ...(value.width === undefined ? {} : { width: value.width }),
+        ...(value.height === undefined ? {} : { height: value.height }),
+        ...(value.seed === undefined ? {} : { seed: value.seed }),
+        ...(value.model === undefined ? {} : { model: value.model }),
+        ...(value.steps === undefined ? {} : { steps: value.steps }),
+        ...(value.prompt === undefined ? {} : { prompt: value.prompt }),
+        ...(value.negativePrompt === undefined ? {} : { negativePrompt: value.negativePrompt }),
         createdAt: value.createdAt,
       })
       return value

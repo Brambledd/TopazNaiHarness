@@ -12,6 +12,8 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import {
   RESOLUTION_RATIOS,
   RESOLUTION_TIERS,
+  enhanceOutputSize,
+  enhanceStrength,
   maxDimensionFor,
   nearestRatio,
   nearestTier,
@@ -20,6 +22,7 @@ import {
 } from './resolution.ts'
 import { PromptTextarea } from './autocomplete.tsx'
 import { CapsuleBrowser, STYLE_PRESETS } from './capsule-picker.tsx'
+import { resizeUrlToBase64 } from './enhance-image.ts'
 import type { WorkbenchInjected } from './injected.ts'
 import css from './workbench.module.css'
 
@@ -55,6 +58,7 @@ export function WorkbenchRoot({
   catalog,
   estimate,
   generate,
+  enhance,
   history,
   suggestTags,
   readEntry,
@@ -86,8 +90,10 @@ export function WorkbenchRoot({
   const [seedMode, setSeedMode] = useState<'random' | 'fixed'>('random')
   const [seed, setSeed] = useState(0)
   const [lastSeed, setLastSeed] = useState<number | undefined>(undefined)
-  const [qualityPreset, setQualityPreset] = useState<'standard' | 'light' | 'none'>('standard')
-  const [transparentBackground, setTransparentBackground] = useState(false)
+  /** Enhance panel: open state, magnitude 1–10, and the output scale. */
+  const [enhanceOpen, setEnhanceOpen] = useState(false)
+  const [magnitude, setMagnitude] = useState(3)
+  const [enhanceScale, setEnhanceScale] = useState<1 | 2>(1)
   const [anlas, setAnlas] = useState<number | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
@@ -196,8 +202,6 @@ export function WorkbenchRoot({
       cfgScale,
       sampler,
       noiseSchedule,
-      qualityPreset,
-      ...(transparentBackground ? { transparentBackground: true } : {}),
       ...(negativePrompt.trim() === '' ? {} : { negativePrompt }),
       ...(characters.length === 0 ? {} : { characters: characters.map(toCharacterRequest) }),
       ...(seedMode === 'fixed' ? { seed } : {}),
@@ -397,6 +401,40 @@ export function WorkbenchRoot({
     return () => { strip.removeEventListener('wheel', onWheel) }
   }, [])
 
+  /** The enhance run's output target for the stage entry at the picked scale. */
+  const enhanceTarget = stageEntry?.width === undefined || stageEntry.height === undefined
+    ? undefined
+    : enhanceOutputSize(stageEntry.width, stageEntry.height, enhanceScale)
+
+  /** One enhance run: resize the stage image to the target, then submit img2img. */
+  const runEnhance = (): void => {
+    const url = stageEntry === undefined ? undefined : urlCache.current.get(stageEntry.id)
+    if (stageEntry === undefined || enhanceTarget === undefined || url === undefined || busy) return
+    setBusy(true)
+    setError(undefined)
+    resizeUrlToBase64(url, enhanceTarget.width, enhanceTarget.height).then((image) => {
+      return enhance({
+        image,
+        width: enhanceTarget.width,
+        height: enhanceTarget.height,
+        prompt,
+        ...(negativePrompt.trim() === '' ? {} : { negativePrompt }),
+        model,
+        steps,
+        cfgScale,
+        sampler,
+        noiseSchedule,
+        strength: enhanceStrength(magnitude),
+      })
+    }).then((value) => {
+      setDone(t('enhance.done'))
+      if (value.seed !== undefined) setLastSeed(value.seed)
+      // Follow the newest entry: the enhanced image lands on the stage.
+      setSelectedId(undefined)
+      refreshHistory()
+    }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) }).finally(() => { setBusy(false) })
+  }
+
   return (
     <div className={css.stageLayout}>
       <div className={css.stageColumn}>
@@ -436,6 +474,69 @@ export function WorkbenchRoot({
               {stageEntry.model === undefined ? '' : `${stageEntry.model} · `}
               {stageEntry.file}
             </span>
+            <button
+              type="button"
+              className={css.stageMetaSeed}
+              aria-expanded={enhanceOpen}
+              onClick={() => { setEnhanceOpen(open => !open) }}
+            >
+              {t('enhance.action')}
+            </button>
+          </div>
+        )}
+        {enhanceOpen && stageEntry !== undefined && (
+          <div className={css.enhancePanel} role="region" aria-label={t('enhance.action')}>
+            <label className={css.fieldLabel} htmlFor="enhance-magnitude">
+              {t('enhance.magnitude')}: {magnitude}
+            </label>
+            <input
+              id="enhance-magnitude"
+              type="range"
+              min={1}
+              max={10}
+              step={1}
+              value={magnitude}
+              onChange={(event) => { setMagnitude(Math.max(1, Math.min(10, Math.floor(Number(event.target.value) || 1)))) }}
+            />
+            <p className={css.sizeHint}>{t('enhance.explain')}</p>
+            <div className={css.seedRow} role="group" aria-label={t('enhance.scale')}>
+              <button
+                type="button"
+                className={`${css.seedSegment} ${enhanceScale === 1 ? css.seedSegmentActive : ''}`}
+                aria-pressed={enhanceScale === 1}
+                onClick={() => { setEnhanceScale(1) }}
+              >
+                {t('enhance.scale1')}
+              </button>
+              <button
+                type="button"
+                className={`${css.seedSegment} ${enhanceScale === 2 ? css.seedSegmentActive : ''}`}
+                aria-pressed={enhanceScale === 2}
+                onClick={() => { setEnhanceScale(2) }}
+              >
+                {t('enhance.scale2')}
+              </button>
+            </div>
+            {enhanceTarget !== undefined && (
+              <p className={enhanceTarget.exceedsLimit ? css.errorText : css.sizeHint}>
+                {enhanceTarget.exceedsLimit
+                  ? t('enhance.limit')
+                  : `${stageEntry.width ?? '?'}×${stageEntry.height ?? '?'} → ${enhanceTarget.width}×${enhanceTarget.height}`}
+              </p>
+            )}
+            <div className={css.seedRow}>
+              <button
+                type="button"
+                className={css.generateButton}
+                disabled={busy || enhanceTarget === undefined || enhanceTarget.exceedsLimit}
+                onClick={runEnhance}
+              >
+                {busy ? t('generating') : t('enhance.run')}
+              </button>
+              <button type="button" className={css.charAction} onClick={() => { setEnhanceOpen(false) }}>
+                {t('enhance.close')}
+              </button>
+            </div>
           </div>
         )}
         <div ref={filmstripRef} className={css.filmstrip} aria-label={t('history.label')}>
@@ -517,35 +618,6 @@ export function WorkbenchRoot({
               ))}
             </div>
           )}
-        </div>
-        <div className={css.section}>
-          <span className={css.fieldLabel}>{t('quality.label')}</span>
-          <div className={css.seedRow} role="group" aria-label={t('quality.label')}>
-            {(['standard', 'light', 'none'] as const).map(preset => (
-              <button
-                key={preset}
-                type="button"
-                className={`${css.seedSegment} ${qualityPreset === preset ? css.seedSegmentActive : ''}`}
-                aria-pressed={qualityPreset === preset}
-                disabled={preset === 'light' && !model.startsWith('nai-diffusion-5-')}
-                title={preset === 'light' ? t('quality.lightV5Only') : undefined}
-                onClick={() => { setQualityPreset(preset) }}
-              >
-                {t(`quality.${preset}` as const)}
-              </button>
-            ))}
-            {model.startsWith('nai-diffusion-5-') && (
-              <label className={css.charCheck}>
-                <input
-                  type="checkbox"
-                  checked={transparentBackground}
-                  onChange={(e) => { setTransparentBackground(e.target.checked) }}
-                />
-                {t('quality.transparent')}
-              </label>
-            )}
-          </div>
-          <p className={css.sizeHint}>{t('quality.hint')}</p>
         </div>
         <div className={css.section}>
           <button

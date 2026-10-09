@@ -7,7 +7,7 @@ import {
   MAX_NOVELAI_SEED,
   type NovelaiCharacterInput,
   type NovelaiGenerateInput,
-  type NovelaiQualityPreset,
+  type NovelaiImg2ImgInput,
   type NovelaiWirePayload,
 } from './types.ts'
 
@@ -62,54 +62,6 @@ export function charactersToPipePrompt(prompt: string, characters: readonly Nove
     .join(' | ')
 }
 
-/** Join two comma-separated tag runs; either side may be empty. */
-function mergeTags(left: string, right: string): string {
-  if (right === '') return left
-  if (left === '') return right
-  return `${left}, ${right}`
-}
-
-/** Official per-checkpoint standard quality tags (desktop reference parity). */
-const STANDARD_QUALITY_TAGS: Record<string, string> = {
-  'nai-diffusion-5-full': 'very aesthetic, masterpiece, no text',
-  'nai-diffusion-5-curated': 'very aesthetic, masterpiece, no text',
-  'nai-diffusion-4-5-full': 'very aesthetic, masterpiece, no text',
-  'nai-diffusion-4-5-curated': 'very aesthetic, masterpiece, no text, -0.8::feet::, rating:general',
-  'nai-diffusion-4-full': 'no text, best quality, very aesthetic, absurdres',
-  'nai-diffusion-4-curated-preview': 'rating:general, best quality, very aesthetic, absurdres',
-  'nai-diffusion-3': 'best quality, amazing quality, very aesthetic, absurdres',
-  'nai-diffusion-furry-3': 'best quality, amazing quality, very aesthetic, absurdres',
-}
-
-/** Light preset tags; V5-only at the API. */
-const LIGHT_QUALITY_TAGS = 'very aesthetic, amazing quality, no text'
-
-/**
- * The quality-tag run one preset appends to the positive prompt. `light` on a
- * non-V5 checkpoint falls back to that checkpoint's standard tags (the API
- * accepts light only on V5); when the prompt carries an explicit `Text:`
- * directive, the contradicting `no text` tag drops out (desktop reference
- * parity: keeping both measurably suppresses requested lettering).
- * @param model - checkpoint id.
- * @param preset - selected quality preset.
- * @param prompt - the positive prompt the tags would join.
- * @returns the comma-separated tag run; empty for `none` or unknown checkpoints.
- */
-export function qualityTagSuffix(model: string, preset: NovelaiQualityPreset, prompt: string): string {
-  if (preset === 'none') return ''
-  const tags = preset === 'light' && model.startsWith('nai-diffusion-5-')
-    ? LIGHT_QUALITY_TAGS
-    : STANDARD_QUALITY_TAGS[model] ?? ''
-  if (/(?:^|[\s,;|])Text\s*:\s*\S/i.test(prompt)) {
-    return tags
-      .split(',')
-      .map(tag => tag.trim())
-      .filter(tag => !/^no text$/i.test(tag))
-      .join(', ')
-  }
-  return tags
-}
-
 /**
  * Assemble the text-to-image wire body.
  *
@@ -124,14 +76,6 @@ export function buildNovelaiPayload(input: NovelaiGenerateInput): NovelaiWirePay
   const seed = Math.min(MAX_NOVELAI_SEED, Math.max(0, Math.round(input.seed)))
   const v5 = input.model.startsWith('nai-diffusion-5-')
   const noiseSchedule = v5 ? 'karras' as const : input.noiseSchedule
-  // Quality enhancement (desktop reference parity): the preset's tag run joins
-  // the positive prompt's end; the V5-only transparent request additionally
-  // asks for the alpha channel.
-  const qualityPreset = input.qualityPreset ?? 'none'
-  const transparentBackground = input.transparentBackground === true && v5
-  const effectivePrompt = transparentBackground
-    ? mergeTags(mergeTags(input.prompt, qualityTagSuffix(input.model, qualityPreset, input.prompt)), 'transparent background')
-    : mergeTags(input.prompt, qualityTagSuffix(input.model, qualityPreset, input.prompt))
   const parameters: Record<string, unknown> = {
     params_version: 4,
     width: input.width,
@@ -151,15 +95,6 @@ export function buildNovelaiPayload(input: NovelaiGenerateInput): NovelaiWirePay
     legacy_v3_extend: false,
     dynamic_thresholding: false,
     skip_cfg_above_sigma: null,
-    // Official quality-preset fields the reference frontend submits alongside.
-    qualityPresetId: qualityPreset,
-    qualityToggle: qualityPreset !== 'none',
-    quality_toggle: qualityPreset !== 'none',
-    tag_hint_qt: qualityPreset === 'standard' ? 1 : qualityPreset === 'light' ? 3 : 0,
-  }
-  if (transparentBackground) {
-    parameters.tag_hint_transparent_background = true
-    parameters.straight_alpha = true
   }
   if (isV4Plus(input.model)) {
     // Structured character captions (desktop reference parity): each character keeps
@@ -185,7 +120,7 @@ export function buildNovelaiPayload(input: NovelaiGenerateInput): NovelaiWirePay
     // V4/V4.5/V5 require the structured prompt objects; a request without them
     // (or with empty top-level character lists) fails with HTTP 500.
     parameters.v4_prompt = {
-      caption: { base_caption: effectivePrompt, char_captions: captions },
+      caption: { base_caption: input.prompt, char_captions: captions },
       use_coords: useCoords,
       use_order: true,
     }
@@ -196,7 +131,28 @@ export function buildNovelaiPayload(input: NovelaiGenerateInput): NovelaiWirePay
       legacy_uc: false,
     }
   }
-  return { input: effectivePrompt, model: input.model, action: 'generate', parameters }
+  return { input: input.prompt, model: input.model, action: 'generate', parameters }
+}
+
+/**
+ * Assemble the enhance (img2img) wire body: the text-to-image body with the
+ * resized source attached, the denoise strength clamped to 0–1, and the
+ * official client's fixed fields (`noise: 0`, a fresh `extra_noise_seed`).
+ * @param input - canonical request plus the base64 source.
+ * @param random - source of the extra noise seed.
+ * @returns the JSON body for `POST /ai/generate-image`.
+ */
+export function buildNovelaiImg2ImgPayload(
+  input: NovelaiImg2ImgInput,
+  random: () => number = Math.random,
+): NovelaiWirePayload {
+  const payload = buildNovelaiPayload(input)
+  payload.action = 'img2img'
+  payload.parameters.image = input.image
+  payload.parameters.strength = Math.min(1, Math.max(0, input.strength))
+  payload.parameters.noise = 0
+  payload.parameters.extra_noise_seed = input.extraNoiseSeed ?? Math.floor(random() * MAX_NOVELAI_SEED)
+  return payload
 }
 
 /** Trimmed, coordinate-clamped characters of one request; empty captions drop out. */

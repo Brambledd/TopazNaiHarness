@@ -83,6 +83,21 @@
   flex: none;
 }
 
+/* Enhance panel: sits between the stage meta row and the filmstrip. */
+.enhancePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.enhancePanel input[type='range'] {
+  width: 100%;
+}
+
 .filmThumb {
   flex: none;
   width: 64px;

@@ -11,6 +11,44 @@ export const NAI_DIMENSION_STEP = 64
 export const NAI_MIN_DIMENSION = 64
 /** Official custom-size ceiling: the pair may not exceed 3 Mi pixels. */
 export const NAI_MAX_PIXEL_AREA = 3_145_728
+
+/** The enhance run's output target: 64-snapped sides plus the ceiling verdict. */
+export interface EnhanceTarget {
+  /** Output width in pixels, a multiple of 64. */
+  width: number
+  /** Output height in pixels, a multiple of 64. */
+  height: number
+  /** Whether the target exceeds the official pixel-area ceiling (run disabled). */
+  exceedsLimit: boolean
+}
+
+/**
+ * The enhance output size for one source at one scale: both sides scaled and
+ * snapped to the 64-pixel lattice; a target past the area ceiling reports
+ * `exceedsLimit` instead of silently shrinking (desktop reference parity).
+ * @param sourceWidth - source image width in pixels.
+ * @param sourceHeight - source image height in pixels.
+ * @param scale - 1 keeps the resolution, 2 doubles it.
+ * @returns the snapped target and its ceiling verdict.
+ */
+export function enhanceOutputSize(sourceWidth: number, sourceHeight: number, scale: 1 | 2): EnhanceTarget {
+  const snap = (value: number): number =>
+    Math.max(NAI_MIN_DIMENSION, Math.round((value * scale) / NAI_DIMENSION_STEP) * NAI_DIMENSION_STEP)
+  const width = snap(sourceWidth)
+  const height = snap(sourceHeight)
+  return { width, height, exceedsLimit: width * height > NAI_MAX_PIXEL_AREA }
+}
+
+/**
+ * The enhance denoise strength for one magnitude knob (desktop reference
+ * parity): conservative by default so the source pose and composition survive;
+ * capped at 0.48 because higher values behave like a redraw.
+ * @param magnitude - the 1–10 knob value.
+ * @returns the img2img strength.
+ */
+export function enhanceStrength(magnitude: number): number {
+  return Math.min(0.48, 0.10 + magnitude * 0.034)
+}
 /** A single side can consume the whole area only when the other side is 64. */
 export const NAI_MAX_DIMENSION = NAI_MAX_PIXEL_AREA / NAI_MIN_DIMENSION
 

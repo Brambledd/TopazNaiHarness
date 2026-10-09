@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
-/** Workbench panel behavior: catalog seeding, seed modes, negative fold, autocomplete, history. */
+/** Workbench panel behavior: catalog seeding, seed modes, negative fold, autocomplete, history, enhance. */
+// The enhance canvas pipeline is browser-only (jsdom has no 2d context); the
+// spec replaces it with a fixed base64 answer.
+vi.mock('../src/client/enhance-image.ts', () => ({
+  resizeUrlToBase64: async (_url: string, _width: number, _height: number) => 'cmVzaXplZA==',
+}))
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, act } from '@testing-library/react'
 import type { ComponentProps } from 'react'
@@ -37,13 +42,16 @@ const zh = {
   'capsule.label': '快捷标签',
   'capsule.filter': '搜索标签（中英文均可）',
   'styles.label': '风格库',
-  'quality.label': '图片强化',
-  'quality.standard': '标准',
-  'quality.light': '轻量',
-  'quality.none': '关闭',
-  'quality.lightV5Only': '轻量仅 V5 检查点可用',
-  'quality.hint': '在正面提示词末尾自动追加官方质量词；标准更明显，轻量（仅 V5）干预更少。',
-  'quality.transparent': '透明背景',
+  'enhance.action': '增强',
+  'enhance.magnitude': '增强幅度',
+  'enhance.explain': '增强会以当前正面与负面提示词对舞台图做二次扩散；默认保守强度以保留姿势和构图，提高幅度仍可能改变局部结构。',
+  'enhance.scale': '输出倍率',
+  'enhance.scale1': '1× 保持分辨率',
+  'enhance.scale2': '2× 同时放大',
+  'enhance.limit': '放大后的目标尺寸超过 NovelAI 像素上限；请选择 1× 或换用更小的原图。',
+  'enhance.run': '增强图像',
+  'enhance.close': '收起',
+  'enhance.done': '增强图像已保存。',
   'characters.label': '角色提示词',
   'characters.role': '角色',
   'characters.split': 'AI 拆分角色',
@@ -117,6 +125,14 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     anlasEstimate: 0,
     createdAt: '2026-10-08T00:00:00Z',
   }))
+  const enhance = vi.fn(async (_request: Record<string, unknown>) => ({
+    id: 'x',
+    file: 'workspace/novelai/x.png',
+    bytes: 1,
+    seed: 1234,
+    anlasEstimate: 0,
+    createdAt: '2026-10-08T00:00:00Z',
+  }))
   const splitCharacters = vi.fn(async (_request: { prompt: string }) => ({
     prompt: 'park, masterpiece',
     characters: [
@@ -138,6 +154,7 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     catalog: vi.fn(async () => catalog),
     estimate: vi.fn(async () => ({ anlas: 0 })),
     generate,
+    enhance,
     history: vi.fn(async () => ({ entries: historyEntries, total: historyEntries.length })),
     suggestTags: vi.fn(async () => ({ tags: suggestions })),
     readEntry: vi.fn(async () => ({ data: '', mime: 'image/png' as const })),
@@ -195,34 +212,53 @@ describe('workbench panel', () => {
     expect(area.value).toContain('park')
   })
 
-  it('defaults to the standard quality preset and submits the selection', async () => {
-    const { generate } = mount()
-    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
-    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'a cat' } })
-    fireEvent.click(screen.getByRole('button', { name: '生成' }))
-    await waitFor(() => { expect(generate).toHaveBeenCalledOnce() })
-    expect(generate.mock.calls[0]![0].qualityPreset).toBe('standard')
-    expect(generate.mock.calls[0]![0].transparentBackground).toBeUndefined()
+  it('submits an img2img enhancement of the stage image at the picked scale', async () => {
+    const entries = [{
+      id: 'e1', file: 'workspace/novelai/e1.png', bytes: 10, width: 832, height: 1216, seed: 42, steps: 28,
+      prompt: 'a cat', createdAt: '2026-10-08T00:00:00Z',
+    }]
+    const { props } = makeProps(entries)
+    props.enhance.mockImplementation(async (_request: Record<string, unknown>) => ({
+      id: 'x', file: 'workspace/novelai/x.png', bytes: 1, seed: 99, anlasEstimate: 0, createdAt: '2026-10-09T00:00:00Z',
+    }))
+    const enhance = props.enhance
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    // The stage image must be loaded — its minted object URL feeds the resize.
+    const img = await waitFor(() => {
+      const node = document.querySelector('img[data-entry-id="e1"]') as HTMLImageElement
+      expect(node).toBeTruthy()
+      expect(node.getAttribute('src')).toBeTruthy()
+      return node
+    }, { timeout: 3000 })
+    void img
+    fireEvent.click(screen.getByRole('button', { name: '增强' }))
+    fireEvent.click(screen.getByRole('button', { name: '增强图像' }))
+    await waitFor(() => { expect(enhance).toHaveBeenCalledOnce() })
+    const request = enhance.mock.calls[0]![0] as Record<string, unknown>
+    // 832×1216 snapped at 1× stays 832×1216; strength maps magnitude 3 conservatively.
+    expect(request.width).toBe(832)
+    expect(request.height).toBe(1216)
+    expect(request.strength).toBeCloseTo(0.202, 3)
+    expect(typeof request.image).toBe('string')
   })
 
-  it('switches the quality preset off and exposes transparency only on V5', async () => {
-    const { generate } = mount()
-    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
-    // The default checkpoint is V5: the light preset and the transparent
-    // checkbox are both reachable.
-    const light = screen.getByRole('button', { name: '轻量' }) as HTMLButtonElement
-    expect(light.disabled).toBe(false)
-    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'a cat' } })
-    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
-    fireEvent.click(screen.getByLabelText('透明背景'))
-    fireEvent.click(screen.getByRole('button', { name: '生成' }))
-    await waitFor(() => { expect(generate).toHaveBeenCalledOnce() })
-    expect(generate.mock.calls[0]![0].qualityPreset).toBe('none')
-    expect(generate.mock.calls[0]![0].transparentBackground).toBe(true)
-    // On a V4.5 checkpoint, light disables and the checkbox disappears.
-    fireEvent.change(screen.getByLabelText('模型'), { target: { value: 'nai-diffusion-4-5-full' } })
-    expect((screen.getByRole('button', { name: '轻量' }) as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.queryByLabelText('透明背景')).toBeNull()
+  it('doubles the enhance target at 2× and blocks a past-ceiling target', async () => {
+    const entries = [{
+      id: 'e1', file: 'workspace/novelai/e1.png', bytes: 10, width: 1856, height: 2176, seed: 42, steps: 28,
+      prompt: 'a cat', createdAt: '2026-10-08T00:00:00Z',
+    }]
+    const { props } = makeProps(entries)
+    props.enhance.mockImplementation(async (_request: Record<string, unknown>) => ({
+      id: 'x', file: 'f', bytes: 1, seed: 99, anlasEstimate: 0, createdAt: '2026-10-09T00:00:00Z',
+    }))
+    const enhance = props.enhance
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await screen.findByTitle('查看大图', {}, { timeout: 3000 })
+    fireEvent.click(screen.getByRole('button', { name: '增强' }))
+    fireEvent.click(screen.getByRole('button', { name: '2× 同时放大' }))
+    expect(screen.getByText(/超过 NovelAI 像素上限/)).toBeTruthy()
+    expect((screen.getByRole('button', { name: '增强图像' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(enhance).not.toHaveBeenCalled()
   })
 
   it('omits the seed in random mode and sends it in fixed mode', async () => {

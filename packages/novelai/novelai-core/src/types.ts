@@ -37,12 +37,6 @@ export const NOVELAI_NOISE_SCHEDULES = ['native', 'karras', 'exponential', 'poly
 /** One selectable noise schedule. */
 export type NovelaiNoiseSchedule = (typeof NOVELAI_NOISE_SCHEDULES)[number]
 
-/** Official quality-tag enhancement preset; `light` is V5-only at the API. */
-export const NOVELAI_QUALITY_PRESETS = ['standard', 'light', 'none'] as const
-
-/** One selectable quality-tag preset. */
-export type NovelaiQualityPreset = (typeof NOVELAI_QUALITY_PRESETS)[number]
-
 /** Inclusive upper bound of a NovelAI seed (the API rejects anything above `0xffffffff`). */
 export const MAX_NOVELAI_SEED = 0xffff_ffff
 
@@ -84,22 +78,28 @@ export interface NovelaiGenerateInput {
   noiseSchedule: NovelaiNoiseSchedule
   /** Seed, 0–`MAX_NOVELAI_SEED` inclusive. */
   seed: number
-  /** Quality-tag enhancement preset; absent applies none (tool requests stay verbatim). */
-  qualityPreset?: NovelaiQualityPreset
-  /** V5-only transparent-background request: appends the tag and asks for the alpha channel. */
-  transparentBackground?: boolean
 }
 
-/** Wire body of `POST /ai/generate-image` (text-to-image, `action: "generate"`). */
+/** Wire body of `POST /ai/generate-image` (text-to-image and enhance/img2img). */
 export interface NovelaiWirePayload {
   /** Positive prompt text. */
   input: string
   /** Checkpoint id. */
   model: NovelaiModel
-  /** Requested action; this library only submits `generate`. */
-  action: 'generate'
+  /** Requested action; text-to-image submits `generate`, enhance submits `img2img`. */
+  action: 'generate' | 'img2img'
   /** Generation parameters as the API expects them. */
   parameters: Record<string, unknown>
+}
+
+/** Enhance (img2img) request: a canonical generation plus the resized source. */
+export interface NovelaiImg2ImgInput extends NovelaiGenerateInput {
+  /** Base64 PNG of the source image, already resized to `width`×`height`. */
+  image: string
+  /** Denoise strength 0–1; conservative values keep the source pose and composition. */
+  strength: number
+  /** Extra noise seed; a fresh random applies when omitted. */
+  extraNoiseSeed?: number
 }
 
 /** Canonical result of one successful generation. */

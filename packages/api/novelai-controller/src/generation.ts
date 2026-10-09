@@ -8,6 +8,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   DEFAULT_NEGATIVE_PROMPT,
+  buildNovelaiImg2ImgPayload,
   buildNovelaiPayload,
   charactersToPipePrompt,
   estimateAnlas,
@@ -15,12 +16,18 @@ import {
   maxNovelaiCharacters,
   type NovelaiCharacterInput,
   type NovelaiGenerateInput,
+  type NovelaiImg2ImgInput,
   type NovelaiModel,
   type NovelaiNoiseSchedule,
   type NovelaiSampler,
 } from '@deepseek-ai/dsh-novelai-core'
 import { requestGeneration, resolveProxyUrl } from '@deepseek-ai/dsh-novelai-core/node'
-import type { NovelaiCharacterPromptValue, NovelaiGenerateRequest, NovelaiGenerationValue } from './types.ts'
+import type {
+  NovelaiCharacterPromptValue,
+  NovelaiEnhanceRequest,
+  NovelaiGenerateRequest,
+  NovelaiGenerationValue,
+} from './types.ts'
 
 /** Workbench defaults: the Opus-friendly V4.5 profile (832×1216 at 28 steps is free on an active Opus subscription). */
 export const NOVELAI_WORKBENCH_DEFAULTS: NovelaiGenerateInput = {
@@ -34,7 +41,6 @@ export const NOVELAI_WORKBENCH_DEFAULTS: NovelaiGenerateInput = {
   sampler: 'k_euler',
   noiseSchedule: 'native',
   seed: 0,
-  qualityPreset: 'standard',
 }
 
 /**
@@ -68,11 +74,6 @@ export function resolveGenerationRequest(
     sampler: (request.sampler ?? NOVELAI_WORKBENCH_DEFAULTS.sampler) as NovelaiSampler,
     noiseSchedule: (request.noiseSchedule ?? NOVELAI_WORKBENCH_DEFAULTS.noiseSchedule) as NovelaiNoiseSchedule,
     seed: request.seed ?? Math.floor(randomSeed() * 0xffff_ffff),
-    qualityPreset: request.qualityPreset ?? 'standard',
-    // Transparent background is a V5-only API capability; the request clamps here.
-    ...(request.transparentBackground === true && model.startsWith('nai-diffusion-5-')
-      ? { transparentBackground: true }
-      : {}),
   }
 }
 
@@ -152,6 +153,15 @@ export async function runGeneration(
       signal: new AbortController().signal,
     })
   }
+  return settleGeneration(input, images, deps)
+}
+
+/** Save the returned PNG and project the completed generation value. */
+async function settleGeneration(
+  input: NovelaiGenerateInput,
+  images: readonly Uint8Array[],
+  deps: GenerationDeps,
+): Promise<NovelaiGenerationValue> {
   const png = images[0]
   if (png === undefined) throw new Error('the API answered without an image')
   const stem = generationFileStem(input.seed)
@@ -172,6 +182,38 @@ export async function runGeneration(
     createdAt: new Date().toISOString(),
     anlasEstimate: estimateAnlas(input.width, input.height, input.steps),
   }
+}
+
+/**
+ * Run one workbench enhancement end to end: resolve the generation parameters,
+ * attach the client-resized source image, submit once (never retried — a paid
+ * submission may already have produced an image), and settle into the library
+ * exactly like a text-to-image generation.
+ * @param request - the browser's enhance request.
+ * @param deps - submission dependencies.
+ * @returns the completed generation value as served to the workbench.
+ * @throws when no token is configured or the submission fails.
+ */
+export async function runEnhancement(
+  request: NovelaiEnhanceRequest,
+  deps: GenerationDeps,
+): Promise<NovelaiGenerationValue> {
+  if (deps.token.trim() === '') throw new Error('no NovelAI token configured')
+  const input: NovelaiImg2ImgInput = {
+    ...resolveGenerationRequest(request),
+    image: request.image,
+    strength: request.strength,
+  }
+  const submit = deps.submit ?? requestGeneration
+  const images = await submit({
+    payload: buildNovelaiImg2ImgPayload(input),
+    token: deps.token,
+    baseUrl: deps.baseUrl,
+    timeoutMs: deps.timeoutMs,
+    signal: new AbortController().signal,
+    proxyUrl: resolveProxyUrl(deps.proxyUrl),
+  })
+  return settleGeneration(input, images, deps)
 }
 
 /** Human-readable text of one thrown failure, for status matching. */

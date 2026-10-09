@@ -3,6 +3,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkbenchBackfillRequest } from './bridge.ts'
 import type {
   NovelaiCatalogValue,
+  NovelaiEnhanceRequest,
   NovelaiEntryContentValue,
   NovelaiEstimateRequest,
   NovelaiEstimateValue,
@@ -25,6 +26,8 @@ export interface WorkbenchInjected extends ModeSwitchInjected {
   estimate: (request: NovelaiEstimateRequest) => Promise<NovelaiEstimateValue>
   /** Submit one paid generation. */
   generate: (request: NovelaiGenerateRequest) => Promise<NovelaiGenerationValue>
+  /** Submit one paid enhance (img2img) run over the client-resized source. */
+  enhance: (request: NovelaiEnhanceRequest) => Promise<NovelaiGenerationValue>
   /** Read the first library page (newest first). */
   history: () => Promise<NovelaiHistoryValue>
   /** Suggest Danbooru tags for one partial prompt word. */

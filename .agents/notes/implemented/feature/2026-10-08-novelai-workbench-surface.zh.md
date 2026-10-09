@@ -1,4 +1,4 @@
-# Agent Note：NovelAI 创作台（互动画板、tag 联想、历史画布、快捷标签）
+# Agent Note：NovelAI 创作台（互动画板、tag 联想、历史画布、快捷标签、角色提示词）
 
 状态：已实现
 
@@ -10,11 +10,15 @@
 
 ## 决定
 
-创作台是一个功能包 `@deepseek-ai/dsh-client-ui-novelai-workbench`，注册进 layout 的 `'workbench'` 槽位。侧栏带 对话/创作台 模式开关，底层是 `LayoutState.viewMode`；AppFrame 让两个中栏常驻、只隐藏一个，因此切换时生成状态不丢。宿主侧是 `NovelaiController` 的 Remote 命名空间（`novelai`）：`catalog`、`estimate`、`generate`、`history`、`removeEntry`、`suggestTags`、`readEntry`。
+创作台是一个功能包 `@deepseek-ai/dsh-client-ui-novelai-workbench`，注册进 layout 的 `'workbench'` 槽位。侧栏带 对话/创作台 模式开关，底层是 `LayoutState.viewMode`；AppFrame 让两个中栏常驻、只隐藏一个，因此切换时生成状态不丢。宿主侧是 `NovelaiController` 的 Remote 命名空间（`novelai`）：`catalog`、`estimate`、`generate`、`history`、`removeEntry`、`suggestTags`、`readEntry`、`tagIndexStatus`、`downloadTagIndex`、`splitCharacters`。
 
 **注入声明。** 客户端插件调用生成的 Remote 命名空间时必须同时声明聚合与点路径命名空间——`inject = ['remote', 'remote.novelai']`——与 ui-conversation（`remote.session`）、ui-commands（`remote.commands`）的先例一致。只声明点路径会让 `ctx.remote` 取不到；只声明聚合会让命名空间属性取不到。本系列第一轮在线调试就栽在这里，后续所有 remote 消费方都必须沿用这个约定。
 
 **参数面板（桌面同款）。** 分辨率沿用桌面模型：五档像素（0.4/1/1.5/2/3 MP，0.4 档固定 409 600 px）× 十三个画面比例，由 64px 格点搜索求解——在官方 3Mi 像素上限下按「比例误差 + 面积利用」打分；手动宽高在失焦或回车时提交，对齐 64px 并夹到配对边的最大合法值。种子是 🎲随机/🔒固定 两段开关；固定档展示数值框和骰子随机按钮，生成完成后展示实际使用的种子。Anlas 报价随宽高步数实时刷新（350ms 防抖）。负面提示词是受控折叠。
+
+**结构化角色提示词（桌面同款）。** V4+ 模型把每个角色的描述序列化进线格式：`v4_prompt.caption.char_captions`，以及——仅当至少一个角色填了负面时——`v4_negative_prompt.caption.char_captions`；`use_coords` 同时写在顶层与两个结构体内部，`use_order` 恒为 `true`，每条描述必须带一个中心点——AI 自选站位用 (0.5, 0.5) 哨兵值，因为 `centers` 为空时 API 直接 HTTP 500。容量按模型封顶（V4/V4.5 为 6，V5 为 32，V3 为 0 并隐藏面板分区）。坐标夹到 0–1 图像空间。当 API 以 HTTP 400/422 拒绝结构化请求体——这是扣费前的校验阶段——控制器把各角色描述折叠成竖线拼接（`主提示词 | 角色1 | 角色2`）并恰好重试一次。完成的条目会记录角色数据；回填与一键变体会还原它们。
+
+**AI 角色拆分。** 「一键拆分」按钮把合并提示词发给新的 `splitCharacters` 动词，后者执行一次辅助 LLM 调用（Config `splitProvider`/`splitModel`，默认沿用 agent 自身的路由），指令要求严格 JSON：角色限定标签拆成逐角色条目，全局的场景/构图/画质标签留在主提示词，答案做宽容解析（JSON 前后的说明文字被忽略，不可用答案映射为 `novelai/split-failed` 命名空间错误）。成功后面板把主提示词替换为返回的基础文案，并为每个角色填一张卡片；拆分结果只留在 UI，仅随用户显式发起的生成再外发。
 
 **Tag 联想。** 两个提示词输入框打字时提取光标处单词（含中文），80ms 防抖并携带单调递增的请求号——迟到的旧响应不会覆盖更新一批结果——然后查询 `suggestTags`：先查本地双语 Danbooru 索引（见下），再走 NovelAI `suggest-tags` 端点（Bearer、5s 超时、走代理），失败或为空时回退到内置词典（约 134 条策展词条，移植自 MIT 的桌面版），排序为 精确 > 前缀 > 包含，同分按热度。下拉经镜像 div 探测锚定在光标行下方，最多 8 条，方向键导航、Enter/Tab 采纳、Escape 关闭，输入法组字期间保持静默。
 
@@ -36,4 +40,4 @@
 
 ## 影响
 
-`packages/client/ui-novelai-workbench`（面板、联想、胶囊、历史）、`packages/api/novelai-controller`（命名空间动词、词典、评分）与 `packages/novelai/novelai-core`（`requestTagSuggestions`) 扩展；api-remotes 的客户端 bundle 内嵌再生成的命名空间，控制器动词变更后必须重建该 bundle——陈旧的 remotes bundle 表现为属性代理静默失配，因此动词新增在重建 bundle 并刷新页面前不算完成。组件 spec 覆盖面板、联想、胶囊与历史行为；宿主 spec 覆盖词典评分。已知暂缓项：上述会话推送互通与风格预设持久化。
+`packages/client/ui-novelai-workbench`（面板、联想、胶囊、历史、角色卡片）、`packages/api/novelai-controller`（命名空间动词、词典、评分、角色拆分 LLM 调用）与 `packages/novelai/novelai-core`（`requestTagSuggestions`、结构化角色载荷序列化）扩展；api-remotes 的客户端 bundle 内嵌再生成的命名空间，控制器动词变更后必须重建该 bundle——陈旧的 remotes bundle 表现为属性代理静默失配，因此动词新增在重建 bundle 并刷新页面前不算完成。组件 spec 覆盖面板、联想、胶囊、历史与角色卡片行为；宿主 spec 覆盖词典评分、拆分答案解析与竖线回退。已知暂缓项：上述会话推送互通、风格预设持久化，以及可拖拽站位画布（当前卡片以数值 X/Y 输入）。

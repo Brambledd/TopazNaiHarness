@@ -9,15 +9,18 @@ import { join } from 'node:path'
 import {
   DEFAULT_NEGATIVE_PROMPT,
   buildNovelaiPayload,
+  charactersToPipePrompt,
   estimateAnlas,
   generationFileStem,
+  maxNovelaiCharacters,
+  type NovelaiCharacterInput,
   type NovelaiGenerateInput,
   type NovelaiModel,
   type NovelaiNoiseSchedule,
   type NovelaiSampler,
 } from '@deepseek-ai/dsh-novelai-core'
 import { requestGeneration, resolveProxyUrl } from '@deepseek-ai/dsh-novelai-core/node'
-import type { NovelaiGenerateRequest, NovelaiGenerationValue } from './types.ts'
+import type { NovelaiCharacterPromptValue, NovelaiGenerateRequest, NovelaiGenerationValue } from './types.ts'
 
 /** Workbench defaults: the Opus-friendly V4.5 profile (832×1216 at 28 steps is free on an active Opus subscription). */
 export const NOVELAI_WORKBENCH_DEFAULTS: NovelaiGenerateInput = {
@@ -50,10 +53,13 @@ export function resolveGenerationRequest(
   const negativePrompt = request.negativePrompt === undefined || request.negativePrompt.trim() === ''
     ? NOVELAI_WORKBENCH_DEFAULTS.negativePrompt
     : request.negativePrompt
+  const model = (request.model ?? NOVELAI_WORKBENCH_DEFAULTS.model) as NovelaiModel
+  const characters = resolveCharacters(request.characters, model)
   return {
     prompt: request.prompt,
     negativePrompt,
-    model: (request.model ?? NOVELAI_WORKBENCH_DEFAULTS.model) as NovelaiModel,
+    ...(characters === undefined ? {} : { characters }),
+    model,
     width: request.width ?? NOVELAI_WORKBENCH_DEFAULTS.width,
     height: request.height ?? NOVELAI_WORKBENCH_DEFAULTS.height,
     steps: request.steps ?? NOVELAI_WORKBENCH_DEFAULTS.steps,
@@ -62,6 +68,24 @@ export function resolveGenerationRequest(
     noiseSchedule: (request.noiseSchedule ?? NOVELAI_WORKBENCH_DEFAULTS.noiseSchedule) as NovelaiNoiseSchedule,
     seed: request.seed ?? Math.floor(randomSeed() * 0xffff_ffff),
   }
+}
+
+/** Normalize the request's characters: trim, drop empties, clamp coordinates, clamp to the model capacity. */
+function resolveCharacters(
+  characters: NovelaiGenerateRequest['characters'],
+  model: NovelaiModel,
+): NovelaiCharacterInput[] | undefined {
+  const normalized = (characters ?? [])
+    .map(character => ({
+      prompt: character.prompt.trim(),
+      negativePrompt: (character.negativePrompt ?? '').trim(),
+      useCoords: character.useCoords,
+      x: Math.min(1, Math.max(0, character.x)),
+      y: Math.min(1, Math.max(0, character.y)),
+    }))
+    .filter(character => character.prompt !== '')
+    .slice(0, maxNovelaiCharacters(model))
+  return normalized.length === 0 ? undefined : normalized
 }
 
 /** Submission dependencies of one generation, injectable for tests. */
@@ -96,14 +120,32 @@ export async function runGeneration(
   if (deps.token.trim() === '') throw new Error('no NovelAI token configured')
   const input = resolveGenerationRequest(request)
   const submit = deps.submit ?? requestGeneration
-  const images = await submit({
+  const submitOptions = {
     payload: buildNovelaiPayload(input),
     token: deps.token,
     baseUrl: deps.baseUrl,
     timeoutMs: deps.timeoutMs,
     signal: new AbortController().signal,
     proxyUrl: resolveProxyUrl(deps.proxyUrl),
-  })
+  }
+  let images: Uint8Array[]
+  try {
+    images = await submit(submitOptions)
+  } catch (error) {
+    // A 400/422 is a pre-charge validation rejection; desktop reference parity folds
+    // the structured captions into one pipe-joined prompt and retries exactly once.
+    if (input.characters === undefined || !/HTTP 400 |HTTP 422 /.test(describe(error))) throw error
+    const piped: NovelaiGenerateInput = {
+      ...input,
+      prompt: charactersToPipePrompt(input.prompt, input.characters),
+      characters: [],
+    }
+    images = await submit({
+      ...submitOptions,
+      payload: buildNovelaiPayload(piped),
+      signal: new AbortController().signal,
+    })
+  }
   const png = images[0]
   if (png === undefined) throw new Error('the API answered without an image')
   const stem = generationFileStem(input.seed)
@@ -120,7 +162,24 @@ export async function runGeneration(
     steps: input.steps,
     prompt: input.prompt,
     negativePrompt: input.negativePrompt,
+    ...(input.characters === undefined ? {} : { characters: toCharacterValues(input.characters) }),
     createdAt: new Date().toISOString(),
     anlasEstimate: estimateAnlas(input.width, input.height, input.steps),
   }
+}
+
+/** Human-readable text of one thrown failure, for status matching. */
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** Project resolved character inputs onto the wire value. */
+function toCharacterValues(characters: readonly NovelaiCharacterInput[]): NovelaiCharacterPromptValue[] {
+  return characters.map(character => ({
+    prompt: character.prompt,
+    negativePrompt: character.negativePrompt,
+    useCoords: character.useCoords,
+    x: character.x,
+    y: character.y,
+  }))
 }

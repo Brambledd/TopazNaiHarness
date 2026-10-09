@@ -40,12 +40,28 @@ export type NovelaiNoiseSchedule = (typeof NOVELAI_NOISE_SCHEDULES)[number]
 /** Inclusive upper bound of a NovelAI seed (the API rejects anything above `0xffffffff`). */
 export const MAX_NOVELAI_SEED = 0xffff_ffff
 
+/** One per-character caption of a V4+ structured prompt. */
+export interface NovelaiCharacterInput {
+  /** The character's own positive prompt. */
+  prompt: string
+  /** The character's own negative prompt; empty shares nothing extra. */
+  negativePrompt: string
+  /** Whether the image fixes this character at `(x, y)`; false leaves placement to the model. */
+  useCoords: boolean
+  /** Horizontal placement in the 0–1 image space when `useCoords`. */
+  x: number
+  /** Vertical placement in the 0–1 image space when `useCoords`. */
+  y: number
+}
+
 /** Canonical text-to-image request after defaults are resolved. */
 export interface NovelaiGenerateInput {
   /** Positive prompt; Danbooru-style tags for anime checkpoints. */
   prompt: string
   /** Negative prompt; already merged with the default heavy preset when the caller sent none. */
   negativePrompt: string
+  /** Per-character captions; V4+ checkpoints only, capped by the checkpoint generation. */
+  characters?: NovelaiCharacterInput[]
   /** Checkpoint to submit. */
   model: NovelaiModel
   /** Image width in pixels, a positive multiple of 64. */

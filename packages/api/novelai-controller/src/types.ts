@@ -13,6 +13,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'novelai/library-unavailable': { readonly path: string }
     /** The requested library entry does not exist or was already removed. */
     'novelai/entry-missing': { readonly id: string }
+    /** The character-split auxiliary model call failed or returned unusable output. */
+    'novelai/split-failed': { readonly message: string }
   }
 }
 
@@ -51,6 +53,34 @@ export interface NovelaiEstimateRequest {
 /** Anlas price quote. */
 export interface NovelaiEstimateValue {
   readonly anlas: number
+}
+
+/** One per-character caption of a workbench generation request. */
+export interface NovelaiCharacterPromptRequest {
+  /** The character's own positive prompt. */
+  readonly prompt: string
+  /** The character's own negative prompt; empty when unset. */
+  readonly negativePrompt?: string
+  /** Whether the request fixes this character at `(x, y)`. */
+  readonly useCoords: boolean
+  /** Horizontal placement in the 0–1 image space. */
+  readonly x: number
+  /** Vertical placement in the 0–1 image space. */
+  readonly y: number
+}
+
+/** One per-character caption recorded with a completed generation. */
+export interface NovelaiCharacterPromptValue {
+  /** The character's own positive prompt. */
+  readonly prompt: string
+  /** The character's own negative prompt; empty when unset. */
+  readonly negativePrompt: string
+  /** Whether the generation fixed this character at `(x, y)`. */
+  readonly useCoords: boolean
+  /** Horizontal placement in the 0–1 image space. */
+  readonly x: number
+  /** Vertical placement in the 0–1 image space. */
+  readonly y: number
 }
 
 /** Tag suggestion request for workbench prompt autocomplete. */
@@ -134,6 +164,8 @@ export interface NovelaiGenerateRequest {
   readonly noiseSchedule?: string
   /** Seed; a random seed applies when omitted. */
   readonly seed?: number
+  /** Per-character captions; V4+ checkpoints only, capped at 6 (V4/V4.5) or 32 (V5). */
+  readonly characters?: readonly NovelaiCharacterPromptRequest[]
 }
 
 /** One completed generation, recorded in the shared library. Fields the PNG or index row does not carry stay absent. */
@@ -151,10 +183,26 @@ export interface NovelaiGenerationValue {
   readonly steps?: number
   readonly prompt?: string
   readonly negativePrompt?: string
+  /** Per-character captions the generation carried, when known. */
+  readonly characters?: readonly NovelaiCharacterPromptValue[]
   /** ISO-8601 creation instant. */
   readonly createdAt: string
   /** Estimated Anlas charge; 0 when the entry's parameters are unknown. */
   readonly anlasEstimate: number
+}
+
+/** LLM character-split request: one merged prompt to decompose. */
+export interface NovelaiSplitCharactersRequest {
+  /** The merged prompt text to split. */
+  readonly prompt: string
+}
+
+/** LLM character-split result: the remaining base prompt plus one entry per character. */
+export interface NovelaiSplitCharactersValue {
+  /** Prompt text that stays in the base caption (scene, composition, quality). */
+  readonly prompt: string
+  /** One entry per character, in the order the model found them. */
+  readonly characters: readonly NovelaiCharacterPromptValue[]
 }
 
 /** Library page request; paging walks newest-first. */

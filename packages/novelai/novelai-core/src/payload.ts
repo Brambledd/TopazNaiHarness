@@ -5,6 +5,7 @@
 
 import {
   MAX_NOVELAI_SEED,
+  type NovelaiCharacterInput,
   type NovelaiGenerateInput,
   type NovelaiWirePayload,
 } from './types.ts'
@@ -31,6 +32,33 @@ const STEP_PIXEL_COEFFICIENT = 5753298233447344e-22
  */
 export function isV4Plus(model: string): boolean {
   return model.startsWith('nai-diffusion-4-') || model.startsWith('nai-diffusion-5-')
+}
+
+/**
+ * Report whether the checkpoint accepts structured character captions.
+ * @param model - checkpoint id to test.
+ * @returns true for every V4+ checkpoint.
+ */
+export function supportsNovelaiCharacters(model: string): boolean {
+  return isV4Plus(model)
+}
+
+/**
+ * Report the per-request character-caption capacity of one checkpoint.
+ * @param model - checkpoint id to test.
+ * @returns 32 for V5, 6 for V4/V4.5, 0 for anything older.
+ */
+export function maxNovelaiCharacters(model: string): number {
+  if (model.startsWith('nai-diffusion-5-')) return 32
+  return isV4Plus(model) ? 6 : 0
+}
+
+/** Fold per-character captions into one pipe-joined prompt (`base | char1 | char2`). */
+export function charactersToPipePrompt(prompt: string, characters: readonly NovelaiCharacterInput[]): string {
+  if (characters.length === 0) return prompt
+  return [prompt, ...characters.map(character => character.prompt.trim())]
+    .filter(part => part !== '')
+    .join(' | ')
 }
 
 /**
@@ -68,21 +96,59 @@ export function buildNovelaiPayload(input: NovelaiGenerateInput): NovelaiWirePay
     skip_cfg_above_sigma: null,
   }
   if (isV4Plus(input.model)) {
+    // Structured character captions (desktop reference parity): each character keeps
+    // its own caption and, when any character carries one, its own negative caption.
+    // The API requires one center per caption even for model-chosen placement — an
+    // empty centers array fails with HTTP 500 — so (0.5, 0.5) is the AI-choice sentinel.
+    const characters = normalizeCharacters(input)
+    const cap = maxNovelaiCharacters(input.model)
+    const useCoords = characters.some(character => character.useCoords)
+    const captions = characters.slice(0, cap).map(character => ({
+      char_caption: character.prompt,
+      centers: [{ x: character.useCoords ? clampUnit(character.x) : 0.5, y: character.useCoords ? clampUnit(character.y) : 0.5 }],
+    }))
+    const negativeCaptions = characters.slice(0, cap).some(character => character.negativePrompt !== '')
+      ? characters.slice(0, cap).map(character => ({
+        char_caption: character.negativePrompt,
+        centers: [{ x: character.useCoords ? clampUnit(character.x) : 0.5, y: character.useCoords ? clampUnit(character.y) : 0.5 }],
+      }))
+      : []
+    // The desktop reference writes the flag at the top level as well as inside
+    // both structured objects; the API reads the top-level one.
+    parameters.use_coords = useCoords
     // V4/V4.5/V5 require the structured prompt objects; a request without them
     // (or with empty top-level character lists) fails with HTTP 500.
     parameters.v4_prompt = {
-      caption: { base_caption: input.prompt, char_captions: [] },
-      use_coords: false,
+      caption: { base_caption: input.prompt, char_captions: captions },
+      use_coords: useCoords,
       use_order: true,
     }
     parameters.v4_negative_prompt = {
-      caption: { base_caption: input.negativePrompt, char_captions: [] },
-      use_coords: false,
+      caption: { base_caption: input.negativePrompt, char_captions: negativeCaptions },
+      use_coords: useCoords,
       use_order: false,
       legacy_uc: false,
     }
   }
   return { input: input.prompt, model: input.model, action: 'generate', parameters }
+}
+
+/** Trimmed, coordinate-clamped characters of one request; empty captions drop out. */
+function normalizeCharacters(input: NovelaiGenerateInput): NovelaiCharacterInput[] {
+  return (input.characters ?? [])
+    .map(character => ({
+      prompt: character.prompt.trim(),
+      negativePrompt: character.negativePrompt.trim(),
+      useCoords: character.useCoords,
+      x: clampUnit(character.x),
+      y: clampUnit(character.y),
+    }))
+    .filter(character => character.prompt !== '')
+}
+
+/** Clamp one placement coordinate into the 0–1 image space. */
+function clampUnit(value: number): number {
+  return Math.min(1, Math.max(0, value))
 }
 
 /**

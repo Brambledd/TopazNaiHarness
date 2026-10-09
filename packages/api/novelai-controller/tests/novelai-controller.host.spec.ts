@@ -14,8 +14,9 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map(ctx => ctx.fiber.dispose()))
 })
 
-/** Service harness over a temporary output directory. */
-function harness(): { controller: NovelaiController; library: NovelaiImageLibrary; dir: string } {
+/** Service harness over a temporary output directory.
+ * @param llmText - text streamed back by the fake LLM for the split call. */
+function harness(llmText = ''): { controller: NovelaiController; library: NovelaiImageLibrary; dir: string } {
   const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-novelai-controller-')))
   const ctx = new Context()
   roots.push(ctx)
@@ -23,8 +24,14 @@ function harness(): { controller: NovelaiController; library: NovelaiImageLibrar
     lookups: { configure: () => (): void => {} },
     contexts: { configureHost: () => (): void => {} },
   } as never)
+  ctx.provide('llm', {
+    stream: async function* () {
+      yield { type: 'text-delta', index: 0, text: llmText }
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    },
+  } as never)
   const library = new NovelaiImageLibrary(dir)
-  return { controller: new NovelaiController(ctx, { outputDir: dir, tagIndexPath: join(dir, 'tag-index.csv') }), library, dir }
+  return { controller: new NovelaiController(ctx, { outputDir: dir, tagIndexPath: join(dir, 'tag-index.csv'), splitProvider: 'mock', splitModel: 'mock' }), library, dir }
 }
 
 describe('NovelaiController verbs', () => {
@@ -77,6 +84,26 @@ describe('NovelaiController verbs', () => {
     const { controller } = harness()
     expect(await controller.status()).toMatchObject({ downloaded: false, count: 0, sizeBytes: 0 })
     expect(await controller.suggestTags({ prompt: '  ' })).toEqual({ tags: [] })
+  })
+
+  it('splits a merged prompt into base and per-character captions through the LLM', async () => {
+    const text = '{"prompt":"park, masterpiece","characters":[{"prompt":"1girl, blue hair"},{"prompt":"1girl, red hair","negativePrompt":"extra ears"}]}'
+    const { controller } = harness(`Here you go: ${text}`)
+    const value = await controller.splitCharacters({ prompt: 'park, masterpiece, 2girls, blue hair, red hair' })
+    expect(value.prompt).toBe('park, masterpiece')
+    expect(value.characters).toHaveLength(2)
+    expect(value.characters[0]).toMatchObject({ prompt: '1girl, blue hair', negativePrompt: '', useCoords: false })
+    expect(value.characters[1]?.negativePrompt).toBe('extra ears')
+  })
+
+  it('maps an unusable split answer to the namespace error', async () => {
+    const { controller } = harness('I cannot do that')
+    await expect(controller.splitCharacters({ prompt: '1girl' })).rejects.toMatchObject({ code: 'novelai/split-failed' })
+  })
+
+  it('answers a blank split request without calling the model', async () => {
+    const { controller } = harness()
+    expect(await controller.splitCharacters({ prompt: '   ' })).toEqual({ prompt: '', characters: [] })
   })
 
   it('maps a missing token to the namespace error', async () => {

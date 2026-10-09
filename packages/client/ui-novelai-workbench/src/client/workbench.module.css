@@ -356,6 +356,64 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+/* Character prompt rows (desktop reference parity) */
+.charList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.charActions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.charAction {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.charAction:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.charRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.charHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.charTitle {
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.charArea {
+  min-height: 52px;
+}
+
+.charCoords {
+  display: flex;
+  gap: 8px;
+}
+
 /* Style library row */
 .styleRow {
   display: flex;

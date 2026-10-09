@@ -3,6 +3,8 @@
 import { readFile } from 'node:fs/promises'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import { Remote, TypertRemoteService, RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import {
   MAX_NOVELAI_SEED,
@@ -29,6 +31,8 @@ import type {
   NovelaiReadEntryRequest,
   NovelaiRemoveRequest,
   NovelaiRemoveValue,
+  NovelaiSplitCharactersRequest,
+  NovelaiSplitCharactersValue,
   NovelaiSuggestTagsRequest,
   NovelaiTagIndexStatusValue,
   NovelaiTagSuggestionsValue,
@@ -54,15 +58,21 @@ export interface NovelaiControllerConfig {
   outputDir: string
   /** On-disk location of the optional bilingual Danbooru tag index CSV (downloaded, never bundled). */
   tagIndexPath: string
+  /** LLM provider used by the character-split auxiliary call. */
+  splitProvider: string
+  /** LLM model used by the character-split auxiliary call. */
+  splitModel: string
 }
 
 /** Host service backing the generated `ctx.remote.novelai` namespace. */
 export class NovelaiController extends TypertRemoteService {
-  static inject = ['typert']
+  static inject = ['typert', 'llm']
 
   static Config: z<NovelaiControllerConfig> = z.object({
     outputDir: z.string().default('workspace/novelai'),
     tagIndexPath: z.string().default('workspace/novelai/danbooru-cn.csv'),
+    splitProvider: z.string().default('zai-coding-cn'),
+    splitModel: z.string().default('glm-5.3-flash'),
   })
 
   private readonly config: NovelaiControllerConfig
@@ -139,6 +149,7 @@ export class NovelaiController extends TypertRemoteService {
         ...(value.steps === undefined ? {} : { steps: value.steps }),
         ...(value.prompt === undefined ? {} : { prompt: value.prompt }),
         ...(value.negativePrompt === undefined ? {} : { negativePrompt: value.negativePrompt }),
+        ...(value.characters === undefined ? {} : { characters: value.characters }),
         createdAt: value.createdAt,
       })
       return value
@@ -244,6 +255,66 @@ export class NovelaiController extends TypertRemoteService {
   }
 
   /**
+   * Split one merged prompt into a base prompt plus per-character captions with an
+   * auxiliary LLM call. The base keeps scene, composition, and quality tags; each
+   * character receives its own Danbooru caption.
+   * @param request - the merged prompt to decompose.
+   * @returns the remaining base prompt and the ordered character captions.
+   */
+  @Remote('splitCharacters')
+  async splitCharacters(request: NovelaiSplitCharactersRequest): Promise<NovelaiSplitCharactersValue> {
+    const prompt = request.prompt.trim()
+    if (prompt === '') return { prompt: '', characters: [] }
+    try {
+      const text = await this.completeSplit(prompt)
+      return parseSplitResponse(text, prompt)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new RemoteError('novelai/split-failed', message, { message })
+    }
+  }
+
+  /** Run one auxiliary LLM completion for the split and return its text output. */
+  private async completeSplit(prompt: string): Promise<string> {
+    const system
+      = 'You split anime image-generation prompts into per-character captions. '
+      + 'Answer with STRICT JSON only, no markdown, no explanation: '
+      + '{"prompt":"<base tags that are not character-specific>","characters":[{"prompt":"<one character tags>","negativePrompt":"<optional per-character negative tags>"}]}. '
+      + 'Rules: every character (1girl, 2girls, 1boy, multiple counts, named characters) becomes one entry in order; '
+      + 'character-scoped tags (hair, eyes, outfit, pose of that character) move into that character entry; '
+      + 'global tags (scene, background, composition, angle, lighting, quality, style) stay in the base prompt; '
+      + 'keep Danbooru tag style, English, comma-separated; never invent tags that are not implied by the input.'
+    const messages: Message[] = [createUserMessage({
+      content: [{ type: 'text', text: prompt }],
+      source: { kind: 'plugin', plugin: 'dsh-api-novelai-controller' },
+    })]
+    const options: GenerateOptions = {
+      provider: this.config.splitProvider,
+      model: this.config.splitModel,
+      messages,
+      system,
+      maxTokens: 1024,
+      purpose: 'novelai-split-characters',
+      signal: new AbortController().signal,
+    }
+    const assembler = new BlockAssembler()
+    for await (const chunk of this.ctx.llm.stream(options)) {
+      assembler.push(chunk)
+    }
+    const finish = assembler.finish as { kind?: unknown } | undefined
+    if (finish !== undefined && finish['kind'] !== undefined && finish['kind'] !== 'stop') {
+      throw new Error(`split model finished with "${String(finish['kind'])}"`)
+    }
+    const text = assembler.blocks()
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join(' ')
+      .trim()
+    if (text === '') throw new Error('split model produced no text')
+    return text
+  }
+
+  /**
    * Read one library entry's PNG bytes for workbench display.
    * @param request - the entry to read.
    * @returns the base64-encoded PNG content.
@@ -277,24 +348,60 @@ export class NovelaiController extends TypertRemoteService {
   }
 }
 
-/** Project a library entry onto the wire value. */
-function toGenerationValue(entry: Awaited<ReturnType<NovelaiImageLibrary['list']>>[number]): NovelaiGenerationValue {
-  return {
-    id: entry.id,
-    file: entry.file,
-    bytes: entry.bytes,
-    ...(entry.width === undefined ? {} : { width: entry.width }),
-    ...(entry.height === undefined ? {} : { height: entry.height }),
-    ...(entry.seed === undefined ? {} : { seed: entry.seed }),
-    ...(entry.model === undefined ? {} : { model: entry.model }),
-    ...(entry.steps === undefined ? {} : { steps: entry.steps }),
-    ...(entry.prompt === undefined ? {} : { prompt: entry.prompt }),
-    ...(entry.negativePrompt === undefined ? {} : { negativePrompt: entry.negativePrompt }),
-    createdAt: entry.createdAt,
-    anlasEstimate: entry.width === undefined || entry.height === undefined || entry.steps === undefined
-      ? 0
-      : estimateAnlas(entry.width, entry.height, entry.steps),
+/**
+ * Parse one split-model answer into the wire value, tolerating prose around the JSON.
+ * @param text - the model's text output.
+ * @param fallbackPrompt - the original prompt, used when the model omits the base prompt.
+ * @returns the base prompt and ordered character captions.
+ */
+export function parseSplitResponse(text: string, fallbackPrompt: string): NovelaiSplitCharactersValue {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start === -1 || end <= start) throw new Error('split model answer contains no JSON object')
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text.slice(start, end + 1))
+  } catch {
+    throw new Error('split model answer is not valid JSON')
   }
+  if (typeof parsed !== 'object' || parsed === null) throw new Error('split model answer is not an object')
+  const record = parsed as Record<string, unknown>
+  const base = typeof record['prompt'] === 'string' ? record['prompt'].trim() : ''
+  const list = Array.isArray(record['characters']) ? record['characters'] : []
+  const characters = list.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null) return []
+    const item = entry as Record<string, unknown>
+    const caption = typeof item['prompt'] === 'string' ? item['prompt'].trim() : ''
+    if (caption === '') return []
+    return [{
+      prompt: caption,
+      negativePrompt: typeof item['negativePrompt'] === 'string' ? item['negativePrompt'].trim() : '',
+      useCoords: false,
+      x: 0.5,
+      y: 0.5,
+    }]
+  })
+  return { prompt: base === '' ? fallbackPrompt : base, characters }
+}
+
+/** Project a library entry onto the wire value. */
+function toGenerationValue(entry: Awaited<ReturnType<NovelaiImageLibrary['list']>>[number]): NovelaiGenerationValue {  return {
+  id: entry.id,
+  file: entry.file,
+  bytes: entry.bytes,
+  ...(entry.width === undefined ? {} : { width: entry.width }),
+  ...(entry.height === undefined ? {} : { height: entry.height }),
+  ...(entry.seed === undefined ? {} : { seed: entry.seed }),
+  ...(entry.model === undefined ? {} : { model: entry.model }),
+  ...(entry.steps === undefined ? {} : { steps: entry.steps }),
+  ...(entry.prompt === undefined ? {} : { prompt: entry.prompt }),
+  ...(entry.negativePrompt === undefined ? {} : { negativePrompt: entry.negativePrompt }),
+  ...(entry.characters === undefined ? {} : { characters: entry.characters }),
+  createdAt: entry.createdAt,
+  anlasEstimate: entry.width === undefined || entry.height === undefined || entry.steps === undefined
+    ? 0
+    : estimateAnlas(entry.width, entry.height, entry.steps),
+}
 }
 
 export default NovelaiController

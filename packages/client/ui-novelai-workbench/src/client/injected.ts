@@ -8,6 +8,8 @@ import type {
   NovelaiGenerationValue,
   NovelaiHistoryValue,
   NovelaiReadEntryRequest,
+  NovelaiSplitCharactersRequest,
+  NovelaiSplitCharactersValue,
   NovelaiSuggestTagsRequest,
   NovelaiTagSuggestionsValue,
 } from '@deepseek-ai/dsh-api-novelai-controller/types'
@@ -27,6 +29,8 @@ export interface WorkbenchInjected extends ModeSwitchInjected {
   suggestTags: (request: NovelaiSuggestTagsRequest) => Promise<NovelaiTagSuggestionsValue>
   /** Read one library entry's PNG bytes. */
   readEntry: (request: NovelaiReadEntryRequest) => Promise<NovelaiEntryContentValue>
+  /** Split one merged prompt into base plus per-character captions with the host LLM. */
+  splitCharacters: (request: NovelaiSplitCharactersRequest) => Promise<NovelaiSplitCharactersValue>
 }
 
 /** Mode-switch callbacks. */

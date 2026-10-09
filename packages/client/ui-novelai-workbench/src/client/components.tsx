@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   NovelaiCatalogValue,
+  NovelaiCharacterPromptRequest,
+  NovelaiCharacterPromptValue,
   NovelaiGenerateRequest,
   NovelaiGenerationValue,
 } from '@deepseek-ai/dsh-api-novelai-controller/types'
@@ -22,6 +24,22 @@ import css from './workbench.module.css'
 
 type Tier = (typeof RESOLUTION_TIERS)[number]
 
+/** Editable per-character caption row of the panel. */
+interface CharacterDraft {
+  id: string
+  prompt: string
+  negativePrompt: string
+  useCoords: boolean
+  x: number
+  y: number
+}
+
+/** Per-request character capacity of one checkpoint (desktop reference parity). */
+function maxCharactersFor(model: string): number {
+  if (model.startsWith('nai-diffusion-5-')) return 32
+  return model.startsWith('nai-diffusion-4-') ? 6 : 0
+}
+
 /** Tier label keys, dot-free so they stay plain locale dictionary members. */
 const TIER_LABEL_KEYS: Record<Tier, 'param.tier.0_4' | 'param.tier.1' | 'param.tier.1_5' | 'param.tier.2' | 'param.tier.3'> = {
   0.4: 'param.tier.0_4',
@@ -39,6 +57,7 @@ export function WorkbenchRoot({
   history,
   suggestTags,
   readEntry,
+  splitCharacters,
   setViewMode,
   t,
 }: PropsRuntime<'workbench'> & WorkbenchInjected & PropsLocale<'novelai-workbench'>) {
@@ -47,6 +66,10 @@ export function WorkbenchRoot({
   const [negativePrompt, setNegativePrompt] = useState('')
   const [negativeOpen, setNegativeOpen] = useState(false)
   const [capsuleOpen, setCapsuleOpen] = useState(false)
+  const [characters, setCharacters] = useState<CharacterDraft[]>([])
+  const [charactersOpen, setCharactersOpen] = useState(false)
+  const [splitting, setSplitting] = useState(false)
+  const characterIdRef = useRef(0)
   const [model, setModel] = useState('')
   const [sampler, setSampler] = useState('')
   const [noiseSchedule, setNoiseSchedule] = useState('')
@@ -160,9 +183,56 @@ export function WorkbenchRoot({
       sampler,
       noiseSchedule,
       ...(negativePrompt.trim() === '' ? {} : { negativePrompt }),
+      ...(characters.length === 0 ? {} : { characters: characters.map(toCharacterRequest) }),
       ...(seedMode === 'fixed' ? { seed } : {}),
     }
     submit(request)
+  }
+
+  /** Project one draft onto the wire request shape. */
+  const toCharacterRequest = (draft: CharacterDraft): NovelaiCharacterPromptRequest => ({
+    prompt: draft.prompt,
+    ...(draft.negativePrompt.trim() === '' ? {} : { negativePrompt: draft.negativePrompt }),
+    useCoords: draft.useCoords,
+    x: draft.x,
+    y: draft.y,
+  })
+
+  /** Mint a fresh local row id. */
+  const nextCharacterId = (): string => {
+    characterIdRef.current += 1
+    return `character-${String(characterIdRef.current)}`
+  }
+
+  const addCharacter = (): void => {
+    setCharacters(current => [...current, { id: nextCharacterId(), prompt: '', negativePrompt: '', useCoords: false, x: 0.5, y: 0.5 }])
+  }
+
+  const updateCharacter = (id: string, patch: Partial<CharacterDraft>): void => {
+    setCharacters(current => current.map(draft => (draft.id === id ? { ...draft, ...patch } : draft)))
+  }
+
+  const removeCharacter = (id: string): void => {
+    setCharacters(current => current.filter(draft => draft.id !== id))
+  }
+
+  /** One LLM call: decompose the merged prompt into base plus per-character captions. */
+  const splitIntoCharacters = (): void => {
+    if (prompt.trim() === '' || splitting) return
+    setSplitting(true)
+    setError(undefined)
+    splitCharacters({ prompt }).then((value) => {
+      setPrompt(value.prompt)
+      setCharacters(value.characters.map(character => ({
+        id: nextCharacterId(),
+        prompt: character.prompt,
+        negativePrompt: character.negativePrompt,
+        useCoords: false,
+        x: 0.5,
+        y: 0.5,
+      })))
+      setCharactersOpen(true)
+    }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) }).finally(() => { setSplitting(false) })
   }
 
   /** One-click variation: the entry's parameters with a fresh random seed. */
@@ -174,6 +244,7 @@ export function WorkbenchRoot({
     if (entry.width !== undefined) setWidth(entry.width)
     if (entry.height !== undefined) setHeight(entry.height)
     if (entry.steps !== undefined) setSteps(entry.steps)
+    if (entry.characters !== undefined) setCharacters(entry.characters.map(toCharacterDraft))
     setSeedMode('random')
     submit({
       prompt: entry.prompt,
@@ -185,6 +256,7 @@ export function WorkbenchRoot({
       sampler,
       noiseSchedule,
       ...(entry.negativePrompt === undefined || entry.negativePrompt.trim() === '' ? {} : { negativePrompt: entry.negativePrompt }),
+      ...(entry.characters === undefined || entry.characters.length === 0 ? {} : { characters: entry.characters }),
     })
     setLightbox(undefined)
   }
@@ -198,6 +270,8 @@ export function WorkbenchRoot({
     if (entry.width !== undefined) setWidth(entry.width)
     if (entry.height !== undefined) setHeight(entry.height)
     if (entry.steps !== undefined) setSteps(entry.steps)
+    setCharacters((entry.characters ?? []).map(toCharacterDraft))
+    if (entry.characters !== undefined && entry.characters.length > 0) setCharactersOpen(true)
     if (entry.seed !== undefined) {
       setSeedMode('fixed')
       setSeed(entry.seed)
@@ -205,6 +279,16 @@ export function WorkbenchRoot({
     setDone(undefined)
     setLightbox(undefined)
   }
+
+  /** Project one recorded character caption onto an editable draft row. */
+  const toCharacterDraft = (character: NovelaiCharacterPromptValue): CharacterDraft => ({
+    id: nextCharacterId(),
+    prompt: character.prompt,
+    negativePrompt: character.negativePrompt,
+    useCoords: character.useCoords,
+    x: character.x,
+    y: character.y,
+  })
 
   /** Mint (or reuse) the object URL of one entry's PNG. */
   const entryUrl = (entry: NovelaiGenerationValue): string | undefined => {
@@ -286,6 +370,117 @@ export function WorkbenchRoot({
           />
         )}
       </div>
+      {maxCharactersFor(model) > 0 && (
+        <div className={css.section}>
+          <button
+            type="button"
+            className={css.foldHeader}
+            aria-expanded={charactersOpen}
+            onClick={() => { setCharactersOpen(open => !open) }}
+          >
+            <span className={`${css.chevron} ${charactersOpen ? css.chevronOpen : ''}`}>▾</span>
+            {t('characters.label')}{characters.length > 0 ? ` · ${String(characters.length)}` : ''}
+          </button>
+          {charactersOpen && (
+            <div className={css.charList}>
+              <div className={css.charActions}>
+                <button
+                  type="button"
+                  className={css.charAction}
+                  disabled={splitting || prompt.trim() === ''}
+                  onClick={splitIntoCharacters}
+                >
+                  {splitting ? t('characters.splitting') : t('characters.split')}
+                </button>
+                <button
+                  type="button"
+                  className={css.charAction}
+                  disabled={characters.length >= maxCharactersFor(model)}
+                  onClick={addCharacter}
+                >
+                  {t('characters.add')}
+                </button>
+                <button
+                  type="button"
+                  className={css.charAction}
+                  disabled={characters.length === 0}
+                  onClick={() => { setCharacters([]) }}
+                >
+                  {t('characters.clear')}
+                </button>
+              </div>
+              {characters.map((draft, index) => (
+                <div key={draft.id} className={css.charRow}>
+                  <div className={css.charHead}>
+                    <strong className={css.charTitle}>{t('characters.role')} {String(index + 1)}</strong>
+                    <button
+                      type="button"
+                      className={css.charAction}
+                      onClick={() => { updateCharacter(draft.id, { useCoords: !draft.useCoords }) }}
+                    >
+                      {draft.useCoords ? t('characters.position.custom') : t('characters.position.ai')}
+                    </button>
+                    <button
+                      type="button"
+                      className={css.charAction}
+                      aria-label={`${t('characters.remove')} ${String(index + 1)}`}
+                      onClick={() => { removeCharacter(draft.id) }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <PromptTextarea
+                    value={draft.prompt}
+                    onChange={(next) => { updateCharacter(draft.id, { prompt: next }) }}
+                    suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
+                    placeholder={t('characters.placeholder')}
+                    ariaLabel={`${t('characters.role')} ${String(index + 1)}`}
+                    className={css.charArea}
+                  />
+                  <PromptTextarea
+                    value={draft.negativePrompt}
+                    onChange={(next) => { updateCharacter(draft.id, { negativePrompt: next }) }}
+                    suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
+                    placeholder={t('characters.negativePlaceholder')}
+                    ariaLabel={`${t('characters.role')} ${String(index + 1)} ${t('characters.negative')}`}
+                    className={css.charArea}
+                  />
+                  {draft.useCoords && (
+                    <div className={css.charCoords}>
+                      <label className={css.field}>
+                        <span className={css.fieldLabel}>{t('characters.x')}</span>
+                        <input
+                          type="number"
+                          className={css.select}
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={draft.x}
+                          aria-label={`${t('characters.role')} ${String(index + 1)} X`}
+                          onChange={(e) => { updateCharacter(draft.id, { x: Number(e.target.value) }) }}
+                        />
+                      </label>
+                      <label className={css.field}>
+                        <span className={css.fieldLabel}>{t('characters.y')}</span>
+                        <input
+                          type="number"
+                          className={css.select}
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={draft.y}
+                          aria-label={`${t('characters.role')} ${String(index + 1)} Y`}
+                          onChange={(e) => { updateCharacter(draft.id, { y: Number(e.target.value) }) }}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <div className={css.paramGrid}>
         <label className={css.field}>
           <span className={css.fieldLabel}>{t('param.model')}</span>

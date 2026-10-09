@@ -15,6 +15,9 @@
       "path": "../../../vendor/schemastery"
     },
     {
+      "path": "../../llm/llm"
+    },
+    {
       "path": "../../novelai/novelai-core"
     },
     {

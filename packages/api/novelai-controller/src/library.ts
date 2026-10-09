@@ -8,6 +8,7 @@
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, resolve } from 'node:path'
 import { parseNovelaiPngMeta, readPngSize } from '@deepseek-ai/dsh-novelai-core'
+import type { NovelaiCharacterPromptValue } from './types.ts'
 
 /** One image recorded in the shared library. */
 export interface NovelaiLibraryEntry {
@@ -24,6 +25,8 @@ export interface NovelaiLibraryEntry {
   readonly steps?: number
   readonly prompt?: string
   readonly negativePrompt?: string
+  /** Per-character captions recorded with the submission. */
+  readonly characters?: readonly NovelaiCharacterPromptValue[]
   /** ISO-8601 creation instant of the PNG file. */
   readonly createdAt: string
 }

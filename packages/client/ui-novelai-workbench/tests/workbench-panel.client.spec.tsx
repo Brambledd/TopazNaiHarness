@@ -37,6 +37,20 @@ const zh = {
   'capsule.label': '快捷标签',
   'capsule.filter': '搜索标签（中英文均可）',
   'styles.label': '风格库',
+  'characters.label': '角色提示词',
+  'characters.role': '角色',
+  'characters.split': 'AI 拆分角色',
+  'characters.splitting': '拆分中…',
+  'characters.add': '添加角色',
+  'characters.clear': '清空',
+  'characters.remove': '删除角色',
+  'characters.placeholder': '该角色的标签…',
+  'characters.negative': '负面',
+  'characters.negativePlaceholder': '该角色专属负面标签…',
+  'characters.position.ai': 'AI 摆位',
+  'characters.position.custom': '自定义站位',
+  'characters.x': 'X',
+  'characters.y': 'Y',
   'history.label': '历史',
   'history.empty': '还没有图片',
   'lightbox.close': '关闭',
@@ -81,6 +95,13 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     anlasEstimate: 0,
     createdAt: '2026-10-08T00:00:00Z',
   }))
+  const splitCharacters = vi.fn(async (_request: { prompt: string }) => ({
+    prompt: 'park, masterpiece',
+    characters: [
+      { prompt: '1girl, blue hair', negativePrompt: '', useCoords: false, x: 0.5, y: 0.5 },
+      { prompt: '1girl, red hair', negativePrompt: 'extra ears', useCoords: false, x: 0.5, y: 0.5 },
+    ],
+  }))
   const suggestions: NovelaiTagSuggestion[] = [
     { tag: '1girl', count: 19_000_000, category: 0, description: '一个女孩' },
     { tag: '1boy', count: 8_000_000, category: 0, description: '一个男孩' },
@@ -92,18 +113,19 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     history: vi.fn(async () => ({ entries: historyEntries, total: historyEntries.length })),
     suggestTags: vi.fn(async () => ({ tags: suggestions })),
     readEntry: vi.fn(async () => ({ data: '', mime: 'image/png' as const })),
+    splitCharacters,
     setViewMode: vi.fn(),
     useSessions: (() => { throw new Error('workbench must not read global hooks') }) as never,
     useWorkspaces: (() => { throw new Error('workbench must not read global hooks') }) as never,
     t: (key: keyof typeof zh) => zh[key],
   }
-  return { props, generate }
+  return { props, generate, splitCharacters }
 }
 
 function mount() {
-  const { props, generate } = makeProps()
+  const { props, generate, splitCharacters } = makeProps()
   const view = render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
-  return { view, generate }
+  return { view, generate, splitCharacters }
 }
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
@@ -270,5 +292,103 @@ describe('prompt autocomplete', () => {
     expect(area.value).toBe('a cat')
     const seedInput = screen.getByLabelText('种子值') as HTMLInputElement
     expect(seedInput.value).toBe('42')
+  })
+})
+
+describe('character prompts', () => {
+  /** Open the character fold after the catalog defaults have landed. */
+  async function openCharacters(): Promise<void> {
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.click(screen.getByRole('button', { name: /角色提示词/ }))
+  }
+
+  it('adds a character card and submits it with the generation', async () => {
+    const { generate } = mount()
+    await openCharacters()
+    fireEvent.click(screen.getByRole('button', { name: '添加角色' }))
+    const area = screen.getByLabelText('角色 1') as HTMLTextAreaElement
+    fireEvent.change(area, { target: { value: '1girl, blue hair' } })
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park' } })
+    fireEvent.click(screen.getByRole('button', { name: '生成' }))
+    await waitFor(() => { expect(generate).toHaveBeenCalledOnce() })
+    const request = generate.mock.calls[0]![0]
+    expect(request.characters).toEqual([
+      { prompt: '1girl, blue hair', useCoords: false, x: 0.5, y: 0.5 },
+    ])
+  })
+
+  it('omits characters when the panel stays empty', async () => {
+    const { generate } = mount()
+    await openCharacters()
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'a cat' } })
+    fireEvent.click(screen.getByRole('button', { name: '生成' }))
+    await waitFor(() => { expect(generate).toHaveBeenCalledOnce() })
+    expect('characters' in generate.mock.calls[0]![0]).toBe(false)
+  })
+
+  it('splits the merged prompt into base and character cards with one LLM call', async () => {
+    const { splitCharacters } = mount()
+    await openCharacters()
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park, 2girls, blue hair, red hair' } })
+    fireEvent.click(screen.getByRole('button', { name: 'AI 拆分角色' }))
+    expect(splitCharacters).toHaveBeenCalledWith({ prompt: 'park, 2girls, blue hair, red hair' })
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('park, masterpiece')
+    })
+    expect(screen.getByLabelText('角色 1')).toBeTruthy()
+    expect(screen.getByLabelText('角色 2')).toBeTruthy()
+    expect((screen.getByLabelText('角色 1') as HTMLTextAreaElement).value).toBe('1girl, blue hair')
+    expect((screen.getByLabelText('角色 2 负面') as HTMLTextAreaElement).value).toBe('extra ears')
+  })
+
+  it('removes a character card through its row button', async () => {
+    mount()
+    await openCharacters()
+    fireEvent.click(screen.getByRole('button', { name: '添加角色' }))
+    fireEvent.click(screen.getByRole('button', { name: '添加角色' }))
+    expect(screen.getByLabelText('角色 2')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '删除角色 1' }))
+    expect(screen.queryByLabelText('角色 2')).toBeNull()
+    expect((screen.getByLabelText('角色 1') as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('restores recorded characters on backfill and variation', async () => {
+    const entry = {
+      id: 'e1',
+      file: 'workspace/novelai/e1.png',
+      bytes: 10,
+      width: 832,
+      height: 1216,
+      seed: 42,
+      steps: 28,
+      prompt: 'park',
+      characters: [
+        { prompt: '1girl, blue hair', negativePrompt: '', useCoords: false, x: 0.5, y: 0.5 },
+      ],
+      createdAt: '2026-10-08T00:00:00Z',
+    }
+    const { props, generate } = makeProps([entry])
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    const tile = await screen.findByRole('button', { name: 'park' }, { timeout: 3000 })
+    fireEvent.click(tile)
+    fireEvent.click(screen.getByRole('button', { name: '回填参数' }))
+    expect(screen.getByLabelText('角色 1')).toBeTruthy()
+    expect((screen.getByLabelText('角色 1') as HTMLTextAreaElement).value).toBe('1girl, blue hair')
+    fireEvent.click(screen.getByRole('button', { name: 'park' }), { detail: 1 })
+    fireEvent.click(await screen.findByRole('button', { name: '变体' }, { timeout: 3000 }))
+    await waitFor(() => { expect(generate).toHaveBeenCalledOnce() })
+    expect(generate.mock.calls[0]![0].characters).toEqual([
+      { prompt: '1girl, blue hair', negativePrompt: '', useCoords: false, x: 0.5, y: 0.5 },
+    ])
+  })
+
+  it('enforces the V4.5 capacity of six cards', async () => {
+    mount()
+    await openCharacters()
+    for (let i = 0; i < 6; i += 1) {
+      fireEvent.click(screen.getByRole('button', { name: '添加角色' }))
+    }
+    expect(screen.getByLabelText('角色 6')).toBeTruthy()
+    expect((screen.getByRole('button', { name: '添加角色' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })

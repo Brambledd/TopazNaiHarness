@@ -26,7 +26,6 @@ import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-shell-env'
-import { ARMOR_PROMPT_ORDER, ARMOR_PROMPT_SECTION_NAME, ARMOR_PROMPT_TEXT } from './armor-prompt.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'web-app'
@@ -54,12 +53,6 @@ export interface Config {
    * orientation text would be false.
    */
   surfaceContext: boolean
-  /**
-   * Register the always-on Infinite Generation Three armor system-prompt
-   * section (the forked agent's built-in instruction set, ported from
-   * dsh-infinite-gen-3). Off switches the fork back to the stock persona.
-   */
-  armorPrompt: boolean
   /** Explicit `--trusted-host` authorities from this invocation. */
   trustedHosts: string[]
 }
@@ -68,7 +61,6 @@ export const Config: z<Config> = z.object({
   openBrowser: z.boolean().default(true),
   printUrl: z.boolean().default(true),
   surfaceContext: z.boolean().default(true),
-  armorPrompt: z.boolean().default(true),
   trustedHosts: z.array(String).default([]),
 })
 
@@ -263,15 +255,6 @@ export function apply(ctx: Context, config: Config): void {
           [DSH_WEB_URL]: { description: 'Canonical local URL of the DeepSeek Harness Web GUI serving this session.' },
         },
         resolve: () => ({ [DSH_WEB_URL]: localWebUrl(runtimeCtx) }),
-      })
-    })
-  }
-  if (config.armorPrompt) {
-    ctx.inject(['systemPrompt'], (armorCtx) => {
-      armorCtx.systemPrompt.section({
-        name: ARMOR_PROMPT_SECTION_NAME,
-        order: ARMOR_PROMPT_ORDER,
-        text: ARMOR_PROMPT_TEXT,
       })
     })
   }

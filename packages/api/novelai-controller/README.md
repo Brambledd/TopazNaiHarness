@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-api-novelai-controller
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 `dsh-api-novelai-controller` owns the Host `ctx.novelaiController` service and the generated Client `ctx.remote.novelai` namespace. Its Remote verbs serve the generation catalog (checkpoints, samplers, noise schedules, workbench defaults), quote Anlas prices, submit paid text-to-image generations, and read the shared output library — a JSON index merged with a directory scan of the configured output directory, so workbench generations and `novelai_generate` tool calls appear as one history. The workbench generates through this namespace directly; no model turn or tool call is involved.
@@ -70,10 +72,19 @@ The NovelAI token is read from the `NOVELAI_TOKEN` environment variable at submi
 
 -----
 
+
+## Dev Note
+
+The generated `ctx.remote.novelai` namespace embeds into the api-remotes client bundle, so any verb or type change here is not complete until that bundle is rebuilt and the page reloaded; a stale bundle manifests as a silently swallowed property-proxy miss.
+
 <a id="model-experience"></a>
 ## Model Experience
 
-This package never reaches a model: no prompts, tools, or session events are registered, and generation requests consume no tokens or KV cache. Its model impact is indirect — workbench images appear to the agent only when a conversation references them through the attachment system, and the tool's result text remains the sole model-visible generation report.
+Indirectly, through the workbench and the `novelai_generate` tool: the namespace serves generation verbs without a model turn, and produced images reach the model only when a conversation attaches them.
+
+#### KV Cache effect
+
+No direct effect; the package never assembles or sends provider requests.
 
 ## Known Limitations and Deferred Work
 

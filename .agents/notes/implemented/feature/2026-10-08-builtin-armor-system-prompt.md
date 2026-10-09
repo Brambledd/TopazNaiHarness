@@ -2,7 +2,7 @@
 
 Status: implemented
 
-[中文](2026-10-08-builtin-armor-system-prompt.zh.md) | English
+English | [中文](2026-10-08-builtin-armor-system-prompt.zh.md)
 
 ## Problem
 
@@ -10,16 +10,23 @@ The fork's operator previously installed `dsh-infinite-gen-3` (Minglink, v0.5.0)
 
 ## Decision
 
-The web-app bundle now ships the armor prompt as first-party content. `packages/bundle/web-app/src/armor-prompt.ts` carries the verbatim v0.5.0 text (15.7 KB) from the upstream `prompts/infinite-gen-3.md`, and the bundle's `apply` registers it as a `systemPrompt.section` (`armor:global-system-prompt`, order 100) whenever `armorPrompt` config is true — the schema default. The prompt reaches every session of the web profile through the documented system-prompt composition seam; no other surface or loop behavior changed.
+The upstream plugin is ported whole as the first-party package `@deepseek-ai/dsh-infinite-gen-3` (`packages/armor/infinite-gen-3/`), and the web-app patch row composes it by default. The package carries four halves of the upstream behavior:
 
-The `armorPrompt: boolean` config row exists so a deployment can return to the stock persona from `cordis.yml` without a code edit; the fork ships it enabled.
+- **System-prompt section** — `src/prompt.ts` holds the verbatim v0.5.0 text (15.7 KB, MIT attribution header) registered as `infinite-gen-3:global-system-prompt` (order 100) through `ctx.effect`; the text reaches every composed session.
+- **`infinite_gen3_profile` tool** — `src/tool.ts` exposes the upstream self-description tool (version metadata plus the verbatim prompt) as a plain `ToolDefinition` with zero host value imports.
+- **`armor` session projection** — `src/armor.ts`/`src/projection.ts` port the opening-window scorer and fold verbatim (stateVersion 2): user messages arm `running`, assistant text settles `pass`/`refusal`/`fallback` with capped marker lists and the best-scoring request domain.
+- **Browser badge** — `src/client/` renders a token-styled pill above the conversation input through the `conversation.input.overlay` slot (locale-owned bilingual copy, verdict flash, running pulse), driven by `useProjection('armor')`.
 
-## Alternatives
+The web-app half loses its former inline variant: `armor-prompt.ts`, the `armorPrompt` config row, and its section registration are removed — the prompt text exists once, in the package, so per-request token cost is not doubled by a duplicate. The bundle's `cordis.patch.yml` gains one row (`- id: infinite-gen-3`) after the file-reference row, making the armor plugin part of the shipped web profile composition.
+
+## Alternatives considered
 
 **Keeping the upstream plugin installed via `bundle.patch`.** Rejected: the instruction set then depends on an out-of-repo artifact and a per-home patch step, which is exactly the failure mode reported — a fresh profile boots without the behavior.
 
-**Porting the plugin whole (profile tool + armor session projection + client status bar).** Deferred: the instruction carrier is the system-prompt section; the projection/status-bar pair is a client cosmetic and the profile tool is redundant now that the text is first-party. They can be ported later if the live verdict badge is wanted.
+**Keeping the web-app inline prompt-only variant.** Rejected after the fact: it shipped the text but none of the visible signals (tool, verdict projection, badge), and the user-visible gap was precisely those signals. Inlining also forks the prompt into a second home, which the full port deletes.
 
-## Impact
+**Client-side scoring of the verdict.** Rejected: the fold is a durable session relation (the badge must survive reload and replay identically), so it belongs in the host projection, with the client reading `useProjection('armor')` only.
 
-`packages/bundle/web-app` grew `armor-prompt.ts`, one config row, and one section registration; `tests/web-app.spec.ts` pins registration (default on, disabled via config). Sessions on the web profile now compose this section into every model request, which changes the model's instruction baseline and therefore any recorded-session snapshot for that profile; token usage per request grows by the prompt's size. The upstream plugin remains uninstallable side by side, but its section name collides at load (duplicate section names throw), so operators must not enable both on one profile.
+## Consequences
+
+New package `packages/armor/infinite-gen-3` (host + client faces, invariant companion, loader-composition spec through the real Loader, unit specs for scorer/fold/badge), group README under `packages/armor/`, and one aggregate tsconfig registration per face plus generated path aliases (`@deepseek-ai/dsh-infinite-gen-3`, `/invariant`, `/client`). `packages/bundle/web-app` loses the inline armor and its specs and gains the dependency + patch row; `tests/web-app.spec.ts` no longer pins armor (the package's own loader spec pins composition). Sessions on the web profile now compose the section and see the model-visible `infinite_gen3_profile` tool, which changes the model's instruction baseline and therefore any recorded-session snapshot for that profile; token usage per request grows by the prompt's size. The upstream plugin remains installable side by side, but its section name collides at load (duplicate section names throw), so operators must not enable both on one profile.

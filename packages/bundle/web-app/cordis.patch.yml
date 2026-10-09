@@ -67,6 +67,14 @@
     - id: file-reference-local
       name: '@deepseek-ai/dsh-file-reference-local'
 
+    # 无限三代 armor plugin (first-party continuation of
+    # Minglink/dsh-infinite-gen-3 v0.5.0, MIT): always-on armor prompt
+    # section, the infinite_gen3_profile tool, the armor verdict projection,
+    # and the browser badge above the composer. Starts with the web profile
+    # by construction — no plugin install step.
+    - id: infinite-gen-3
+      name: '@deepseek-ai/dsh-infinite-gen-3'
+
     # Whole-log turn/step counts for the chat stats strip (the sessionStats
     # projection key); the projection registry itself is a base-layer row.
     - id: session-stats

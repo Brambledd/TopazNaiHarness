@@ -10,16 +10,23 @@
 
 ## 决定
 
-web-app bundle 现在把破甲提示词作为第一方内容携带：`packages/bundle/web-app/src/armor-prompt.ts` 逐字保存上游 `prompts/infinite-gen-3.md` 的 v0.5.0 全文（15.7KB），bundle 的 `apply` 在 `armorPrompt` 配置为真（schema 默认值）时把它注册为 `systemPrompt.section`（`armor:global-system-prompt`，order 100）。提示词经文档化的 system-prompt 组装缝隙进入 web profile 的每个会话；其他界面与循环行为零改动。
+上游插件被整体移植为一方包 `@deepseek-ai/dsh-infinite-gen-3`（`packages/armor/infinite-gen-3/`），web-app 补丁行默认组合它。包内承载上游行为的四个切面：
 
-`armorPrompt: boolean` 配置行的存在让部署可以不经改码、只改 cordis.yml 就回到原始人格；本 fork 默认开启。
+- **系统提示词段**——`src/prompt.ts` 逐字保存 v0.5.0 全文（15.7KB，MIT 署名头），经 `ctx.effect` 注册为 `infinite-gen-3:global-system-prompt`（order 100）；每个组装会话都会携带该文本。
+- **`infinite_gen3_profile` 工具**——`src/tool.ts` 以纯 `ToolDefinition`（零宿主值导入）暴露上游的自描述工具（版本元数据加逐字提示词）。
+- **`armor` 会话投影**——`src/armor.ts`/`src/projection.ts` 逐字移植开局窗口评分器与折叠（stateVersion 2）：用户消息置 `running`，助手文本落定 `pass`/`refusal`/`fallback` 并携带封顶的命中词表与最优请求域。
+- **浏览器徽标**——`src/client/` 经 `conversation.input.overlay` 槽位在对话输入框上方渲染令牌化的状态胶囊（locale 持有的双语文案、判定闪烁、执行脉冲），数据来自 `useProjection('armor')`。
+
+web-app 侧移除了此前的内联变体：`armor-prompt.ts`、`armorPrompt` 配置行与其段注册一并删除——提示词文本只在包内存在一份，避免重复文本把每请求 token 成本翻倍。bundle 的 `cordis.patch.yml` 在 file-reference 行之后新增一行（`- id: infinite-gen-3`），破甲插件由此成为 web profile 出厂组合的一部分。
 
 ## 备选方案
 
 **继续用上游插件 + bundle.patch 安装。** 否决：指令集依赖仓库外工件和逐 home 的补丁步骤，这正是被报告的故障模式——新 profile 启动后行为缺失。
 
-**整只移植插件（profile 工具 + armor 会话投影 + 客户端状态条）。** 暂缓：指令的载体是 system-prompt 段；投影/状态条是客户端装饰，profile 工具在文本已第一方化后也显冗余。日后需要实时判定徽标时再移植。
+**保留 web-app 内联的纯提示词变体。** 事后否决：它只带了文本，没有任何可见信号（工具、判定投影、徽标），而用户感知到的缺口恰恰是这些信号；内联还会让提示词出现第二个存放点，整体移植正好删除它。
 
-## 影响
+**在客户端评分判定。** 否决：判定折叠是持久的会话关系（徽标必须在刷新与重放下完全一致），所以归属宿主投影；客户端只经 `useProjection('armor')` 读取。
 
-`packages/bundle/web-app` 新增 `armor-prompt.ts`、一个配置行与一处段注册；`tests/web-app.spec.ts` 钉住注册行为（默认开、配置可关）。web profile 上的每个会话的模型请求都会组装该段，改变了模型的指令基线，也改变该 profile 的 recorded-session 快照基线；每请求 token 用量按提示词体量增加。上游插件仍可并存安装，但段名在加载时冲突（重复段名抛错），操作者不得在同一 profile 同时启用两者。
+## 后果
+
+新增包 `packages/armor/infinite-gen-3`（宿主+客户端双面、invariant 伴随件、经真实 Loader 的组合 spec、评分/折叠/徽标单测）、`packages/armor/` 组 README、每个编译面各一条聚合 tsconfig 注册与生成的路径别名（`@deepseek-ai/dsh-infinite-gen-3`、`/invariant`、`/client`）。`packages/bundle/web-app` 移除内联破甲及其 spec，新增依赖与补丁行；`tests/web-app.spec.ts` 不再钉住破甲（包自身的 loader spec 钉住组合）。web profile 上的每个会话现在组装该段并看到模型可见的 `infinite_gen3_profile` 工具，改变了模型的指令基线，也改变该 profile 的 recorded-session 快照基线；每请求 token 用量按提示词体量增加。上游插件仍可并存安装，但段名在加载时冲突（重复段名抛错），操作者不得在同一 profile 同时启用两者。

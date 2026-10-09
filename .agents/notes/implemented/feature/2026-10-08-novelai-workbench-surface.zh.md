@@ -40,6 +40,6 @@
 
 **用户自建风格预设的持久化。** 暂缓：桌面版存于应用数据目录并带图片管理器。本 fork 先提供从胶囊分类法派生的策展预设；用户自建预设需要 settings 命名空间扩展，届时一并落地。
 
-## 影响
+## 后果
 
 `packages/client/ui-novelai-workbench`（面板、联想、胶囊、历史、角色卡片、草稿发送、回填桥）、`packages/client/ui-novelai`（工具卡、回合尾图、卡片回填按钮）、`packages/api/novelai-controller`（命名空间动词、词典、评分、角色拆分 LLM 调用）与 `packages/novelai/novelai-core`（`requestTagSuggestions`、结构化角色载荷序列化）扩展；api-remotes 的客户端 bundle 内嵌再生成的命名空间，控制器动词变更后必须重建该 bundle——陈旧的 remotes bundle 表现为属性代理静默失配，因此动词新增在重建 bundle 并刷新页面前不算完成。组件 spec 覆盖面板、联想、胶囊、历史、角色卡片、草稿发送/回填与工具卡回填行为；宿主 spec 覆盖词典评分、拆分答案解析与竖线回退。已知暂缓项：上述会话推送互通、风格预设持久化，以及可拖拽站位画布（当前卡片以数值 X/Y 输入）。

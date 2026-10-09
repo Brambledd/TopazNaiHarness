@@ -2,7 +2,7 @@
 
 Status: implemented
 
-[中文](2026-10-08-novelai-workbench-surface.zh.md) | English
+English | [中文](2026-10-08-novelai-workbench-surface.zh.md)
 
 ## Problem
 
@@ -30,7 +30,7 @@ The workbench is one feature package, `@deepseek-ai/dsh-client-ui-novelai-workbe
 
 **Conversation and workbench interop.** The two surfaces exchange drafts through two directed channels. Workbench → conversation: a 发送到对话 button beside the prompt serializes the current draft (prompt, negative, parameters line, per-character lines) into one human-readable text and queues it as a real user message in the active conversation via `sessions.scope(id).session.prompt(..., 'queue')` — no new event type, because a model-visible input is already a logged `user/message`. On success the panel switches to the conversation view. Conversation → workbench: the `novelai_generate` tool card (ui-novelai) gains a 回填到创作台 button for settled successful calls; it extracts the request parameters from the call's durable arguments plus the actual seed from the result text and delivers them through the `novelaiWorkbench` Cordis service provided by the workbench package. Delivery without a mounted panel reports `false`; a delivered request overwrites only the present fields, clears character cards (tool calls have none), pins the seed to fixed, and switches the frame to the workbench. Both channels cross packages only through injected services and plain data — the workbench owns the bridge type, and ui-novelai consumes it `import type` plus the injected callback.
 
-## Alternatives
+## Alternatives considered
 
 **Serving library images through a static webserver route.** Rejected: it would add a file-serving surface for one consumer. Base64 over the existing Remote namespace keeps the trust boundary unchanged and costs a few hundred milliseconds per thumbnail on localhost.
 
@@ -40,6 +40,6 @@ The workbench is one feature package, `@deepseek-ai/dsh-client-ui-novelai-workbe
 
 **Persistent user-created style presets.** Deferred: the desktop stores them in app data with an image manager. The fork ships curated presets derived from the capsule taxonomy; user-authored presets would want a settings-namespace contribution and arrive with it.
 
-## Impact
+## Consequences
 
 `packages/client/ui-novelai-workbench` (panel, autocomplete, capsule, history, character cards, draft composition, backfill bridge), `packages/client/ui-novelai` (tool card, turn-tail images, card backfill button), `packages/api/novelai-controller` (namespace verbs, dictionary, scoring, character-split LLM call), and `packages/novelai/novelai-core` (`requestTagSuggestions`, structured character payload serialization) grew; the api-remotes client bundle embeds the regenerated namespace and must be rebuilt after any controller verb change — a stale remotes bundle manifests as a silently swallowed property-proxy miss, so verb additions are not complete until that bundle is rebuilt and the page reloaded. Component specs cover the panel, autocomplete, capsule, history, character-card, draft-send/backfill, and tool-card backfill behaviors; host specs cover dictionary ranking, split-answer parsing, and the pipe fallback. Known deferred work: the session-push interop above, persistent style presets, and a draggable position canvas (cards expose numeric X/Y today).

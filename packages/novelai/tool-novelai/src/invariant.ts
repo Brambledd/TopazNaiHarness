@@ -14,7 +14,7 @@ export const name = 'tool-novelai-invariant'
 /** Service required before the companion can reserve package ownership. */
 export const inject = ['invariants']
 
-/** Install nothing: the package owns no durable session relation to check. */
+/** No runtime invariant: per-call HTTP round trips whose results live in the session log register nothing independently observable. */
 const install: InvariantInstaller = Object.assign((_ctx: Context, _fail: InvariantFailure) => {}, {})
 
 /**

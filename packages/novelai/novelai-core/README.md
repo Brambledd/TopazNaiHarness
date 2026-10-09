@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-novelai-core
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 `dsh-novelai-core` owns the NovelAI image domain model shared by every consumer: the checkpoint/sampler/schedule enums, the canonical generation request, wire-payload assembly ported from the official frontend (V4+ structured prompt objects, V5 `karras` normalization, seed and CFG clamping), the official Anlas cost formula, and — behind the `./node` subpath — the paid submission client with proxy dispatch and bounded ZIP/PNG response extraction. The root entry is browser-safe by construction; only Node consumers import `./node`.
@@ -66,10 +68,19 @@ Every submitted request is paid. Submission never retries: the API may have char
 
 -----
 
+
+## Dev Note
+
+The payload assembly is the single home of the official-client wire normalizations: the tool and the generation controller both submit through `./node`, so a normalization change lands once here and propagates to both consumers.
+
 <a id="model-experience"></a>
 ## Model Experience
 
-This package has no direct model-facing surface: it registers no tools, prompts, or events. Its model impact is indirect — the `novelai_generate` tool result line (saved path, seed, Anlas estimate) is assembled from `NovelaiGenerationResult` values this package defines, so result text stays byte-identical across consumers. Token and KV-cache effects belong to the consuming tool.
+Indirectly, through the `novelai_generate` tool: this package's parameter and result vocabulary shapes the tool's schema and result text, which the consuming tool owns.
+
+#### KV Cache effect
+
+No direct effect; the package registers no tools, prompts, or events and sends no provider requests.
 
 ## Known Limitations and Deferred Work
 

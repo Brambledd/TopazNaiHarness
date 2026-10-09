@@ -117,6 +117,9 @@ flowchart TD
     pkg_api_settings_controller["api-settings-controller"]
     pkg_api_workspace_controller["api-workspace-controller"]
   end
+  subgraph group_armor["packages/armor"]
+    pkg_infinite_gen_3["infinite-gen-3"]
+  end
   subgraph group_attachment["packages/attachment"]
     pkg_attachment["attachment"]
     pkg_attachment_local["attachment-local"]
@@ -1350,6 +1353,7 @@ flowchart TD
 | [`llm`](../packages/llm/llm) | `llm` | — |
 | [`session-log-export`](../packages/session-query/session-log-export) | `session-query` | — |
 | [`api-gateway`](../packages/api/gateway) | `api` | — |
+| [`infinite-gen-3`](../packages/armor/infinite-gen-3) | `armor` | — |
 | [`client-connection`](../packages/client/connection) | `client` | — |
 | [`client-hmr`](../packages/client/hmr) | `client` | — |
 | [`client-locale`](../packages/client/locale) | `client` | — |

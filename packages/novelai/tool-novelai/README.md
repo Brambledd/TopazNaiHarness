@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-tool-novelai
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 `dsh-tool-novelai` lets the agent generate anime-style images through the official NovelAI image API: it assembles the wire request from model arguments, submits one paid generation per call, extracts the returned PNG from the ZIP response, and saves it into a configured output directory. Each result reports the saved path and the seed, so a follow-up call can vary one element of a liked image while keeping the rest identical. Costs are estimated before submission with the official Anlas formula, and failed responses never auto-retry because the server may already have charged for the image.
@@ -82,6 +84,11 @@ The plugin is a function/namespace plugin: it exports `name` / `inject` / `apply
 
 -----
 
+
+## Dev Note
+
+The request normalizations are ported from the official NovelAI frontend; wire-shape changes belong upstream first. Trust in TypeScript stops at the wire: response validation covers the ZIP/PNG container and size bounds, not the semantic content of the image.
+
 <a id="model-experience"></a>
 ## Model Experience
 
@@ -89,7 +96,7 @@ The plugin is a function/namespace plugin: it exports `name` / `inject` / `apply
 
 #### What the model sees
 
-The model sees one `novelai_generate` tool: a required `prompt` string plus optional `negativePrompt`, `model` (enum of the eight current checkpoints), `width`/`height` (64-multiple integers), `steps` (1–50), `cfgScale` (0–10), `sampler` (enum), `noiseSchedule` (enum), `seed` (0–4294967295), and `filename`. The description states that every call is paid and that the seed enables controlled variation.
+The generated [tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-tool-novelai) is the exhaustive source for the `novelai_generate` schema. The model sees one `novelai_generate` tool: a required `prompt` string plus optional `negativePrompt`, `model` (enum of the eight current checkpoints), `width`/`height` (64-multiple integers), `steps` (1–50), `cfgScale` (0–10), `sampler` (enum), `noiseSchedule` (enum), `seed` (0–4294967295), and `filename`. The description states that every call is paid and that the seed enables controlled variation.
 
 #### Token effect
 

@@ -56,6 +56,8 @@ import * as ToolGoal from '@deepseek-ai/dsh-tool-goal'
 import * as ToolSchedule from '@deepseek-ai/dsh-schedule'
 import Lsp from '@deepseek-ai/dsh-lsp'
 import * as ToolLsp from '@deepseek-ai/dsh-tool-lsp'
+import * as ToolNovelai from '@deepseek-ai/dsh-tool-novelai'
+import * as ArmorPlugin from '@deepseek-ai/dsh-infinite-gen-3'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
@@ -408,6 +410,32 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'The lsp tool keeps provider selection and language-server subprocesses behind ctx.lsp, so its model-visible schema stays stable across providers. Requires a registered provider (e.g. `@deepseek-ai/dsh-lsp-stdio`) at runtime; without one, a query returns the structured `LSP_UNAVAILABLE` error rather than changing the schema.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-infinite-gen-3',
+    dir: 'infinite-gen-3',
+    source: 'packages/armor/infinite-gen-3/src/index.ts',
+    requires: ['ctx.tools', 'ctx.systemPrompt'],
+    writes: ['tool/call', 'tool/result; the armor projection folds host-side session state, not a session event'],
+    async mount(ctx) {
+      // Optional projection registry absent: the tool and section schemas do
+      // not depend on it.
+      await ctx.plugin(ArmorPlugin)
+    },
+    note:
+      'infinite_gen3_profile is a zero-argument read of the plugin metadata plus the verbatim armor prompt; the package also registers the always-on system-prompt section, which the catalog does not render.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-novelai',
+    dir: 'tool-novelai',
+    source: 'packages/novelai/tool-novelai/src/index.ts',
+    requires: ['ctx.tools', 'NOVELAI_TOKEN (config or environment) at submission time'],
+    writes: ['tool/call', 'tool/result', 'a PNG file plus the library index row in the configured output directory'],
+    async mount(ctx) {
+      // Schema registration performs no network I/O; the token is read at
+      // submission time.
+      await ctx.plugin(ToolNovelai)
+    },
   },
   {
     pkg: '@deepseek-ai/dsh-tool-ralph',

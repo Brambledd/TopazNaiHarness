@@ -1,4 +1,11 @@
+---
+description: "The harness NovelAI image-generation group: the model-facing generation tool and the isomorphic request domain library it submits through."
+kind: "package-group"
+---
+
 # novelai
+
+English | [中文](README.zh.md)
 
 NovelAI image-generation capability for the harness.
 

@@ -16,6 +16,7 @@ const root = resolve(import.meta.dirname, '..')
  */
 export const GROUPS_WITHOUT_SUBSYSTEM_PAGE: Readonly<Record<string, string>> = {
   acp: 'Protocol transport entry point; the server package README owns its interoperability contract.',
+  armor: 'Single-plugin persona family; the package README and the armor Agent Note own the prompt contract, and the seams it rides (system prompt, tools, session projection) own their own subsystem pages.',
   boot: 'Shared application-bin boot library rather than a runtime subsystem.',
   bundle: 'Composition patch carriers whose mounted packages own all runtime contracts.',
   examples: 'Non-product demonstration compositions whose mounted packages own all runtime contracts.',

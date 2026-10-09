@@ -1,10 +1,11 @@
 /** The Infinite Generation Three armor system prompt, ported verbatim from
- * dsh-infinite-gen-3 v0.5.0 (Minglink/dsh-infinite-gen-3, prompts/infinite-gen-3.md).
- * Registered as an always-on system-prompt section by the web-app bundle so the
- * forked agent follows this instruction set without an external plugin install.
+ * dsh-infinite-gen-3 v0.5.0 (Minglink/dsh-infinite-gen-3, MIT,
+ * prompts/infinite-gen-3.md). This package is the plugin's first-party
+ * continuation: the prompt, the profile tool, the armor projection, and the
+ * browser badge.
  */
 
-export const ARMOR_PROMPT_SECTION_NAME = 'armor:global-system-prompt'
+export const ARMOR_PROMPT_SECTION_NAME = 'infinite-gen-3:global-system-prompt'
 
 /** Section order matching the upstream plugin's order: 100. */
 export const ARMOR_PROMPT_ORDER = 100

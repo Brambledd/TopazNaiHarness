@@ -1,0 +1,69 @@
+/* Armor badge: a floating pill above the composer card, anchored like every
+   conversation.input.overlay entry (bottom: 100% + gap). Semantic aliases over
+   shared --dsw-* tokens only (no literal colors). Keyframe pulse replicates
+   the upstream badge's breathing dot. */
+
+@keyframes infiniteGen3ArmorPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.wrap {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--dsw-alias-state-success-secondary, transparent);
+  background: var(--dsw-surface-raised, transparent);
+  color: var(--dsw-alias-state-success-primary, inherit);
+  font-size: 11px;
+  line-height: 16px;
+  font-family: inherit;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.badge[data-running] {
+  color: var(--dsw-alias-label-secondary, inherit);
+  border-color: var(--dsw-alias-state-warn-secondary, transparent);
+}
+
+.badge[data-verdict='refusal'] {
+  color: var(--dsw-alias-state-error-primary, inherit);
+  border-color: var(--dsw-alias-state-error-secondary, transparent);
+}
+
+.badge[data-verdict='fallback'] {
+  color: var(--dsw-alias-state-warn-primary, inherit);
+  border-color: var(--dsw-alias-state-warn-secondary, transparent);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentcolor;
+  flex: none;
+}
+
+.dot[data-running] {
+  animation: infiniteGen3ArmorPulse 1.2s ease-in-out infinite;
+}
+
+.detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

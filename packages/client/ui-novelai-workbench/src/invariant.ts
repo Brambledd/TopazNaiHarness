@@ -15,7 +15,7 @@ export const name = 'ui-novelai-workbench-invariant'
 /** Service required before the companion can reserve package ownership. */
 export const inject = ['invariants']
 
-/** Install nothing: the package owns no durable harness relation to check. */
+/** No runtime invariant: a pure-props browser surface owns no durable harness relation to check. */
 const install: InvariantInstaller = Object.assign((_ctx: Context, _fail: InvariantFailure) => {}, {})
 
 /**

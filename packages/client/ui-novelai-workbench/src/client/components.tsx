@@ -518,6 +518,17 @@ export function WorkbenchRoot({
         setSeedMode('fixed')
         setSeed(value.seed)
       }
+      if (value.characters !== undefined && value.characters.length > 0) {
+        setCharacters(value.characters.map(character => ({
+          id: nextCharacterId(),
+          prompt: character.prompt,
+          negativePrompt: character.negativePrompt,
+          useCoords: character.useCoords,
+          x: character.x,
+          y: character.y,
+        })))
+        setCharactersOpen(true)
+      }
       setWorkbenchTab('generate')
       setDone(t('restore.ok'))
     }).catch((e: unknown) => { setReverseError(e instanceof Error ? e.message : String(e)) })

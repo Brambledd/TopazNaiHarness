@@ -25,7 +25,7 @@ function metaPng(seed: number): Uint8Array {
   const ihdr = new Uint8Array(13)
   new DataView(ihdr.buffer).setUint32(0, 832)
   new DataView(ihdr.buffer).setUint32(4, 1216)
-  const comment = JSON.stringify({ seed, steps: 28, sampler: 'k_euler', scale: 5 })
+  const comment = JSON.stringify({ prompt: '1girl, solo', uc: 'lowres', seed, steps: 28, sampler: 'k_euler', scale: 5 })
   const text = (keyword: string, value: string): Uint8Array => {
     const bytes = new Uint8Array(keyword.length + 1 + value.length)
     for (const [index, char] of [...keyword].entries()) bytes[index] = char.charCodeAt(0)

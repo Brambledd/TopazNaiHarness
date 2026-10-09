@@ -477,7 +477,8 @@ export class NovelaiController extends TypertRemoteService {
     const meta = parseNovelaiPngMeta(bytes)
     const value: NovelaiInspectValue = {
       hasMeta: meta.prompt !== undefined || meta.negativePrompt !== undefined || meta.seed !== undefined
-        || meta.steps !== undefined || meta.sampler !== undefined || meta.cfgScale !== undefined || meta.model !== undefined,
+        || meta.steps !== undefined || meta.sampler !== undefined || meta.cfgScale !== undefined || meta.model !== undefined
+        || meta.characters !== undefined,
       ...(meta.prompt === undefined ? {} : { prompt: meta.prompt }),
       ...(meta.negativePrompt === undefined ? {} : { negativePrompt: meta.negativePrompt }),
       ...(meta.model === undefined ? {} : { model: meta.model }),
@@ -486,6 +487,7 @@ export class NovelaiController extends TypertRemoteService {
       ...(meta.sampler === undefined ? {} : { sampler: meta.sampler }),
       ...(meta.cfgScale === undefined ? {} : { cfgScale: meta.cfgScale }),
       ...(size === undefined ? {} : { width: size.width, height: size.height }),
+      ...(meta.characters === undefined ? {} : { characters: meta.characters }),
     }
     return value
   }

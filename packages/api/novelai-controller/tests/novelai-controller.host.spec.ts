@@ -206,9 +206,9 @@ describe('NovelaiController verbs', () => {
     view.setUint32(0, 832)
     view.setUint32(4, 1216)
     parts.push(chunk('IHDR', ihdr))
-    parts.push(chunk('tEXt', text('Title', '1girl, solo')))
+    parts.push(chunk('tEXt', text('Title', 'NovelAI generated image')))
     parts.push(chunk('tEXt', text('Description', 'lowres')))
-    parts.push(chunk('tEXt', text('Comment', '{"prompt":"1girl, solo","seed":42,"steps":28,"sampler":"k_euler","scale":5}')))
+    parts.push(chunk('tEXt', text('Comment', '{"prompt":"1girl, solo","uc":"lowres","seed":42,"steps":28,"sampler":"k_euler","scale":5}')))
     parts.push(chunk('IEND', new Uint8Array()))
     const png = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0))
     let offset = 0

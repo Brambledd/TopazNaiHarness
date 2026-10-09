@@ -292,6 +292,8 @@ export interface NovelaiInspectValue {
   readonly width?: number
   /** Pixel height declared by the IHDR chunk. */
   readonly height?: number
+  /** Per-character captions of a V4+ structured prompt, in prompt order. */
+  readonly characters?: readonly NovelaiCharacterPromptValue[]
 }
 
 /** One reverse-prompt (image interrogation) request over an imported image. */

@@ -183,6 +183,9 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     sampler: 'k_euler',
     width: 1024,
     height: 1024,
+    characters: [
+      { prompt: '1girl, blue hair', negativePrompt: '', useCoords: false, x: 0.5, y: 0.5 },
+    ],
   }))
   const splitCharacters = vi.fn(async (_request: { prompt: string }) => ({
     prompt: 'park, masterpiece',
@@ -383,6 +386,8 @@ describe('workbench panel', () => {
     expect((screen.getByLabelText('高度') as HTMLInputElement).value).toBe('1024')
     expect((screen.getByLabelText('步数') as HTMLInputElement).value).toBe('30')
     expect((screen.getByLabelText('种子值') as HTMLInputElement).value).toBe('42')
+    // Restored character captions land in the (opened) character fold.
+    expect((screen.getByLabelText('角色 1') as HTMLTextAreaElement).value).toBe('1girl, blue hair')
     expect(screen.getByRole('tab', { name: '生成' }).getAttribute('aria-selected')).toBe('true')
   })
 

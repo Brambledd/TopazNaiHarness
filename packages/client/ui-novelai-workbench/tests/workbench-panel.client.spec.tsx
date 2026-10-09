@@ -328,7 +328,9 @@ describe('character prompts', () => {
 
   it('splits the merged prompt into base and character cards with one LLM call', async () => {
     const { splitCharacters } = mount()
-    await openCharacters()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    // The split button lives beside the prompt, outside the character fold.
+    expect(screen.getByRole('button', { name: 'AI 拆分角色' })).toBeTruthy()
     fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park, 2girls, blue hair, red hair' } })
     fireEvent.click(screen.getByRole('button', { name: 'AI 拆分角色' }))
     expect(splitCharacters).toHaveBeenCalledWith({ prompt: 'park, 2girls, blue hair, red hair' })
@@ -339,6 +341,27 @@ describe('character prompts', () => {
     expect(screen.getByLabelText('角色 2')).toBeTruthy()
     expect((screen.getByLabelText('角色 1') as HTMLTextAreaElement).value).toBe('1girl, blue hair')
     expect((screen.getByLabelText('角色 2 负面') as HTMLTextAreaElement).value).toBe('extra ears')
+  })
+
+  it('toggles custom placement and edits coordinates as percentages', async () => {
+    const { generate } = mount()
+    await openCharacters()
+    fireEvent.click(screen.getByRole('button', { name: '添加角色' }))
+    expect(screen.queryByLabelText('角色 1 X')).toBeNull()
+    fireEvent.click(screen.getByLabelText('角色 1 自定义站位'))
+    const x = screen.getByLabelText('角色 1 X') as HTMLInputElement
+    const y = screen.getByLabelText('角色 1 Y') as HTMLInputElement
+    expect(x.value).toBe('50')
+    expect(y.value).toBe('50')
+    fireEvent.change(x, { target: { value: '30' } })
+    fireEvent.change(y, { target: { value: '70' } })
+    fireEvent.change(screen.getByLabelText('角色 1'), { target: { value: '1girl, blue hair' } })
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park' } })
+    fireEvent.click(screen.getByRole('button', { name: '生成' }))
+    await waitFor(() => { expect(generate).toHaveBeenCalledOnce() })
+    expect(generate.mock.calls[0]![0].characters).toEqual([
+      { prompt: '1girl, blue hair', useCoords: true, x: 0.3, y: 0.7 },
+    ])
   })
 
   it('removes a character card through its row button', async () => {

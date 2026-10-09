@@ -310,8 +310,18 @@ export function WorkbenchRoot({
       <button type="button" className={css.backButton} onClick={() => { setViewMode('conversation') }}>
         {t('mode.conversation')}
       </button>
-      <label className={css.section}>
-        <span className={css.fieldLabel}>{t('prompt.label')}</span>
+      <div className={css.section}>
+        <div className={css.promptHead}>
+          <span className={css.fieldLabel}>{t('prompt.label')}</span>
+          <button
+            type="button"
+            className={css.charAction}
+            disabled={splitting || prompt.trim() === ''}
+            onClick={splitIntoCharacters}
+          >
+            {splitting ? t('characters.splitting') : t('characters.split')}
+          </button>
+        </div>
         <PromptTextarea
           value={prompt}
           onChange={setPrompt}
@@ -320,7 +330,7 @@ export function WorkbenchRoot({
           ariaLabel={t('prompt.label')}
           className={css.promptArea}
         />
-      </label>
+      </div>
       <div className={css.section}>
         <span className={css.fieldLabel}>{t('styles.label')}</span>
         <div className={css.styleRow}>
@@ -387,14 +397,6 @@ export function WorkbenchRoot({
                 <button
                   type="button"
                   className={css.charAction}
-                  disabled={splitting || prompt.trim() === ''}
-                  onClick={splitIntoCharacters}
-                >
-                  {splitting ? t('characters.splitting') : t('characters.split')}
-                </button>
-                <button
-                  type="button"
-                  className={css.charAction}
                   disabled={characters.length >= maxCharactersFor(model)}
                   onClick={addCharacter}
                 >
@@ -413,13 +415,15 @@ export function WorkbenchRoot({
                 <div key={draft.id} className={css.charRow}>
                   <div className={css.charHead}>
                     <strong className={css.charTitle}>{t('characters.role')} {String(index + 1)}</strong>
-                    <button
-                      type="button"
-                      className={css.charAction}
-                      onClick={() => { updateCharacter(draft.id, { useCoords: !draft.useCoords }) }}
-                    >
-                      {draft.useCoords ? t('characters.position.custom') : t('characters.position.ai')}
-                    </button>
+                    <label className={css.charCheck}>
+                      <input
+                        type="checkbox"
+                        checked={draft.useCoords}
+                        aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.position.custom')}`}
+                        onChange={(e) => { updateCharacter(draft.id, { useCoords: e.target.checked }) }}
+                      />
+                      {t('characters.position.custom')}
+                    </label>
                     <button
                       type="button"
                       className={css.charAction}
@@ -443,35 +447,41 @@ export function WorkbenchRoot({
                     suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
                     placeholder={t('characters.negativePlaceholder')}
                     ariaLabel={`${t('characters.role')} ${String(index + 1)} ${t('characters.negative')}`}
-                    className={css.charArea}
+                    className={css.charNeg}
                   />
                   {draft.useCoords && (
                     <div className={css.charCoords}>
                       <label className={css.field}>
                         <span className={css.fieldLabel}>{t('characters.x')}</span>
-                        <input
-                          type="number"
-                          className={css.select}
-                          min={0}
-                          max={1}
-                          step={0.05}
-                          value={draft.x}
-                          aria-label={`${t('characters.role')} ${String(index + 1)} X`}
-                          onChange={(e) => { updateCharacter(draft.id, { x: Number(e.target.value) }) }}
-                        />
+                        <span className={css.charPercent}>
+                          <input
+                            type="number"
+                            className={css.select}
+                            min={0}
+                            max={100}
+                            step={5}
+                            value={Math.round(draft.x * 100)}
+                            aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.x')}`}
+                            onChange={(e) => { updateCharacter(draft.id, { x: Number(e.target.value) / 100 }) }}
+                          />
+                          <span aria-hidden="true">%</span>
+                        </span>
                       </label>
                       <label className={css.field}>
                         <span className={css.fieldLabel}>{t('characters.y')}</span>
-                        <input
-                          type="number"
-                          className={css.select}
-                          min={0}
-                          max={1}
-                          step={0.05}
-                          value={draft.y}
-                          aria-label={`${t('characters.role')} ${String(index + 1)} Y`}
-                          onChange={(e) => { updateCharacter(draft.id, { y: Number(e.target.value) }) }}
-                        />
+                        <span className={css.charPercent}>
+                          <input
+                            type="number"
+                            className={css.select}
+                            min={0}
+                            max={100}
+                            step={5}
+                            value={Math.round(draft.y * 100)}
+                            aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.y')}`}
+                            onChange={(e) => { updateCharacter(draft.id, { y: Number(e.target.value) / 100 }) }}
+                          />
+                          <span aria-hidden="true">%</span>
+                        </span>
                       </label>
                     </div>
                   )}

@@ -1,4 +1,4 @@
-/** `novelai` namespace dictionaries for the dedicated tool row. */
+/** `novelai` namespace dictionaries for the dedicated tool row and the token row. */
 
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'novelai'
@@ -14,6 +14,17 @@ export const zh = {
   'row.loadFailed': '图片加载失败',
   'row.details': '参数',
   'row.backfill': '回填到创作台',
+  'token.label': 'NovelAI API 令牌',
+  'token.hint': '粘贴 NovelAI 账户页签发的持久 API 令牌（Persistent API Token）；保存后下一次生图立即生效。',
+  'token.placeholder': '粘贴持久 API 令牌',
+  'token.save': '保存',
+  'token.clear': '清除',
+  'token.saved': '令牌已保存，下一次生图生效。',
+  'token.cleared': '已清除存储的令牌。',
+  'token.state.configured': '已配置',
+  'token.state.missing': '未设置——保存令牌前无法生图',
+  'token.state.unavailable': '当前部署未挂载凭据存储，请改用插件 config 或环境变量配置令牌',
+  'token.readonly': '存在只读来源遮蔽存储值，本行暂不可写',
 } satisfies Record<string, string>
 
 /** The novelai namespace key union. */
@@ -30,4 +41,15 @@ export const en = {
   'row.loadFailed': 'Image failed to load',
   'row.details': 'Parameters',
   'row.backfill': 'Backfill workbench',
+  'token.label': 'NovelAI API token',
+  'token.hint': 'Paste the persistent API token issued on your NovelAI account page; the next generation picks it up immediately.',
+  'token.placeholder': 'Paste your persistent API token',
+  'token.save': 'Save',
+  'token.clear': 'Clear',
+  'token.saved': 'Token saved; it applies from the next generation.',
+  'token.cleared': 'Stored token cleared.',
+  'token.state.configured': 'Configured',
+  'token.state.missing': 'Not set — generation fails until a token is saved',
+  'token.state.unavailable': 'No credential storage in this deployment; configure the token through the plugin config or environment instead',
+  'token.readonly': 'A read-only source is shadowing the stored value; this row cannot write right now',
 } satisfies Record<NovelaiKey, string>

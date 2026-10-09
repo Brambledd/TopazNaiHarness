@@ -31,6 +31,8 @@ kind: "package-reference"
 
 工具行完全由持久的调用/结果事件推导——状态、摘要、详情均从会话日志折叠，重放渲染一致。回填按钮只在调用成功落定时出现；创作台面板未挂载时投递返回 `false`。
 
+本包还注册了 Settings → General 的 **NovelAI API 令牌** 行：经 Remote credentials 命名空间保存与清除 `NOVELAI_TOKEN` credential，展示凭据的配置状态与来源层，并随推送的 `credentials/reference-updated` 事件刷新。
+
 -----
 
 

@@ -31,6 +31,8 @@ Compose the package in a browser roster that already mounts ui-conversation (the
 
 The tool row derives entirely from the durable call/result events — state, prompt summary, and details fold from the session log, so replay renders identically. The backfill button appears only on settled successful calls and reports `false` when no workbench panel is mounted.
 
+The package also registers the Settings → General **NovelAI API token** row: it saves and clears the `NOVELAI_TOKEN` credential through the Remote credentials namespace, shows the credential's configured state and source layer, and refreshes on pushed `credentials/reference-updated` events.
+
 -----
 
 

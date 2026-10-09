@@ -63,6 +63,7 @@ Every call is paid. The tool description tells the model to batch and iterate de
 - **One paid round trip per call.** The tool submits exactly one generation request; request assembly, Anlas estimation, and response extraction are pure functions tested without the network.
 - **Official-client wire parity.** Request normalizations are ported from the official frontend: V5 requests always submit `noise_schedule: "karras"`, CFG is clamped to 0–10, the seed to `0xffffffff`, and V4+ requests carry the (empty) character-prompt fields the API requires. The default negative prompt mirrors the V4+ "Heavy" undesired-content preset because the API receives only the merged text.
 - **No silent retries.** A paid POST may have produced and charged for an image even on a 5xx, so failures surface verbatim; only 429-style situations are left to the caller.
+- **The token resolves through the credential seam.** Per call the tool reads the plugin config `token` first, then the `NOVELAI_TOKEN` credential (the Settings → General row writes the store layer), then the bare environment; a changed token reaches the next call without a restart.
 - **Response extraction fails loud.** A non-archive body (JSON/HTML error page) is rejected as an error response, never mistaken for a missing image that would justify a resubmission.
 
 ### Source map
@@ -129,4 +130,4 @@ These limits define when the tool is a poor fit. They are current package constr
 - **Text-to-image only** — img2img, inpainting, vibe transfer, precise reference, upscale, and director tools are deliberate Phase-1 cuts; they arrive with their own parameter surfaces.
 - **No subscription awareness** — the Anlas estimate ignores the active-Opus free allowance and reference surcharges; it bounds the worst case.
 - **Single output directory** — all sessions of one process share `outputDir`; per-session subdirectories arrive with the library package.
-- **Token in config or environment only** — no credential-service integration yet.
+- **No pre-submit token validation** — an invalid persistent token surfaces as NovelAI's HTTP 401 in the tool result; the error names the Settings → General row that stores a replacement.

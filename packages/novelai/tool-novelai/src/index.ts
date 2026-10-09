@@ -23,6 +23,7 @@ import {
 } from './types.ts'
 import { DEFAULT_NEGATIVE_PROMPT, buildNovelaiPayload, estimateAnlas, generationFileStem } from './payload.ts'
 import { requestGeneration, resolveProxyUrl } from './client.ts'
+import { NOVELAI_TOKEN_REF, resolveToken } from './token.ts'
 
 /**
  * Re-brand the schema-projected attachment value into the durable reference an
@@ -64,7 +65,7 @@ export const inject = ['tools']
 
 /** Model-facing NovelAI tool configuration. */
 export interface Config {
-  /** Persistent API token; falls back to `NOVELAI_TOKEN` when empty. */
+  /** Persistent API token; when empty the `NOVELAI_TOKEN` credential (credential store, then environment) supplies it. */
   token: string
   /** Image API base URL. */
   imageBaseUrl: string
@@ -165,6 +166,7 @@ function safeFileStem(filename: string): string {
  */
 export function apply(ctx: Context, config: Config): void {
   const outputDir = isAbsolute(config.outputDir) ? config.outputDir : resolve(config.outputDir)
+  const credentials = ctx.get('credentials')
   ctx.tools.register(defineTool({
     name: 'novelai_generate',
     description: DESCRIPTION,
@@ -219,23 +221,33 @@ export function apply(ctx: Context, config: Config): void {
       presentationMeta: (_args, value) => value.attachment === undefined ? {} : { image: value.attachment },
     },
     async execute(args, exec) {
-      const token = config.token || process.env['NOVELAI_TOKEN'] || ''
-      if (!token) {
-        throw new Error('NovelAI token missing: set the plugin config `token` or the NOVELAI_TOKEN environment variable')
-      }
+      const token = await resolveToken(config, credentials)
       const input = resolveInput(args)
       const stem = args.filename ? safeFileStem(args.filename) : generationFileStem(input.seed)
       const payload = buildNovelaiPayload(input)
       const timeout = AbortSignal.timeout(config.timeoutMs)
       const signal = AbortSignal.any([exec.signal, timeout])
-      const images = await requestGeneration({
-        payload,
-        token,
-        baseUrl: config.imageBaseUrl,
-        timeoutMs: config.timeoutMs,
-        signal,
-        proxyUrl: resolveProxyUrl(config.proxyUrl) ?? '',
-      })
+      let images: Uint8Array[]
+      try {
+        images = await requestGeneration({
+          payload,
+          token,
+          baseUrl: config.imageBaseUrl,
+          timeoutMs: config.timeoutMs,
+          signal,
+          proxyUrl: resolveProxyUrl(config.proxyUrl) ?? '',
+        })
+      } catch (error: unknown) {
+        if (error instanceof Error && error.message.includes('HTTP 401')) {
+          throw new Error(
+            'NovelAI rejected the token (HTTP 401): save a valid persistent token in Settings → General '
+            + '(NovelAI API token), or update the plugin config `token` / the '
+            + `${NOVELAI_TOKEN_REF} credential`,
+            { cause: error },
+          )
+        }
+        throw error
+      }
       const image = images[0]
       if (image === undefined) {
         throw new Error('NovelAI returned an empty image list; not retrying to avoid a duplicate charge')

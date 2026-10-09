@@ -12,6 +12,9 @@
       "path": "../../api/session-controller/tsconfig.client.json"
     },
     {
+      "path": "../../api/remotes/tsconfig.client.json"
+    },
+    {
       "path": "../../core/session"
     },
     {
@@ -19,6 +22,9 @@
     },
     {
       "path": "../locale"
+    },
+    {
+      "path": "../store"
     },
     {
       "path": "../ui-chat"
@@ -31,6 +37,9 @@
     },
     {
       "path": "../ui-renderer"
+    },
+    {
+      "path": "../ui-settings"
     },
     {
       "path": "../ui-tool"

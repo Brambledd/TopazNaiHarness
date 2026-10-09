@@ -91,6 +91,101 @@ describe('buildNovelaiPayload', () => {
     })
     expect(payload.parameters['v4_prompt']).toBeUndefined()
   })
+
+  it('appends the checkpoint standard quality tags at the prompt end', () => {
+    const payload = buildNovelaiPayload({
+      prompt: '1girl',
+      negativePrompt: 'y',
+      model: 'nai-diffusion-4-5-full',
+      width: 832,
+      height: 1216,
+      steps: 28,
+      cfgScale: 5,
+      sampler: 'k_euler',
+      noiseSchedule: 'native',
+      seed: 1,
+      qualityPreset: 'standard',
+    })
+    expect(payload.input).toBe('1girl, very aesthetic, masterpiece, no text')
+    expect((payload.parameters['v4_prompt'] as { caption: { base_caption: string } }).caption.base_caption)
+      .toBe('1girl, very aesthetic, masterpiece, no text')
+    expect(payload.parameters).toMatchObject({ qualityPresetId: 'standard', quality_toggle: true, tag_hint_qt: 1 })
+  })
+
+  it('uses the V5-only light tags on V5 and falls back to standard elsewhere', () => {
+    const base = {
+      prompt: '1girl',
+      negativePrompt: 'y',
+      width: 832,
+      height: 1216,
+      steps: 28,
+      cfgScale: 5,
+      sampler: 'k_euler' as const,
+      noiseSchedule: 'native' as const,
+      seed: 1,
+    }
+    const v5 = buildNovelaiPayload({ ...base, model: 'nai-diffusion-5-full', qualityPreset: 'light' })
+    expect(v5.input).toBe('1girl, very aesthetic, amazing quality, no text')
+    expect(v5.parameters['tag_hint_qt']).toBe(3)
+    const v4 = buildNovelaiPayload({ ...base, model: 'nai-diffusion-4-5-full', qualityPreset: 'light' })
+    expect(v4.input).toBe('1girl, very aesthetic, masterpiece, no text')
+  })
+
+  it('drops the contradicting no-text tag beside an explicit Text directive', () => {
+    const payload = buildNovelaiPayload({
+      prompt: 'sign saying Text: WELCOME',
+      negativePrompt: 'y',
+      model: 'nai-diffusion-4-5-full',
+      width: 832,
+      height: 1216,
+      steps: 28,
+      cfgScale: 5,
+      sampler: 'k_euler',
+      noiseSchedule: 'native',
+      seed: 1,
+      qualityPreset: 'standard',
+    })
+    expect(payload.input).toBe('sign saying Text: WELCOME, very aesthetic, masterpiece')
+  })
+
+  it('leaves the prompt verbatim when no preset applies', () => {
+    const payload = buildNovelaiPayload({
+      prompt: '1girl',
+      negativePrompt: 'y',
+      model: 'nai-diffusion-4-5-full',
+      width: 832,
+      height: 1216,
+      steps: 28,
+      cfgScale: 5,
+      sampler: 'k_euler',
+      noiseSchedule: 'native',
+      seed: 1,
+    })
+    expect(payload.input).toBe('1girl')
+    expect(payload.parameters['qualityPresetId']).toBe('none')
+  })
+
+  it('requests the V5 alpha channel for a transparent background, V5 only', () => {
+    const base = {
+      prompt: '1girl',
+      negativePrompt: 'y',
+      width: 832,
+      height: 1216,
+      steps: 28,
+      cfgScale: 5,
+      sampler: 'k_euler' as const,
+      noiseSchedule: 'native' as const,
+      seed: 1,
+      transparentBackground: true,
+    }
+    const v5 = buildNovelaiPayload({ ...base, model: 'nai-diffusion-5-full', qualityPreset: 'none' })
+    expect(v5.input).toBe('1girl, transparent background')
+    expect(v5.parameters['straight_alpha']).toBe(true)
+    expect(v5.parameters['tag_hint_transparent_background']).toBe(true)
+    const v4 = buildNovelaiPayload({ ...base, model: 'nai-diffusion-4-5-full', qualityPreset: 'none' })
+    expect(v4.input).toBe('1girl')
+    expect(v4.parameters['straight_alpha']).toBeUndefined()
+  })
 })
 
 describe('estimateAnlas', () => {

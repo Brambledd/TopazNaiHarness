@@ -37,6 +37,13 @@ const zh = {
   'capsule.label': '快捷标签',
   'capsule.filter': '搜索标签（中英文均可）',
   'styles.label': '风格库',
+  'quality.label': '图片强化',
+  'quality.standard': '标准',
+  'quality.light': '轻量',
+  'quality.none': '关闭',
+  'quality.lightV5Only': '轻量仅 V5 检查点可用',
+  'quality.hint': '在正面提示词末尾自动追加官方质量词；标准更明显，轻量（仅 V5）干预更少。',
+  'quality.transparent': '透明背景',
   'characters.label': '角色提示词',
   'characters.role': '角色',
   'characters.split': 'AI 拆分角色',
@@ -186,6 +193,36 @@ describe('workbench panel', () => {
     const area = screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement
     expect(area.value.startsWith('realistic')).toBe(true)
     expect(area.value).toContain('park')
+  })
+
+  it('defaults to the standard quality preset and submits the selection', async () => {
+    const { generate } = mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'a cat' } })
+    fireEvent.click(screen.getByRole('button', { name: '生成' }))
+    await waitFor(() => { expect(generate).toHaveBeenCalledOnce() })
+    expect(generate.mock.calls[0]![0].qualityPreset).toBe('standard')
+    expect(generate.mock.calls[0]![0].transparentBackground).toBeUndefined()
+  })
+
+  it('switches the quality preset off and exposes transparency only on V5', async () => {
+    const { generate } = mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    // The default checkpoint is V5: the light preset and the transparent
+    // checkbox are both reachable.
+    const light = screen.getByRole('button', { name: '轻量' }) as HTMLButtonElement
+    expect(light.disabled).toBe(false)
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'a cat' } })
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+    fireEvent.click(screen.getByLabelText('透明背景'))
+    fireEvent.click(screen.getByRole('button', { name: '生成' }))
+    await waitFor(() => { expect(generate).toHaveBeenCalledOnce() })
+    expect(generate.mock.calls[0]![0].qualityPreset).toBe('none')
+    expect(generate.mock.calls[0]![0].transparentBackground).toBe(true)
+    // On a V4.5 checkpoint, light disables and the checkbox disappears.
+    fireEvent.change(screen.getByLabelText('模型'), { target: { value: 'nai-diffusion-4-5-full' } })
+    expect((screen.getByRole('button', { name: '轻量' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByLabelText('透明背景')).toBeNull()
   })
 
   it('omits the seed in random mode and sends it in fixed mode', async () => {

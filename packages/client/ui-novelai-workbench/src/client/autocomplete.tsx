@@ -1,5 +1,5 @@
 /** Prompt textarea with Danbooru tag autocomplete (desktop reference parity). */
-import { useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import type { NovelaiTagSuggestion } from '@deepseek-ai/dsh-api-novelai-controller/types'
 import css from './workbench.module.css'
 
@@ -84,6 +84,15 @@ export function PromptTextarea({
   const areaRef = useRef<HTMLTextAreaElement | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const requestIdRef = useRef(0)
+
+  // Height fits the content: the box grows with every edit, so no inner
+  // scrolling is ever needed to read the full prompt.
+  useEffect(() => {
+    const area = areaRef.current
+    if (area === null) return
+    area.style.height = 'auto'
+    area.style.height = `${area.scrollHeight}px`
+  }, [value])
 
   const clearSuggestions = (): void => {
     setSuggestions([])

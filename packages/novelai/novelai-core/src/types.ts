@@ -37,6 +37,12 @@ export const NOVELAI_NOISE_SCHEDULES = ['native', 'karras', 'exponential', 'poly
 /** One selectable noise schedule. */
 export type NovelaiNoiseSchedule = (typeof NOVELAI_NOISE_SCHEDULES)[number]
 
+/** Official quality-tag enhancement preset; `light` is V5-only at the API. */
+export const NOVELAI_QUALITY_PRESETS = ['standard', 'light', 'none'] as const
+
+/** One selectable quality-tag preset. */
+export type NovelaiQualityPreset = (typeof NOVELAI_QUALITY_PRESETS)[number]
+
 /** Inclusive upper bound of a NovelAI seed (the API rejects anything above `0xffffffff`). */
 export const MAX_NOVELAI_SEED = 0xffff_ffff
 
@@ -78,6 +84,10 @@ export interface NovelaiGenerateInput {
   noiseSchedule: NovelaiNoiseSchedule
   /** Seed, 0–`MAX_NOVELAI_SEED` inclusive. */
   seed: number
+  /** Quality-tag enhancement preset; absent applies none (tool requests stay verbatim). */
+  qualityPreset?: NovelaiQualityPreset
+  /** V5-only transparent-background request: appends the tag and asks for the alpha channel. */
+  transparentBackground?: boolean
 }
 
 /** Wire body of `POST /ai/generate-image` (text-to-image, `action: "generate"`). */

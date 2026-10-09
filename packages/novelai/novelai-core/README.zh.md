@@ -50,6 +50,7 @@ kind: "package-reference"
 - **纯核心、薄提交边。** 请求组装、Anlas 估算与响应提取都是脱离网络测试的纯函数；只有 `./node` 执行 I/O。
 - **浏览器安全的根入口。** 根模块不导入任何 Node 专属运行时，导入参数模型的浏览器 bundle 永远不会拖入 `undici` 或 `fflate`。
 - **官方客户端线格式对齐。** V5 请求恒定提交 `noise_schedule: "karras"`；CFG 收敛到 0–10、种子收敛到 `0xffffffff`；V4+ 请求携带 API 要求的结构化 `v4_prompt`/`v4_negative_prompt` 对象；默认负面提示词镜像 V4+ 的 "Heavy" 预设。
+- **质量词强化（桌面版对齐）。** 可选 `qualityPreset` 在正面提示词末尾追加官方逐检查点质量词（`light` 仅 V5 可用，其余检查点回落到标准词；提示词带显式 `Text:` 指令时剔除相冲突的 `no text`）；V5 专属的 `transparentBackground` 追加 `transparent background` 并请求 Alpha 通道（`straight_alpha`）。未带预设的请求保持逐字不变。
 - **响应提取大声失败。** 非压缩包主体（JSON/HTML 错误页）按错误响应拒绝，绝不会被误判成「缺图需重提」。
 
 ### Source map

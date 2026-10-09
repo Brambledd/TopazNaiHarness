@@ -34,6 +34,7 @@ export const NOVELAI_WORKBENCH_DEFAULTS: NovelaiGenerateInput = {
   sampler: 'k_euler',
   noiseSchedule: 'native',
   seed: 0,
+  qualityPreset: 'standard',
 }
 
 /**
@@ -67,6 +68,11 @@ export function resolveGenerationRequest(
     sampler: (request.sampler ?? NOVELAI_WORKBENCH_DEFAULTS.sampler) as NovelaiSampler,
     noiseSchedule: (request.noiseSchedule ?? NOVELAI_WORKBENCH_DEFAULTS.noiseSchedule) as NovelaiNoiseSchedule,
     seed: request.seed ?? Math.floor(randomSeed() * 0xffff_ffff),
+    qualityPreset: request.qualityPreset ?? 'standard',
+    // Transparent background is a V5-only API capability; the request clamps here.
+    ...(request.transparentBackground === true && model.startsWith('nai-diffusion-5-')
+      ? { transparentBackground: true }
+      : {}),
   }
 }
 

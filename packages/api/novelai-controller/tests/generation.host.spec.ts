@@ -29,6 +29,14 @@ describe('resolveGenerationRequest', () => {
     expect(resolved.negativePrompt).toBe(NOVELAI_WORKBENCH_DEFAULTS.negativePrompt)
     expect(resolved.seed).toBe(7)
   })
+
+  it('defaults the quality preset to standard and clamps transparency to V5', () => {
+    expect(resolveGenerationRequest({ prompt: 'x' }).qualityPreset).toBe('standard')
+    const v5 = resolveGenerationRequest({ prompt: 'x', model: 'nai-diffusion-5-full', transparentBackground: true })
+    expect(v5.transparentBackground).toBe(true)
+    const v4 = resolveGenerationRequest({ prompt: 'x', model: 'nai-diffusion-4-5-full', transparentBackground: true })
+    expect(v4.transparentBackground).toBeUndefined()
+  })
 })
 
 describe('runGeneration', () => {

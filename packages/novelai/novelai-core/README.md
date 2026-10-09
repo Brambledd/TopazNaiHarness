@@ -50,6 +50,7 @@ Every submitted request is paid. Submission never retries: the API may have char
 - **Pure core, thin submission edge.** Request assembly, Anlas estimation, and response extraction are pure functions tested without the network; only `./node` performs I/O.
 - **Browser-safe root entry.** The root module imports no Node-only runtime, so browser bundles importing the parameter model never pull `undici` or `fflate`.
 - **Official-client wire parity.** V5 requests always submit `noise_schedule: "karras"`; CFG clamps to 0–10 and the seed to `0xffffffff`; V4+ requests carry the structured `v4_prompt`/`v4_negative_prompt` objects the API requires; the default negative prompt mirrors the V4+ "Heavy" preset.
+- **Quality-tag enhancement (desktop parity).** An optional `qualityPreset` appends the official per-checkpoint quality tags to the positive prompt's end (`light` is V5-only and falls back to the standard tags elsewhere; an explicit `Text:` directive drops the contradicting `no text` tag), and a V5-only `transparentBackground` appends `transparent background` while requesting the alpha channel (`straight_alpha`). Requests without a preset stay verbatim.
 - **Response extraction fails loud.** A non-archive body (JSON/HTML error page) is rejected as an error response, never mistaken for a missing image that would justify a resubmission.
 
 ### Source map

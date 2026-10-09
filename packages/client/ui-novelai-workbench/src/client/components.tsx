@@ -86,6 +86,8 @@ export function WorkbenchRoot({
   const [seedMode, setSeedMode] = useState<'random' | 'fixed'>('random')
   const [seed, setSeed] = useState(0)
   const [lastSeed, setLastSeed] = useState<number | undefined>(undefined)
+  const [qualityPreset, setQualityPreset] = useState<'standard' | 'light' | 'none'>('standard')
+  const [transparentBackground, setTransparentBackground] = useState(false)
   const [anlas, setAnlas] = useState<number | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
@@ -194,6 +196,8 @@ export function WorkbenchRoot({
       cfgScale,
       sampler,
       noiseSchedule,
+      qualityPreset,
+      ...(transparentBackground ? { transparentBackground: true } : {}),
       ...(negativePrompt.trim() === '' ? {} : { negativePrompt }),
       ...(characters.length === 0 ? {} : { characters: characters.map(toCharacterRequest) }),
       ...(seedMode === 'fixed' ? { seed } : {}),
@@ -513,6 +517,35 @@ export function WorkbenchRoot({
               ))}
             </div>
           )}
+        </div>
+        <div className={css.section}>
+          <span className={css.fieldLabel}>{t('quality.label')}</span>
+          <div className={css.seedRow} role="group" aria-label={t('quality.label')}>
+            {(['standard', 'light', 'none'] as const).map(preset => (
+              <button
+                key={preset}
+                type="button"
+                className={`${css.seedSegment} ${qualityPreset === preset ? css.seedSegmentActive : ''}`}
+                aria-pressed={qualityPreset === preset}
+                disabled={preset === 'light' && !model.startsWith('nai-diffusion-5-')}
+                title={preset === 'light' ? t('quality.lightV5Only') : undefined}
+                onClick={() => { setQualityPreset(preset) }}
+              >
+                {t(`quality.${preset}` as const)}
+              </button>
+            ))}
+            {model.startsWith('nai-diffusion-5-') && (
+              <label className={css.charCheck}>
+                <input
+                  type="checkbox"
+                  checked={transparentBackground}
+                  onChange={(e) => { setTransparentBackground(e.target.checked) }}
+                />
+                {t('quality.transparent')}
+              </label>
+            )}
+          </div>
+          <p className={css.sizeHint}>{t('quality.hint')}</p>
         </div>
         <div className={css.section}>
           <button

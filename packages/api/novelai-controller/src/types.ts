@@ -166,6 +166,10 @@ export interface NovelaiGenerateRequest {
   readonly seed?: number
   /** Per-character captions; V4+ checkpoints only, capped at 6 (V4/V4.5) or 32 (V5). */
   readonly characters?: readonly NovelaiCharacterPromptRequest[]
+  /** Quality-tag enhancement preset; the workbench default (`standard`) applies when omitted. */
+  readonly qualityPreset?: 'standard' | 'light' | 'none'
+  /** V5-only transparent-background request; forced off for non-V5 checkpoints. */
+  readonly transparentBackground?: boolean
 }
 
 /** One completed generation, recorded in the shared library. Fields the PNG or index row does not carry stay absent. */

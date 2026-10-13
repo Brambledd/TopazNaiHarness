@@ -292,6 +292,36 @@ export interface Config {
 
 Source: [`packages/api/gateway/src/index.ts:119`](../packages/api/gateway/src/index.ts)
 
+<a id="deepseek-aidsh-api-novelai-controller"></a>
+
+## `@deepseek-ai/dsh-api-novelai-controller`
+
+Requires: `typert` · `llm`
+
+```ts config-catalog
+/** Deployment settings of the NovelAI workbench backend. */
+export interface NovelaiControllerConfig {
+  /** Output directory of the shared image library; the generation tool must point at the same directory. */
+  outputDir: string
+  /** On-disk location of the optional bilingual Danbooru tag index CSV (downloaded, never bundled). */
+  tagIndexPath: string
+  /** LLM provider used by the character-split auxiliary call. */
+  splitProvider: string
+  /** LLM model used by the character-split auxiliary call. */
+  splitModel: string
+  /** Output token budget of the character-split auxiliary call. */
+  splitMaxTokens: number
+  /** LLM provider used by the reverse-prompt vision call. */
+  reverseProvider: string
+  /** Vision-capable LLM model used by the reverse-prompt call. */
+  reverseModel: string
+  /** Output token budget of the reverse-prompt call. */
+  reverseMaxTokens: number
+}
+```
+
+Source: [`packages/api/novelai-controller/src/index.ts:67`](../packages/api/novelai-controller/src/index.ts)
+
 <a id="deepseek-aidsh-api-session-controller"></a>
 
 ## `@deepseek-ai/dsh-api-session-controller`
@@ -2832,6 +2862,32 @@ export interface Config {
 
 Source: [`packages/lsp/tool-lsp/src/index.ts:57`](../packages/lsp/tool-lsp/src/index.ts)
 
+<a id="deepseek-aidsh-tool-novelai"></a>
+
+## `@deepseek-ai/dsh-tool-novelai`
+
+Requires: `tools`
+
+```ts config-catalog
+/** Model-facing NovelAI tool configuration. */
+export interface Config {
+  /** Persistent API token; when empty the `NOVELAI_TOKEN` credential (credential store, then environment) supplies it. */
+  token: string
+  /** Image API base URL. */
+  imageBaseUrl: string
+  /** Directory the generated PNGs are written to; relative paths resolve against the process working directory. */
+  outputDir: string
+  /** Per-request timeout in milliseconds. */
+  timeoutMs: number
+  /** HTTP(S) proxy URL for reaching the NovelAI API, e.g. `http://127.0.0.1:7890`; empty defers to `NOVELAI_PROXY`/`HTTPS_PROXY` environment variables, unset means a direct connection. */
+  proxyUrl: string
+  /** Cold Sessions folded at startup to fill the session-list cover projection (newest first); `0` disables the backfill. */
+  coverBackfillSessions: number
+}
+```
+
+Source: [`packages/novelai/tool-novelai/src/index.ts:73`](../packages/novelai/tool-novelai/src/index.ts)
+
 <a id="deepseek-aidsh-tool-pwsh"></a>
 
 ## `@deepseek-ai/dsh-tool-pwsh`
@@ -3433,6 +3489,8 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-layout` ([`packages/client/ui-layout/src/index.ts`](../packages/client/ui-layout/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-message-feedback` ([`packages/client/ui-message-feedback/src/index.ts`](../packages/client/ui-message-feedback/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-model-selection` ([`packages/client/ui-model-selection/src/index.ts`](../packages/client/ui-model-selection/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-novelai` ([`packages/client/ui-novelai/src/index.ts`](../packages/client/ui-novelai/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-novelai-workbench` ([`packages/client/ui-novelai-workbench/src/index.ts`](../packages/client/ui-novelai-workbench/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-permission-presets` ([`packages/client/ui-permission-presets/src/index.ts`](../packages/client/ui-permission-presets/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-plan` ([`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-reference` ([`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts))
@@ -3466,6 +3524,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-host-directory-picker-auto` — requires `webServer` · `loader` ([`packages/host/directory-picker-auto/src/index.ts`](../packages/host/directory-picker-auto/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker-native` ([`packages/host/directory-picker-native/src/index.ts`](../packages/host/directory-picker-native/src/index.ts))
 - `@deepseek-ai/dsh-host-plugin-inventory` — requires `loader` ([`packages/host/plugin-inventory/src/index.ts`](../packages/host/plugin-inventory/src/index.ts))
+- `@deepseek-ai/dsh-infinite-gen-3` — requires `tools` · `systemPrompt` ([`packages/armor/infinite-gen-3/src/index.ts`](../packages/armor/infinite-gen-3/src/index.ts))
 - `@deepseek-ai/dsh-llm` ([`packages/llm/llm/src/index.ts`](../packages/llm/llm/src/index.ts))
 - `@deepseek-ai/dsh-lsp` ([`packages/lsp/lsp/src/index.ts`](../packages/lsp/lsp/src/index.ts))
 - `@deepseek-ai/dsh-schedule` — requires `agents` · `sessions` · `tools` · `sessionPersistence` ([`packages/schedule/schedule/src/index.ts`](../packages/schedule/schedule/src/index.ts))
@@ -3535,6 +3594,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-llm-mock-server` ([`packages/test-support/llm-mock-server/src/index.ts`](../packages/test-support/llm-mock-server/src/index.ts))
 - `@deepseek-ai/dsh-loader-smoke` ([`packages/test-support/loader-smoke/src/index.ts`](../packages/test-support/loader-smoke/src/index.ts))
 - `@deepseek-ai/dsh-native-command` ([`packages/util/native-command/src/index.ts`](../packages/util/native-command/src/index.ts))
+- `@deepseek-ai/dsh-novelai-core` ([`packages/novelai/novelai-core/src/index.ts`](../packages/novelai/novelai-core/src/index.ts))
 - `@deepseek-ai/dsh-output-retention` ([`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts))
 - `@deepseek-ai/dsh-sandbox-windows-acl` ([`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts))
 - `@deepseek-ai/dsh-scope` ([`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts))

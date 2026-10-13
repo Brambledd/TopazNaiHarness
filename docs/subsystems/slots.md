@@ -159,6 +159,7 @@ root
 │  └─ conversation.hero.agentPreset
 ├─ details
 │  └─ conversation.details.tool
+├─ shell.feed
 └─ shell.overlay
 ```
 

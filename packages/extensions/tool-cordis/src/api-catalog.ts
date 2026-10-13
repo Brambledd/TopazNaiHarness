@@ -1231,6 +1231,92 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'novelaiController',
+    summary: 'Host service backing the generated `ctx.remote.novelai` namespace.',
+    description: 'Host service backing the generated `ctx.remote.novelai` namespace.',
+    methods: [
+      {
+        signature: '@Remote(\'catalog\') catalog(): Promise<NovelaiCatalogValue>',
+        description: 'Serve the checkpoint/sampler/schedule catalogs and workbench defaults.',
+        parameters: [],
+        returns: 'the complete generation catalog.',
+      },
+      {
+        signature: '@Remote(\'estimate\') estimate(request: NovelaiEstimateRequest): Promise<NovelaiEstimateValue>',
+        description: 'Quote the Anlas price of one request size.',
+        parameters: [{ name: 'request', description: 'width, height, and steps of the imagined request.' }],
+        returns: 'the estimated Anlas charge.',
+      },
+      {
+        signature: '@Remote(\'generate\') async generate(request: NovelaiGenerateRequest): Promise<NovelaiGenerationValue>',
+        description: 'Submit one paid text-to-image generation and record it in the shared library.',
+        parameters: [{ name: 'request', description: 'the workbench\'s partial generation request.' }],
+        returns: 'the completed generation value.',
+      },
+      {
+        signature: '@Remote(\'enhance\') async enhance(request: NovelaiEnhanceRequest): Promise<NovelaiGenerationValue>',
+        description: 'Submit one paid enhance (img2img) run over the client-resized source and record the result in the shared library.',
+        parameters: [{ name: 'request', description: 'the workbench\'s enhance request.' }],
+        returns: 'the completed generation value of the enhanced image.',
+      },
+      {
+        signature: '@Remote(\'history\') async history(request: NovelaiHistoryRequest): Promise<NovelaiHistoryValue>',
+        description: 'Read one page of the merged library, newest first.',
+        parameters: [{ name: 'request', description: 'paging offsets.' }],
+        returns: 'the page and the library total.',
+      },
+      {
+        signature: '@Remote(\'removeEntry\') async removeEntry(request: NovelaiRemoveRequest): Promise<NovelaiRemoveValue>',
+        description: 'Remove one library entry and its PNG file.',
+        parameters: [{ name: 'request', description: 'the entry to remove.' }],
+        returns: 'the removal receipt.',
+      },
+      {
+        signature: '@Remote(\'suggestTags\') async suggestTags(request: NovelaiSuggestTagsRequest): Promise<NovelaiTagSuggestionsValue>',
+        description: 'Suggest tags for one partial prompt word: the NovelAI suggest-tags endpoint first, the built-in Chinese dictionary when the endpoint is unavailable or answers without suggestions.',
+        parameters: [{ name: 'request', description: 'the partial word and its checkpoint scope.' }],
+        returns: 'ranked suggestions, best first.',
+      },
+      {
+        signature: '@Remote(\'tagIndexStatus\') async status(): Promise<NovelaiTagIndexStatusValue>',
+        description: 'Report the bilingual tag index state.',
+        parameters: [],
+        returns: 'download presence, record count, and file size.',
+      },
+      {
+        signature: '@Remote(\'downloadTagIndex\') async downloadTagIndex(): Promise<NovelaiDownloadTagIndexValue>',
+        description: 'Download (or refresh) the bilingual tag index CSV.',
+        parameters: [],
+        returns: 'the download receipt.',
+      },
+      {
+        signature: '@Remote(\'splitCharacters\') async splitCharacters(request: NovelaiSplitCharactersRequest): Promise<NovelaiSplitCharactersValue>',
+        description: 'Split one merged prompt into a base prompt plus per-character captions with an auxiliary LLM call. The base keeps scene, composition, and quality tags; each character receives its own Danbooru caption.',
+        parameters: [{ name: 'request', description: 'the merged prompt to decompose.' }],
+        returns: 'the remaining base prompt and the ordered character captions.',
+      },
+      {
+        signature: '@Remote(\'reversePrompt\') async reversePrompt(request: NovelaiReverseRequest): Promise<NovelaiReverseValue>',
+        description: 'Reverse one imported image into a NovelAI prompt through the configured vision model (desktop reference parity: reproducible Danbooru output).',
+        parameters: [{ name: 'request', description: 'the image and reverse options.' }],
+        returns: 'the reversed prompt, plus the identity/appearance variants in known-character mode.',
+        throws: ['RemoteError when no attachment store is mounted or the vision call fails or answers unusably.'],
+      },
+      {
+        signature: '@Remote(\'inspectImage\') async inspectImage(request: NovelaiInspectRequest): Promise<NovelaiInspectValue>',
+        description: 'Read the parameters NovelAI embeds in one imported PNG (prompt, negative, seed, sampler, and friends) and report them for panel restoration. Pure parsing: no NovelAI call, no Anlas, works offline.',
+        parameters: [{ name: 'request', description: 'the original file bytes.' }],
+        returns: 'the found parameters; `hasMeta` false when none embedded.',
+      },
+      {
+        signature: '@Remote(\'readEntry\') async readEntry(request: NovelaiReadEntryRequest): Promise<NovelaiEntryContentValue>',
+        description: 'Read one library entry\'s PNG bytes for workbench display.',
+        parameters: [{ name: 'request', description: 'the entry to read.' }],
+        returns: 'the base64-encoded PNG content.',
+      },
+    ],
+  },
+  {
     key: 'permissionPresets',
     summary: 'Owns the deployment\'s permission presets and their write path.',
     description: 'Owns the deployment\'s permission presets and their write path. Requires a confining `ctx.shell` executor and `ctx.approval`; unmatched knob values are reported as CUSTOM_PRESET, not an error.',
@@ -3885,7 +3971,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'DeepSeekLlmApiExtensionRequest',
-    declaration: 'export interface DeepSeekLlmApiExtensionRequest {\n    readonly body: Readonly<Record<string, DeepSeekLlmApiJson>>;\n    readonly sessionId?: string;\n    readonly purpose?: \'compaction\' | \'session-title\';\n    readonly signal: AbortSignal;\n}',
+    declaration: 'export interface DeepSeekLlmApiExtensionRequest {\n    readonly body: Readonly<Record<string, DeepSeekLlmApiJson>>;\n    readonly sessionId?: string;\n    readonly purpose?: \'compaction\' | \'session-title\' | \'novelai-split-characters\' | \'novelai-reverse-prompt\';\n    readonly signal: AbortSignal;\n}',
   },
   {
     name: 'DeepSeekLlmApiJson',
@@ -4081,7 +4167,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GenerateOptions',
-    declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n}',
+    declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\' | \'novelai-split-characters\' | \'novelai-reverse-prompt\';\n}',
   },
   {
     name: 'GenericCallView',
@@ -4518,6 +4604,110 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ModelReasoningEffort',
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
+  },
+  {
+    name: 'NovelaiCatalogValue',
+    declaration: 'export interface NovelaiCatalogValue {\n    readonly models: readonly string[];\n    readonly samplers: readonly string[];\n    readonly noiseSchedules: readonly string[];\n    readonly maxSeed: number;\n    readonly defaults: NovelaiGenerationDefaults;\n}',
+  },
+  {
+    name: 'NovelaiCharacterPromptRequest',
+    declaration: 'export interface NovelaiCharacterPromptRequest {\n    readonly prompt: string;\n    readonly negativePrompt?: string;\n    readonly useCoords: boolean;\n    readonly x: number;\n    readonly y: number;\n}',
+  },
+  {
+    name: 'NovelaiCharacterPromptValue',
+    declaration: 'export interface NovelaiCharacterPromptValue {\n    readonly prompt: string;\n    readonly negativePrompt: string;\n    readonly useCoords: boolean;\n    readonly x: number;\n    readonly y: number;\n}',
+  },
+  {
+    name: 'NovelaiDownloadTagIndexValue',
+    declaration: 'export interface NovelaiDownloadTagIndexValue {\n    readonly ok: boolean;\n    readonly message: string;\n    readonly count: number;\n}',
+  },
+  {
+    name: 'NovelaiEnhanceRequest',
+    declaration: 'export interface NovelaiEnhanceRequest {\n    readonly image: string;\n    readonly width: number;\n    readonly height: number;\n    readonly prompt: string;\n    readonly negativePrompt?: string;\n    readonly model?: string;\n    readonly steps?: number;\n    readonly cfgScale?: number;\n    readonly sampler?: string;\n    readonly noiseSchedule?: string;\n    readonly strength: number;\n    readonly upscaledEnhance?: boolean;\n    readonly seed?: number;\n}',
+  },
+  {
+    name: 'NovelaiEntryContentValue',
+    declaration: 'export interface NovelaiEntryContentValue {\n    readonly data: string;\n    readonly mime: \'image/png\';\n}',
+  },
+  {
+    name: 'NovelaiEstimateRequest',
+    declaration: 'export interface NovelaiEstimateRequest {\n    readonly width: number;\n    readonly height: number;\n    readonly steps: number;\n}',
+  },
+  {
+    name: 'NovelaiEstimateValue',
+    declaration: 'export interface NovelaiEstimateValue {\n    readonly anlas: number;\n}',
+  },
+  {
+    name: 'NovelaiGenerateRequest',
+    declaration: 'export interface NovelaiGenerateRequest {\n    readonly prompt: string;\n    readonly negativePrompt?: string;\n    readonly model?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly steps?: number;\n    readonly cfgScale?: number;\n    readonly sampler?: string;\n    readonly noiseSchedule?: string;\n    readonly seed?: number;\n    readonly characters?: readonly NovelaiCharacterPromptRequest[];\n}',
+  },
+  {
+    name: 'NovelaiGenerationDefaults',
+    declaration: 'export interface NovelaiGenerationDefaults {\n    readonly model: string;\n    readonly width: number;\n    readonly height: number;\n    readonly steps: number;\n    readonly cfgScale: number;\n    readonly sampler: string;\n    readonly noiseSchedule: string;\n}',
+  },
+  {
+    name: 'NovelaiGenerationValue',
+    declaration: 'export interface NovelaiGenerationValue {\n    readonly id: string;\n    readonly file: string;\n    readonly bytes: number;\n    readonly width?: number;\n    readonly height?: number;\n    readonly seed?: number;\n    readonly model?: string;\n    readonly steps?: number;\n    readonly prompt?: string;\n    readonly negativePrompt?: string;\n    readonly characters?: readonly NovelaiCharacterPromptValue[];\n    readonly createdAt: string;\n    readonly anlasEstimate: number;\n}',
+  },
+  {
+    name: 'NovelaiHistoryRequest',
+    declaration: 'export interface NovelaiHistoryRequest {\n    readonly offset?: number;\n    readonly limit?: number;\n}',
+  },
+  {
+    name: 'NovelaiHistoryValue',
+    declaration: 'export interface NovelaiHistoryValue {\n    readonly entries: readonly NovelaiGenerationValue[];\n    readonly total: number;\n}',
+  },
+  {
+    name: 'NovelaiInspectRequest',
+    declaration: 'export interface NovelaiInspectRequest {\n    readonly image: string;\n}',
+  },
+  {
+    name: 'NovelaiInspectValue',
+    declaration: 'export interface NovelaiInspectValue {\n    readonly hasMeta: boolean;\n    readonly prompt?: string;\n    readonly negativePrompt?: string;\n    readonly model?: string;\n    readonly seed?: number;\n    readonly steps?: number;\n    readonly sampler?: string;\n    readonly cfgScale?: number;\n    readonly width?: number;\n    readonly height?: number;\n    readonly characters?: readonly NovelaiCharacterPromptValue[];\n}',
+  },
+  {
+    name: 'NovelaiReadEntryRequest',
+    declaration: 'export interface NovelaiReadEntryRequest {\n    readonly id: string;\n}',
+  },
+  {
+    name: 'NovelaiRemoveRequest',
+    declaration: 'export interface NovelaiRemoveRequest {\n    readonly id: string;\n}',
+  },
+  {
+    name: 'NovelaiRemoveValue',
+    declaration: 'export interface NovelaiRemoveValue {\n    readonly removed: boolean;\n}',
+  },
+  {
+    name: 'NovelaiReverseRequest',
+    declaration: 'export interface NovelaiReverseRequest {\n    readonly image: string;\n    readonly mode: \'tags\' | \'natural\' | \'mixed\';\n    readonly scope: \'full\' | \'character\' | \'object\' | \'scene\';\n    readonly hint?: string;\n    readonly knownCharacter: boolean;\n}',
+  },
+  {
+    name: 'NovelaiReverseValue',
+    declaration: 'export interface NovelaiReverseValue {\n    readonly prompt: string;\n    readonly namePrompt?: string;\n    readonly featurePrompt?: string;\n}',
+  },
+  {
+    name: 'NovelaiSplitCharactersRequest',
+    declaration: 'export interface NovelaiSplitCharactersRequest {\n    readonly prompt: string;\n}',
+  },
+  {
+    name: 'NovelaiSplitCharactersValue',
+    declaration: 'export interface NovelaiSplitCharactersValue {\n    readonly prompt: string;\n    readonly characters: readonly NovelaiCharacterPromptValue[];\n}',
+  },
+  {
+    name: 'NovelaiSuggestTagsRequest',
+    declaration: 'export interface NovelaiSuggestTagsRequest {\n    readonly prompt: string;\n    readonly model?: string;\n}',
+  },
+  {
+    name: 'NovelaiTagIndexStatusValue',
+    declaration: 'export interface NovelaiTagIndexStatusValue {\n    readonly downloaded: boolean;\n    readonly count: number;\n    readonly sizeBytes: number;\n}',
+  },
+  {
+    name: 'NovelaiTagSuggestion',
+    declaration: 'export interface NovelaiTagSuggestion {\n    readonly tag: string;\n    readonly count: number;\n    readonly category: number;\n    readonly description: string;\n}',
+  },
+  {
+    name: 'NovelaiTagSuggestionsValue',
+    declaration: 'export interface NovelaiTagSuggestionsValue {\n    readonly tags: readonly NovelaiTagSuggestion[];\n}',
   },
   {
     name: 'ObjectJsonSchema',

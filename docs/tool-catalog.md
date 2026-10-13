@@ -31,7 +31,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-schedule` | `schedule_create`, `schedule_delete`, `schedule_list` | `ctx.tools`, `ctx.sessions`, `Session persistence`, `a future live root Agent` | `tool/call`, `schedule/change create or delete`, `tool/result` | - | Registered only inside live root Agent scopes created after the opt-in Schedule plugin loads. Version 1 accepts after_seconds, explicit absolute at, and bounded fixed-rate every_seconds, and discloses session-local delivery; management reads and mutations require the shared Session persistence barrier. |
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`, `ctx.lsp`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The lsp tool keeps provider selection and language-server subprocesses behind ctx.lsp, so its model-visible schema stays stable across providers. Requires a registered provider (e.g. `@deepseek-ai/dsh-lsp-stdio`) at runtime; without one, a query returns the structured `LSP_UNAVAILABLE` error rather than changing the schema. |
 | `@deepseek-ai/dsh-infinite-gen-3` | `infinite_gen3_profile` | `ctx.tools`, `ctx.systemPrompt` | `tool/call`, `tool/result; the armor projection folds host-side session state, not a session event` | - | infinite_gen3_profile is a zero-argument read of the plugin metadata plus the verbatim armor prompt; the package also registers the always-on system-prompt section, which the catalog does not render. |
-| `@deepseek-ai/dsh-tool-novelai` | `novelai_generate` | `ctx.tools`, `NOVELAI_TOKEN (config or environment) at submission time` | `tool/call`, `tool/result`, `a PNG file plus the library index row in the configured output directory` | - | - |
+| `@deepseek-ai/dsh-tool-novelai` | `novelai_generate`, `novelai_prompt_patch` | `ctx.tools`, `NOVELAI_TOKEN (config or environment) at submission time` | `tool/call`, `tool/result`, `a PNG file plus the library index row in the configured output directory` | - | - |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`, `ctx.workflowEngine`, `ctx.subagents`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents every fresh round)` | `tool/call`, `tool/result`, `workflow and child session events during execution` | - | A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap. |
 | `@deepseek-ai/dsh-tool-skill` | `skill` | `ctx.tools`, `ctx.agents`, `ctx.skills` | `tool/call`, `tool/result`, `user/message replacement catalogs via agent.inject()` | - | - |
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
@@ -1266,7 +1266,7 @@ infinite_gen3_profile is a zero-argument read of the plugin metadata plus the ve
 
 ### `novelai_generate`
 
-Generate one anime-style image through the NovelAI image API and save it as a PNG. Write the prompt in Danbooru-tag style (e.g. "1girl, solo, blue hair, white dress, garden, sunlight"). Every call is PAID (Anlas): batch and iterate deliberately, never in a loop. The result reports the saved file path and the seed, so a follow-up can vary one element while keeping the rest identical by reusing that seed.
+Generate one anime-style image through the NovelAI image API and save it as a PNG. When the session has a live workbench panel (the rail beside the conversation), this tool ALWAYS runs off the workbench's committed prompt and parameters — pass only an optional seed or filename. WORKFLOW: if the user requests a scene or any visual change not already in the workbench, FIRST call novelai_prompt_patch with the needed tags and WAIT for the user to apply it — never generate a scene the workbench does not describe. Generate ONCE per request; iterate only when the user asks. A repeat with an unchanged workbench prompt and seed is rejected (it returns a near-identical image). Without a workbench, write the prompt in Danbooru-tag style (e.g. "1girl, solo, blue hair, white dress"). Every call is PAID (Anlas): batch and iterate deliberately, never in a loop. The result reports the saved file path and the seed, so a follow-up can vary one element while keeping the rest identical by reusing that seed. Never post-process, rename, copy, or "fix" the produced image files with other tools; show the user the generated image and let them decide.
 
 ```json
 {
@@ -1274,7 +1274,7 @@ Generate one anime-style image through the NovelAI image API and save it as a PN
   "properties": {
     "prompt": {
       "type": "string",
-      "description": "Positive prompt, Danbooru-tag style."
+      "description": "Positive prompt, Danbooru-tag style. Ignored when the session has a live workbench panel — the committed workbench prompt binds."
     },
     "negativePrompt": {
       "type": "string",
@@ -1340,9 +1340,77 @@ Generate one anime-style image through the NovelAI image API and save it as a PN
       "type": "string",
       "description": "Output file stem without extension; defaults to a timestamp-plus-seed name."
     }
+  }
+}
+```
+
+Source: [`packages/novelai/tool-novelai/src/index.ts`](../packages/novelai/tool-novelai/src/index.ts)
+
+### `novelai_prompt_patch`
+
+Propose a precise edit to the NovelAI workbench prompt instead of restating the whole prompt: one call carries the slot (positive / negative / settings) and an ordered operation list (add a tag, remove a tag, modify a tag to a new spelling, or set a settings field). USE THIS FIRST whenever the user requests a new scene or any visual change: emit the needed tags as one patch, tell the user to click 应用 in the card, and only then call novelai_generate. generation always runs off the workbench's live prompt — a requested scene that never reached the workbench will not appear in the image.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "slot": {
+      "type": "string",
+      "description": "Which workbench slot the operations target.",
+      "enum": [
+        "positive",
+        "negative",
+        "settings"
+      ]
+    },
+    "operations": {
+      "type": "array",
+      "description": "Ordered operations; the workbench rail applies them as one patch.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "op": {
+            "type": "string",
+            "description": "Tag verb (add/remove/modify); on the settings slot only modify (set) is meaningful.",
+            "enum": [
+              "add",
+              "remove",
+              "modify"
+            ]
+          },
+          "tag": {
+            "type": "string",
+            "description": "Danbooru tag (positive/negative slots). `modify` rewrites this tag to `value`."
+          },
+          "field": {
+            "type": "string",
+            "description": "Settings field (settings slot): model, width, height, steps, cfgScale, sampler, noiseSchedule, seed.",
+            "enum": [
+              "model",
+              "width",
+              "height",
+              "steps",
+              "cfgScale",
+              "sampler",
+              "noiseSchedule",
+              "seed"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "description": "Replacement tag (modify) or the settings field value as a string."
+          }
+        },
+        "required": [
+          "op"
+        ]
+      }
+    }
   },
   "required": [
-    "prompt"
+    "slot",
+    "operations"
   ]
 }
 ```

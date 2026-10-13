@@ -3,16 +3,76 @@
    geometry and the chip live here. */
 
 .root {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
   min-width: 0;
+  overflow: hidden;
   padding: 0 24px;
+}
+
+/* ZZZ skin: InterKnot's ambient background marquee — two giant counter-
+   drifting wordmark rows rotated off-axis behind the hero stack. Decorative
+   brand chrome: pure CSS content. */
+.root::before,
+.root::after {
+  /* The empty alternative text keeps the decorative rows out of the
+     accessibility tree (generated content is otherwise exposed as text). */
+  content: 'NOVELAI AGENT NOVELAI AGENT NOVELAI AGENT NOVELAI AGENT NOVELAI AGENT' / '';
+  position: absolute;
+  left: -10%;
+  width: 120%;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  font-family: var(--dsw-zzz-font-display);
+  font-size: clamp(140px, 20vw, 300px);
+  font-weight: 800;
+  line-height: 0.78;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  color: rgba(10, 12, 16, 0.04);
+  transform: rotate(-12deg);
+}
+
+.root::before {
+  top: 4%;
+  animation: zzz-hero-marquee-ltr 320s linear infinite alternate;
+}
+
+.root::after {
+  bottom: 4%;
+  animation: zzz-hero-marquee-rtl 360s linear infinite alternate;
+}
+
+@keyframes zzz-hero-marquee-ltr {
+  from { transform: rotate(-12deg) translate3d(-6%, 0, 0); }
+  to { transform: rotate(-12deg) translate3d(2%, 0, 0); }
+}
+
+@keyframes zzz-hero-marquee-rtl {
+  from { transform: rotate(-12deg) translate3d(2%, 0, 0); }
+  to { transform: rotate(-12deg) translate3d(-6%, 0, 0); }
+}
+
+body[data-ds-dark-theme] .root::before,
+body[data-ds-dark-theme] .root::after {
+  color: rgba(255, 255, 255, 0.05);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root::before,
+  .root::after {
+    animation: none;
+  }
 }
 
 /* Cap matches the InputBar card. Glow may paint past the sides. */
 .stack {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -25,16 +85,20 @@
 
 /* figma 34:10411: fish + title, gap 10, centered; 26/32 wt500. The preview
    badge is a product addition outside that source: a mono superscript pill
-   riding the title's top-right. */
+   riding the title's top-right. ZZZ skin: the headline is the InterKnot
+   .ik-title treatment — the bold game face at heavy weight, upright, wide
+   tracking. */
 .headline {
   display: grid;
   grid-template-columns: 34px auto auto;
   column-gap: 10px;
   align-items: center;
   justify-content: center;
+  font-family: var(--dsw-zzz-font-display);
   font-size: 26px;
   line-height: 32px;
-  font-weight: 500;
+  font-weight: 800;
+  letter-spacing: 0.8px;
   color: var(--dsw-alias-label-primary);
 }
 

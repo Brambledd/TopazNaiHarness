@@ -25,8 +25,11 @@
      the bubble widens with a user-dragged or adaptive column; percentage
      keeps narrow windows sane. */
   max-width: 100%;
+  /* ZZZ skin: InterKnot's flat game bubble — borderless fill with the
+     chat_message_arrow_right.webp nipple at the top-right. */
+  position: relative;
   background: var(--dsw-specific-bubble);
-  border-radius: 22px;
+  border-radius: 16px;
   /* 42px single-line bubble at the default size: 22 line + 10 vertical
      padding each side; the Settings font-size preference moves size and line
      height together through the body-published axis. */
@@ -38,6 +41,30 @@
      decorated single-line message stays one line. */
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Bubble nipple: the zenless-tools arrow artwork (InterKnot geometry:
+   top 0.125em, offset -0.4375em, 0.75em square), tinted to the fill. */
+.bubble::after {
+  content: '';
+  position: absolute;
+  top: 0.125em;
+  right: -0.4375em;
+  width: 0.75em;
+  height: 0.75em;
+  background-image: url('interknot/images/chat_message_arrow_right.webp');
+  background-size: contain;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+body[data-ds-dark-theme] .bubble::after {
+  filter: brightness(0.118);
+}
+
+/* Light bubble is a near-white tint; dim the white arrow to stay visible. */
+body:not([data-ds-dark-theme]) .bubble::after {
+  filter: brightness(0.94);
 }
 
 .referenceSummary {

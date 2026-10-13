@@ -42,11 +42,14 @@
   padding-top: 10px;
   /* Input stroke: black/0.10 light, white/0.06 dark (figma darkmode note says
      the input border is one notch weaker than buttons) — exactly the
-     l2-darkmode-thin pair. Fill: the input surface token (elevated in dark). */
-  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+     l2-darkmode-thin pair. Fill: the input surface token (elevated in dark).
+     ZZZ skin: ink edge + light outer ring; focus wakes the electric border. */
+  border: 1px solid var(--dsw-zzz-panel-edge);
   border-radius: 22px;
   background: var(--dsw-specific-input-major);
-  box-shadow: var(--dsw-shadow-lv2);
+  box-shadow:
+    var(--dsw-shadow-lv2),
+    0 0 0 1px var(--dsw-zzz-panel-ring);
   /* The draft text follows the Settings font-size preference (the textarea,
      mirror, and backdrop all inherit from here, so the three layers stay in
      step); the line height keeps the default 10px leading via the shared px
@@ -60,6 +63,11 @@
      (see ui-theme styles/scrollbar.css for the rebinding contract). */
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* Focused composer: the ink edge hands over to the electric blue. */
+.card:focus-within {
+  border-color: var(--dsw-zzz-electric);
 }
 
 /* No-workspace trigger state: dashed l4 stroke marks the card as a pick-a-
@@ -312,18 +320,21 @@
   cursor: default;
 }
 
-/* Primary send (figma IconButton 34:10465): 34px circle, #3964FE light /
-   #679EFE dark — the info-fill pair (500→400), NOT button-primary (ink);
-   white glyph; empty text = 0.4 opacity. */
+/* Primary send (figma IconButton 34:10465): 34px circle — the info-fill
+ * pair, NOT button-primary (ink); white glyph; empty text = 0.4 opacity.
+ * ZZZ skin: ink edge + ring, tactile press. */
 .primary {
   display: grid;
   place-items: center;
   flex: none;
   width: 34px;
   height: 34px;
-  border: none;
+  border: 1px solid var(--dsw-zzz-panel-edge);
   border-radius: 999px;
   background: var(--dsw-alias-button-info-fill);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 0 1px var(--dsw-zzz-panel-ring);
   /* Static white, not the foreground token: the arrow stays white on the blue
      fill in both themes (design 34:10465). */
   color: #fff;
@@ -337,6 +348,13 @@
 
 .primary:hover:not(:disabled) {
   background: var(--dsw-alias-button-info-hover);
+}
+
+.primary:active:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 0 1px var(--dsw-zzz-panel-edge);
 }
 
 .primary:disabled {

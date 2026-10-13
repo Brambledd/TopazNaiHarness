@@ -1,16 +1,22 @@
+/* ZZZ skin: ink-edged well with an outer ring; focus wakes the electric-blue
+ * ring (zenless-ui input border treatment, scaled to the 32px control). */
 .wrap {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 32px;
   padding: 0 8px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 10px;
+  background: var(--dsw-specific-input-major);
+  box-shadow: 0 0 0 1px var(--dsw-zzz-panel-ring);
+  transition: border-color var(--ds-transition-duration-fast) var(--ds-ease-in-out),
+    box-shadow var(--ds-transition-duration-fast) var(--ds-ease-in-out);
 }
 
 .wrap:focus-within {
-  border-color: var(--dsw-alias-brand-primary);
+  border-color: var(--dsw-zzz-electric);
+  box-shadow: var(--dsw-zzz-focus-ring);
 }
 
 .icon {

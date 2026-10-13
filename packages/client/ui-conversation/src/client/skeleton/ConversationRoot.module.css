@@ -185,10 +185,61 @@
    nearest semantic token that stays blue in both themes. */
 .tabActive {
   color: var(--dsw-alias-state-business-primary);
+  /* Stacking context: keeps the -1 highlight pseudo inside the tab, above
+     ancestor backgrounds and below the label. */
+  z-index: 0;
 }
 
+/* ZZZ skin: the active tab carries InterKnot's breathing highlight — the
+   squashed-hexagon SVG behind the label, hard-flickering #fbfe00↔#dcfe00
+   (800ms alternate) while scaling 1.08↔1.2 (700ms). Active text turns ink
+   on the yellow blob, exactly like the game header tabs. */
 .tabActive::after {
-  background: var(--dsw-alias-state-business-primary);
+  top: -7px;
+  right: -10px;
+  bottom: -1px;
+  left: -10px;
+  height: auto;
+  z-index: -1;
+  border-radius: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 121.4 42' preserveAspectRatio='none'%3E%3Cpath d='M 105.08 0 A 10 10 0 0 1 113.99 14.54 L 104.45 33.26 A 16 16 0 0 1 90.2 42 L 16.32 42 A 10 10 0 0 1 7.41 27.46 L 16.95 8.74 A 16 16 0 0 1 31.2 0 Z' fill='%23fbfe00'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+  transform: scale(1.08);
+  animation:
+    zzz-tab-highlight-img 800ms steps(1) infinite alternate,
+    zzz-tab-highlight-scale 700ms linear infinite;
+}
+
+@keyframes zzz-tab-highlight-img {
+  from {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 121.4 42' preserveAspectRatio='none'%3E%3Cpath d='M 105.08 0 A 10 10 0 0 1 113.99 14.54 L 104.45 33.26 A 16 16 0 0 1 90.2 42 L 16.32 42 A 10 10 0 0 1 7.41 27.46 L 16.95 8.74 A 16 16 0 0 1 31.2 0 Z' fill='%23fbfe00'/%3E%3C/svg%3E");
+  }
+
+  to {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 121.4 42' preserveAspectRatio='none'%3E%3Cpath d='M 105.08 0 A 10 10 0 0 1 113.99 14.54 L 104.45 33.26 A 16 16 0 0 1 90.2 42 L 16.32 42 A 10 10 0 0 1 7.41 27.46 L 16.95 8.74 A 16 16 0 0 1 31.2 0 Z' fill='%23dcfe00'/%3E%3C/svg%3E");
+  }
+}
+
+@keyframes zzz-tab-highlight-scale {
+  0% {
+    transform: scale(1.08);
+  }
+
+  50% {
+    transform: scale(1.2);
+  }
+
+  100% {
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabActive::after {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 121.4 42' preserveAspectRatio='none'%3E%3Cpath d='M 105.08 0 A 10 10 0 0 1 113.99 14.54 L 104.45 33.26 A 16 16 0 0 1 90.2 42 L 16.32 42 A 10 10 0 0 1 7.41 27.46 L 16.95 8.74 A 16 16 0 0 1 31.2 0 Z' fill='%23fbfe00'/%3E%3C/svg%3E");
+    transform: none;
+    animation: none;
+  }
 }
 
 .viewArea {

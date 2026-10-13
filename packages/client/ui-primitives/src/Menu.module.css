@@ -4,7 +4,7 @@
 }
 
 /* Dropdown card (figma MenuDropdown 122:9481 / 419:16920): menu surface,
- * r12, inverted hairline border, shadow-lv3, 4px inset padding. */
+ * r14, ink edge + light ring, shadow-lv3, 4px inset padding. ZZZ skin. */
 .list,
 .submenu {
   /* min-widths below are the design's outer card widths — include the pad. */
@@ -13,10 +13,12 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  border: 1px solid var(--dsw-alias-border-inverted);
-  border-radius: 12px;
+  border: 1px solid var(--dsw-zzz-panel-edge);
+  border-radius: 14px;
   background: var(--dsw-specific-menu);
-  box-shadow: var(--dsw-shadow-lv3);
+  box-shadow:
+    var(--dsw-shadow-lv3),
+    0 0 0 1px var(--dsw-zzz-panel-ring);
   /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens. The
      declaration sits on the card rather than on `.scrollable .viewport`
      because the elevation is a property of this surface, and the custom
@@ -112,7 +114,7 @@
 }
 
 .item:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
 }
 
 .denseList .item {
@@ -180,7 +182,7 @@
 
 .check {
   flex: none;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsw-zzz-electric);
 }
 
 /* Selected cell keeps the plain fill (marker is the trailing check); the

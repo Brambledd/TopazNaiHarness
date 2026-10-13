@@ -51,7 +51,9 @@ The service owns theme and font-size state and publishes snapshots. The ui-layou
 
 ### Stylesheets
 
-`src/styles/` holds five sheets imported in order by ui-theme's dynamic client entry: `base.css`, `design-platform.css`, `scrollbar.css`, `gradient-shadow-text.css`, and `shiki.css`. The client bundle compiles and injects them as plugin-owned global styles, so unload and HMR remove them with ui-theme. `scrollbar.css` is the sole consumer of the `--dsw-alias-scrollbar-*` tokens and must follow `design-platform.css`, which declares them.
+`src/styles/` holds six sheets imported in order by ui-theme's dynamic client entry: `base.css`, `design-platform.css`, `scrollbar.css`, `gradient-shadow-text.css`, `zzz.css`, and `shiki.css`. The client bundle compiles and injects them as plugin-owned global styles, so unload and HMR remove them with ui-theme. `scrollbar.css` is the sole consumer of the `--dsw-alias-scrollbar-*` tokens and must follow `design-platform.css`, which declares them.
+
+`zzz.css` is the Zenless Zone Zero skin: it loads after both token sheets, remaps the semantic `--dsw-alias-*` tokens and elevation shadows for both palettes, and owns the `--dsw-zzz-*` accent tokens (primary blue, element colors, the yellow→green pulse keyframes, hatch pattern fills, and the display font stack) that component sheets consume for the signature treatments. Its display faces load from `apps/web/public/fonts/` and resolve relative to the served page root.
 
 `gradient-shadow-text.css` derives `--dsh-content-font-delta` from `--dsh-content-font-size` and shifts the Markdown heading and base-text ladder by that increment. It also derives the secondary tier `--dsh-content-font-size-secondary` (setting −1 at ≤14, setting −2 above; 13px at the default) with its own `--dsh-content-font-delta-secondary` for the table variants and the flow rows one step under the body. Dense small and code variants stay fixed. Outside the ladder, the user bubble and composer draft read the body pair directly, and flow-row titles and summaries read the secondary pair.
 

@@ -81,11 +81,14 @@
   overflow: hidden;
   padding: 4px;
   /* Surface tokens match the Menu primitive card (ui-primitives
-   * Menu.module.css) so every dropdown reads as the same material. */
-  border: 1px solid var(--dsw-alias-border-inverted);
-  border-radius: 12px;
+   * Menu.module.css) so every dropdown reads as the same material.
+   * ZZZ skin: ink edge + light outer ring, matching the Menu primitive. */
+  border: 1px solid var(--dsw-zzz-panel-edge);
+  border-radius: 14px;
   background: var(--dsw-specific-menu);
-  box-shadow: var(--dsw-shadow-lv3);
+  box-shadow:
+    var(--dsw-shadow-lv3),
+    0 0 0 1px var(--dsw-zzz-panel-ring);
   color: var(--dsw-alias-label-primary);
   /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens.
      Declared here rather than on the scrolling `.groups` child so the
@@ -211,7 +214,7 @@
   display: grid;
   place-items: center;
   flex: 0 0 18px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsw-zzz-electric);
 }
 
 /* Two-level root cells (figma 496:26454 .Menu_cell): 40px row, 10px side

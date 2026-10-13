@@ -1,0 +1,353 @@
+/* 绝区零 (Zenless Zone Zero) skin for the DSH web client.
+ *
+ * Design language sources:
+ *   - zenless-ui (github.com/ChrisChan13/zenless-ui): #008bff primary, bright
+ *     yellow→yellow-green pulse gradient for active states, chunky ink borders
+ *     with a light outer ring, chessboard / diagonal-stripe / rhombus hatching
+ *     fills, 20px capsule panels.
+ *   - zenless.tools: the "ZZZ Comic" display webfont files (bundled from
+ *     apps/web/public/fonts/).
+ *
+ * Layering contract: this sheet loads after design-platform.css and
+ * gradient-shadow-text.css, so equal-specificity alias remaps below win the
+ * cascade. It remaps the semantic --dsw-alias-* tokens both palettes consume
+ * and adds the --dsw-zzz-* accent tokens that component sheets read for the
+ * signature treatments (pulse fills, hatched panels, display type). No
+ * component class names are targeted from here.
+ */
+
+/* ---------- Display faces ---------- */
+
+/* zenless.tools "ZZZ Comic" — Latin display accents (brand wordmark). */
+@font-face {
+  font-family: 'ZZZ Comic';
+  src: url('fonts/zzz-comic-en.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'ZZZ Comic ZH';
+  src: url('fonts/zzz-comic-zh.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* 印品鸿蒙体 (InterKnot-Web's brand faces, zzz.mihoyo.com same-source TTFs):
+ * two physical weights, split at 700 so 700–900 headings take the bold cut
+ * and body weights ride the light cut with no faux-bold synthesis. */
+@font-face {
+  font-family: 'InterKnot Sans';
+  src: url('fonts/zh-cn-light.ttf') format('truetype');
+  font-weight: 1 699;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'InterKnot Sans';
+  src: url('fonts/zh-cn-bold.ttf') format('truetype');
+  font-weight: 700 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ---------- ZZZ accent tokens ---------- */
+
+body {
+  /* Game type: the whole UI rides the InterKnot Sans faces; component sheets
+   * read this through --dsw-font-family (base.css's :root value is shadowed
+   * here for the body subtree). */
+  --dsw-font-family: 'InterKnot Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+
+  /* Signature palette. */
+  --dsw-zzz-primary: #008bff;
+  --dsw-zzz-primary-soft: rgba(0, 139, 255, 0.14);
+  --dsw-zzz-electric: #2eb6ff;
+  --dsw-zzz-ether: #fe427e;
+  --dsw-zzz-fire: #ff5522;
+  --dsw-zzz-ice: #98eff0;
+  --dsw-zzz-physical: #f0d12a;
+  --dsw-zzz-yellow: #ffea00;
+  --dsw-zzz-yellow-soft: #dcfe00;
+  --dsw-zzz-green: #91bc00;
+  --dsw-zzz-lime: #bfff09;
+  --dsw-zzz-cyan: #00e5ff;
+  --dsw-zzz-badge-red: #ff3838;
+  /* Ink edge + light outer ring of the chunky panel treatment. */
+  --dsw-zzz-ink: #08080a;
+  --dsw-zzz-panel-edge: rgba(10, 12, 16, 0.9);
+  --dsw-zzz-panel-ring: rgba(255, 255, 255, 0.28);
+  /* Hatch fills (zenless-ui pattern mixins as drop-in background-image). */
+  --dsw-zzz-pattern-squares:
+    linear-gradient(45deg, rgba(9, 11, 16, 0.05) 25%, transparent 0 75%, rgba(9, 11, 16, 0.05) 0),
+    linear-gradient(45deg, rgba(9, 11, 16, 0.05) 25%, transparent 0 75%, rgba(9, 11, 16, 0.05) 0);
+  --dsw-zzz-pattern-squares-position: 0 0, 3px 3px;
+  --dsw-zzz-pattern-stripes: repeating-linear-gradient(40deg, transparent 0 5px, rgba(9, 11, 16, 0.04) 5px 10px);
+  --dsw-zzz-pattern-rhombus:
+    linear-gradient(65deg, rgba(9, 11, 16, 0.1) 12%, transparent 0 88%, rgba(9, 11, 16, 0.1) 0),
+    linear-gradient(65deg, rgba(9, 11, 16, 0.1) 12%, transparent 0 88%, rgba(9, 11, 16, 0.1) 0),
+    linear-gradient(115deg, rgba(9, 11, 16, 0.1) 12%, transparent 0 88%, rgba(9, 11, 16, 0.1) 0),
+    linear-gradient(115deg, rgba(9, 11, 16, 0.1) 12%, transparent 0 88%, rgba(9, 11, 16, 0.1) 0);
+  --dsw-zzz-pattern-rhombus-position: 0 0, 4px 7px, 0 0, 4px 7px;
+  /* Type + geometry. Display rides the game bold face first; the fan comic
+   * face stays as the Latin fallback accent. */
+  --dsw-zzz-font-display: 'InterKnot Sans', 'ZZZ Comic', var(--dsw-font-family);
+  --dsw-zzz-radius-panel: 20px;
+  --dsw-zzz-focus-ring: 0 0 0 2px rgba(46, 182, 255, 0.6);
+  /* InterKnot-Web panel texture: the dotted point tile every game panel,
+   * tab strip, and dropdown carries (public/interknot/images). */
+  --dsw-zzz-panel-texture: url('interknot/images/tab-bg-point.webp') repeat;
+  /* Game cursor set (public/interknot/cursors, hotspots from InterKnot-Web
+   * theme.css). */
+  --dsw-zzz-cursor-default: url('interknot/cursors/normal.png') 2 1, auto;
+  --dsw-zzz-cursor-pointer: url('interknot/cursors/link.png') 14 3, pointer;
+  --dsw-zzz-cursor-text: url('interknot/cursors/text.png') 16 16, text;
+  --dsw-zzz-cursor-not-allowed: url('interknot/cursors/not-allowed.png') 16 14, not-allowed;
+  --dsw-zzz-cursor-progress: url('interknot/cursors/progress.png') 2 1, progress;
+  --dsw-zzz-cursor-help: url('interknot/cursors/help.png') 0 0, help;
+  --dsw-zzz-cursor-move: url('interknot/cursors/move.png') 16 16, move;
+  --dsw-zzz-cursor-crosshair: url('interknot/cursors/crosshair.png') 16 16, crosshair;
+  --dsw-zzz-cursor-cell: url('interknot/cursors/cell.png') 16 4, cell;
+  --dsw-zzz-cursor-col-resize: url('interknot/cursors/col-resize.png') 16 16, col-resize;
+  --dsw-zzz-cursor-row-resize: url('interknot/cursors/row-resize.png') 16 16, row-resize;
+  --dsw-zzz-cursor-nwse-resize: url('interknot/cursors/nwse-resize.png') 16 16, nwse-resize;
+  --dsw-zzz-cursor-nesw-resize: url('interknot/cursors/nesw-resize.png') 16 16, nesw-resize;
+  /* Motion: the zenless-ui pulse alternates yellow↔green over 1s. */
+  --dsw-zzz-pulse-duration: 1s;
+  --dsw-zzz-pulse-ease: ease-in-out;
+  --dsw-zzz-pop-ease: cubic-bezier(1, 0, 0.5, 1);
+}
+
+body[data-ds-dark-theme] {
+  --dsw-zzz-primary-soft: rgba(0, 139, 255, 0.2);
+  --dsw-zzz-panel-edge: #050506;
+  --dsw-zzz-panel-ring: rgba(255, 255, 255, 0.16);
+  --dsw-zzz-pattern-squares:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.05) 25%, transparent 0 75%, rgba(255, 255, 255, 0.05) 0),
+    linear-gradient(45deg, rgba(255, 255, 255, 0.05) 25%, transparent 0 75%, rgba(255, 255, 255, 0.05) 0);
+  --dsw-zzz-pattern-stripes: repeating-linear-gradient(40deg, transparent 0 5px, rgba(255, 255, 255, 0.04) 5px 10px);
+  --dsw-zzz-pattern-rhombus:
+    linear-gradient(65deg, rgba(255, 255, 255, 0.07) 12%, transparent 0 88%, rgba(255, 255, 255, 0.07) 0),
+    linear-gradient(65deg, rgba(255, 255, 255, 0.07) 12%, transparent 0 88%, rgba(255, 255, 255, 0.07) 0),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.07) 12%, transparent 0 88%, rgba(255, 255, 255, 0.07) 0),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.07) 12%, transparent 0 88%, rgba(255, 255, 255, 0.07) 0);
+  --dsw-zzz-focus-ring: 0 0 0 2px rgba(46, 182, 255, 0.55);
+}
+
+/* ---------- Signature keyframes (zenless-ui z_ani_*) ---------- */
+
+@keyframes zzz-pulse-bg {
+  from { background-color: var(--dsw-zzz-yellow); }
+  to { background-color: var(--dsw-zzz-green); }
+}
+
+@keyframes zzz-pulse-color {
+  from { color: var(--dsw-zzz-yellow); }
+  to { color: var(--dsw-zzz-green); }
+}
+
+@keyframes zzz-pulse-border {
+  from { border-color: var(--dsw-zzz-yellow); }
+  to { border-color: var(--dsw-zzz-green); }
+}
+
+@keyframes zzz-pulse-outline {
+  from { outline-color: var(--dsw-zzz-yellow); }
+  to { outline-color: var(--dsw-zzz-green); }
+}
+
+@keyframes zzz-blink {
+  50% { opacity: 0.3; }
+}
+
+/* ---------- Alias remap: dark palette (flagship ZZZ look) ---------- */
+
+/* ZZZ console scope: the workbench rail is an always-dark terminal (ink +
+ * point tile) in both palettes — the aliases its controls read re-point to
+ * the dark-palette values so light theme never renders dark-on-dark. */
+.dsw-zzz-console {
+  --dsw-alias-bg-layer-1: #161619;
+  --dsw-alias-bg-layer-2: #1c1c20;
+  --dsw-alias-border-l2: rgba(255, 255, 255, 0.13);
+  --dsw-alias-label-primary: #f2f4f8;
+  --dsw-alias-label-secondary: #b8b8c2;
+  --dsw-alias-label-tertiary: #8a8a94;
+  --dsw-alias-interactive-bg-hover: rgba(255, 255, 255, 0.07);
+  --dsw-alias-state-error-primary: #ff7a6c;
+  --dsw-alias-button-ghost-active-fill: #2c2c34;
+  color: #f2f4f8;
+}
+
+body[data-ds-dark-theme] {
+  --dsw-alias-bg-base: #0d0d10;
+  --dsw-alias-bg-layer-1: #161619;
+  --dsw-alias-bg-layer-2: #1c1c20;
+  --dsw-alias-bg-layer-3: #232329;
+  --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.55);
+  --dsw-alias-bg-mask-drop: rgba(13, 13, 16, 0.72);
+  --dsw-alias-bg-module-platform: #17171b;
+  --dsw-alias-bg-multi-select: #1c1c20;
+  --dsw-alias-bg-overlay: #2a2a31;
+  --dsw-alias-bg-skeleton: rgba(255, 255, 255, 0.07);
+  --dsw-alias-border-inverted: rgba(255, 255, 255, 0.09);
+  --dsw-alias-border-inverted2: rgba(255, 255, 255, 0.1);
+  --dsw-alias-border-l1: rgba(255, 255, 255, 0.07);
+  --dsw-alias-border-l2-darkmode-thin: rgba(255, 255, 255, 0.08);
+  --dsw-alias-border-l2: rgba(255, 255, 255, 0.13);
+  --dsw-alias-border-l3: rgba(255, 255, 255, 0.2);
+  --dsw-alias-border-l4: rgba(255, 255, 255, 0.3);
+  --dsw-alias-brand-primary: #008bff;
+  --dsw-alias-brand-primary-invert: #eaf6ff;
+  --dsw-alias-brand-primary-new-colorprimary-new-color: #2eb6ff;
+  --dsw-alias-brand-text: #f2f4f8;
+  --dsw-alias-button-contrast-fill: #f2f4f8;
+  --dsw-alias-button-elevated-fill: #202025;
+  --dsw-alias-button-floating-fill: #202025;
+  --dsw-alias-button-floating-hover: #2a2a31;
+  --dsw-alias-button-ghost-active-border: #4d4d57;
+  --dsw-alias-button-ghost-active-fill: #26262c;
+  --dsw-alias-button-ghost-active-hover: #2d2d34;
+  --dsw-alias-button-info-fill: #2eb6ff;
+  --dsw-alias-button-info-hover: #5cc8ff;
+  --dsw-alias-button-primary-dimmed: #202025;
+  --dsw-alias-button-primary-hover: #2e9dff;
+  --dsw-alias-interactive-bg-active: rgba(255, 255, 255, 0.12);
+  --dsw-alias-interactive-bg-hover-accent: rgba(46, 182, 255, 0.18);
+  --dsw-alias-interactive-bg-hover-danger: rgba(255, 92, 71, 0.16);
+  --dsw-alias-interactive-bg-hover-solid: #26262c;
+  --dsw-alias-interactive-bg-hover: rgba(255, 255, 255, 0.07);
+  --dsw-alias-label-caption: #5a5a64;
+  --dsw-alias-label-dimmed: #55555f;
+  --dsw-alias-label-primary-bluish: #cfe4ff;
+  --dsw-alias-label-primary-dimmed: #b8b8c2;
+  --dsw-alias-label-primary-foreground: #ffffff;
+  --dsw-alias-label-primary-inverted: #131316;
+  --dsw-alias-label-primary: #f2f4f8;
+  --dsw-alias-label-secondary: #b4b4be;
+  --dsw-alias-label-tertiary: #82828c;
+  --dsw-alias-markdown-citation: #232329;
+  --dsw-alias-markdown-code-block-banner: #17171b;
+  --dsw-alias-markdown-code-block: #101014;
+  --dsw-alias-markdown-code-segment-selected: #1f1f24;
+  --dsw-alias-markdown-code-segment-unselected: #0e0e11;
+  --dsw-alias-markdown-inline-code: #232329;
+  --dsw-alias-markdown-placeholder: #1c1c20;
+  --dsw-alias-markdown-tag: #202025;
+  --dsw-alias-scrollbar-bg-l1: rgba(255, 255, 255, 0.2);
+  --dsw-alias-scrollbar-bg-l2: rgba(255, 255, 255, 0.24);
+  --dsw-alias-scrollbar-hover-l1: rgba(255, 255, 255, 0.34);
+  --dsw-alias-scrollbar-hover-l2: rgba(255, 255, 255, 0.4);
+  --dsw-alias-state-business-primary: #2eb6ff;
+  --dsw-alias-state-business-tertiary: #0e2a3a;
+  --dsw-alias-state-error-primary: #ff5c47;
+  --dsw-alias-state-error-secondary: #ff8a7a;
+  --dsw-alias-state-success-primary: #22c55e;
+  --dsw-alias-state-success-secondary: #4ade80;
+  --dsw-alias-state-success-tertiary: #12301c;
+  --dsw-alias-state-warn-label: #ffc300;
+  --dsw-alias-state-warn-primary: #ffc300;
+  --dsw-alias-state-warn-secondary: #ffd633;
+  --dsw-alias-state-warn-tertiary: #33290a;
+  --dsw-alias-toast-bg: #26262c;
+  --dsw-alias-tooltip-bg: #2a2a31;
+  --dsw-specific-bubble-highlight: #292930;
+  --dsw-specific-bubble: #1e1e23;
+  --dsw-specific-input-major: #17171b;
+  --dsw-specific-login-input: #101013;
+  --dsw-specific-selector: #202025;
+  /* InterKnot dropdown material: solid near-black base. The dotted point
+   * tile (InterKnot-Web's `#050505 url(tab-bg-point) repeat`) sits behind
+   * game panels and tab strips only — behind menu text it renders as an
+   * unreadable grid, so menus stay solid. Consumers read it through a plain
+   * `background:` shorthand. */
+  --dsw-specific-menu: #101013;
+  --dsw-specific-sidebar-fill: #121215;
+  --dsw-specific-sidebar-nav-item-active-accent: #1d2a3a;
+  --dsw-specific-sidebar-nav-item-active: #26262d;
+  --dsw-specific-sidebar-nav-item-hover: #1b1b20;
+  --dsw-specific-tip: #202025;
+}
+
+/* ---------- Alias remap: light palette (ZZZ daylight) ---------- */
+
+body {
+  --dsw-alias-bg-base: #eef0f4;
+  --dsw-alias-bg-module-platform: #e4e8ee;
+  --dsw-alias-bg-overlay: #dfe3ea;
+  --dsw-alias-brand-primary: #008bff;
+  --dsw-alias-brand-primary-new-colorprimary-new-color: #008bff;
+  --dsw-alias-button-info-fill: #008bff;
+  --dsw-alias-button-info-hover: #2e9dff;
+  --dsw-alias-button-primary-hover: #2e9dff;
+  --dsw-alias-interactive-bg-hover-accent: rgba(0, 139, 255, 0.14);
+  --dsw-alias-state-business-primary: #008bff;
+  --dsw-specific-menu: #f4f5f7;
+  --dsw-specific-sidebar-nav-item-active-accent: #d7e6ff;
+}
+
+/* ---------- Elevation: harder, closer shadows ---------- */
+
+body {
+  --dsw-shadow-lv1: 0 1px 3px 0 rgba(5, 6, 10, 0.12);
+  --dsw-shadow-lv1-blur: 0 4px 10px 0 rgba(5, 6, 10, 0.08);
+  --dsw-shadow-lv2: 0 0 0 1px rgba(5, 6, 10, 0.18), 0 6px 16px 0 rgba(5, 6, 10, 0.14);
+  --dsw-shadow-lv3:
+    0 0 0 1px rgba(5, 6, 10, 0.35), 0 4px 12px 0 rgba(5, 6, 10, 0.22), 0 16px 40px 0 rgba(5, 6, 10, 0.3);
+  --dsw-mask-blur: blur(3px);
+}
+
+body[data-ds-dark-theme] {
+  --dsw-shadow-lv1: 0 1px 3px 0 rgba(0, 0, 0, 0.5);
+  --dsw-shadow-lv1-blur: 0 4px 10px 0 rgba(0, 0, 0, 0.35);
+  --dsw-shadow-lv2: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 6px 16px 0 rgba(0, 0, 0, 0.45);
+  --dsw-shadow-lv3:
+    0 0 0 1px rgba(0, 0, 0, 0.65), 0 4px 12px 0 rgba(0, 0, 0, 0.5), 0 16px 40px 0 rgba(0, 0, 0, 0.55);
+}
+
+/* ---------- Global chrome accents ---------- */
+
+body ::selection {
+  background: rgba(0, 139, 255, 0.32);
+}
+
+body[data-ds-dark-theme] ::selection {
+  background: rgba(46, 182, 255, 0.4);
+}
+
+/* Keyboard focus rides the electric-blue ring everywhere no component
+ * declares its own focus-visible treatment. */
+body :focus-visible {
+  outline: 2px solid var(--dsw-zzz-electric);
+  outline-offset: 1px;
+}
+
+/* ---------- Game cursor system (InterKnot-Web) ---------- */
+
+/* The ZZZ cursor PNG set with the hotspots InterKnot-Web measured. The
+ * !important mirrors their theme.css: component modules that set plain
+ * `cursor:` (pointer, col-resize, zoom-in) must not outrank the skin. */
+body {
+  cursor: var(--dsw-zzz-cursor-default);
+}
+
+body :is(a, button, summary, [role='button'], [tabindex]:not([tabindex='-1']),
+  input[type='button'], input[type='submit'], input[type='reset']) {
+  cursor: var(--dsw-zzz-cursor-pointer) !important;
+}
+
+body :is(input, textarea, [contenteditable='true']) {
+  cursor: var(--dsw-zzz-cursor-text) !important;
+  caret-color: var(--dsw-zzz-electric);
+}
+
+body :is(button:disabled, [aria-disabled='true']) {
+  cursor: var(--dsw-zzz-cursor-not-allowed) !important;
+}
+
+body [aria-busy='true'] {
+  cursor: var(--dsw-zzz-cursor-progress) !important;
+}

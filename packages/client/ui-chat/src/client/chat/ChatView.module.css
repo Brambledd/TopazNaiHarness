@@ -94,13 +94,14 @@
   font-size: var(--dsh-content-font-size, 14px);
   line-height: calc(22px + var(--dsh-content-font-delta, 0px));
   white-space: nowrap;
+  /* ZZZ skin: the streaming status shimmers yellow→green (zenless pulse). */
   background: linear-gradient(
     90deg,
-    var(--dsw-static-deepseek-500) 0%,
-    var(--dsw-static-deepseek-500) 40%,
-    var(--dsw-static-deepseek-200) 50%,
-    var(--dsw-static-deepseek-500) 60%,
-    var(--dsw-static-deepseek-500) 100%
+    var(--dsw-zzz-yellow) 0%,
+    var(--dsw-zzz-yellow) 40%,
+    var(--dsw-zzz-green) 50%,
+    var(--dsw-zzz-yellow) 60%,
+    var(--dsw-zzz-yellow) 100%
   );
   background-position: 100% 0;
   background-size: 250% 100%;
@@ -202,17 +203,20 @@
   height: 34px;
   margin-top: -34px;
   padding: 0;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--dsw-zzz-panel-edge);
   border-radius: 100px;
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-alias-button-floating-fill);
-  box-shadow: var(--dsw-shadow-lv2);
+  box-shadow:
+    var(--dsw-shadow-lv2),
+    0 0 0 1px var(--dsw-zzz-panel-ring);
   cursor: pointer;
   pointer-events: auto;
 }
 
 .toBottom:hover {
   background: var(--dsw-alias-button-floating-hover);
+  color: var(--dsw-zzz-electric);
 }
 
 /* Host open-path refusal: same dialog family as the workspace folder error. */

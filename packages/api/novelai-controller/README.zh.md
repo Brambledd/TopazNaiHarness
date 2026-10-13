@@ -38,8 +38,8 @@ kind: "package-reference"
 | `setGenerationDir({ dir })` | 持久化目录覆盖（空字符串清除）；下一次生图即生效，无需重启 |
 | `commitWorkbenchState({ sessionId, state })` | 把一个会话的最新面板状态存入热映射并持久化到 harness 主目录下 |
 | `readWorkbenchState({ sessionId })` | 一个会话已提交的面板状态：先查热映射，否则查持久化存储 |
-| `artistChains()` | 创作台的命名画师串库，按插入顺序 |
-| `saveArtistChain({ name, chain })` | 整串保存一条命名画师串（新名称追加，同名原位替换）；去空白后名称 ≤ 60 字符、串文本 ≤ 4000 字符且均非空 |
+| `artistChains()` | 创作台的命名画师串库，最新在前 |
+| `saveArtistChain({ id, name, tags })` | 整串保存一条命名画师串（id 为空即新建，已有 id 原位更新）；去空白后名称 ≤ 80 字符、标签串 ≤ 2000 字符且均非空 |
 | `removeArtistChain({ id })` | 删除一条已保存的画师串；未知 id 回答 `novelai/artist-chain-missing` |
 
 ### 配置
@@ -66,7 +66,7 @@ kind: "package-reference"
 - **付费提交绝不重试。** 失败的 POST 可能已为图片扣费，因此失败逐字上抛为 `novelai/generation-failed`。
 - **目录实时解析。** 库实例按解析后的目录缓存，已保存的设置覆盖因此能在不重启的情况下移动库（以及读取 `effectiveOutputDir()` 的生成工具）。
 - **面板状态持久。** 已提交的面板状态原子落盘（`.tmp` + 改名）到 `settings.yaml` 旁的 `<home>/novelai-workbench-states/<sessionId>.json`；缺失、不可解析或形状不对的文档读取为不存在，会话 id 超出 `1-64` 个字母/数字/`_`/`-` 的不能命名文档。持久化失败回答 `novelai/state-persist-failed`；没有可解析 harness 主目录时控制器退化为内存保存并在启动时警告。
-- **画师串库是主目录下的用户数据。** 创作台的画师串库是 `<home>/novelai-artist-chains.json` 的一个 `{ chains }` JSON 文档，每次变更原子重写、按插入顺序服务。每条画师串是一条命名的整串条目——粘贴来的 `weight:artist::` 串原样存储，绝不拆解为逐画师条目。同名再保存即原位替换该串文本；串 id 由宿主分配的不透明串承担。名称（≤ 60 字符）与串文本（≤ 4000 字符）去空白后必须非空；拒绝回答 `novelai/artist-chain-invalid` / `novelai/artist-chain-missing`。
+- **画师串库是主目录下的用户数据。** 创作台的画师串库是 `<home>/novelai-artist-chains.json` 的一个 `{ id, name, tags }` JSON 数组，每次变更原子重写、按最新在前服务（更新保持原位）。每条画师串是一条命名的整串条目——粘贴来的 `weight:artist::` 串作为标签串原样存储，绝不拆解为逐画师条目；串 id 由宿主分配的不透明串承担。名称（≤ 80 字符）与标签串（≤ 2000 字符）去空白后必须非空；拒绝回答 `novelai/artist-chain-invalid` / `novelai/artist-chain-missing`。
 
 ### Source map
 
@@ -76,7 +76,7 @@ kind: "package-reference"
 | [`src/types.ts`](src/types.ts) | 浏览器安全的请求/结果词表与命名空间的 `RemoteErrorDetailsMap` 行 |
 | [`src/library.ts`](src/library.ts) | `NovelaiImageLibrary`：JSON 索引、目录扫描合并、原子索引写入 |
 | [`src/workbench-state-store.ts`](src/workbench-state-store.ts) | `WorkbenchStateStore`：harness 主目录下按会话的面板状态 JSON 文档，原子写入、会话 id 守卫、宽容读取 |
-| [`src/artist-chains.ts`](src/artist-chains.ts) | `ArtistChainsStore`：画师串库以单个原子重写的 `{ chains }` 文档存放于 harness 主目录下，命名整串原样保留、宿主分配 id、名称与长度校验拒绝 |
+| [`src/artist-chains.ts`](src/artist-chains.ts) | `ArtistChainStore`：画师串库以单个原子重写的 JSON 数组存放于 harness 主目录下，命名标签串原样保留、宿主分配 id、名称与长度校验拒绝 |
 | [`src/generation.ts`](src/generation.ts) | 请求解析、创作台默认值与提交管线 |
 | [`src/invariant.ts`](src/invariant.ts) | 空 invariant 伴随件：本包不持有持久 harness 关系 |
 

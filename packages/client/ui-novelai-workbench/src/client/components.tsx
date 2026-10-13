@@ -91,12 +91,12 @@ export function WorkbenchRoot({
   const [stylesOpen, setStylesOpen] = useState(false)
   // Artist chains (画师串): the named library loads lazily on first open. Each
   // saved chain is ONE whole-string entry (a pasted `weight:artist::` run,
-  // stored verbatim — never parsed); 插入 appends the chain text to the prompt.
-  // (State named savedChains: the filmstrip owns `entries`.)
+  // stored verbatim as tags — never parsed); 插入 appends the tags text to the
+  // prompt. (State named savedChains: the filmstrip owns `entries`.)
   const [artistOpen, setArtistOpen] = useState(false)
   const [savedChains, setSavedChains] = useState<readonly NovelaiArtistChain[]>([])
   const [chainName, setChainName] = useState('')
-  const [chainText, setChainText] = useState('')
+  const [tagsText, setTagsText] = useState('')
   const artistLoadedRef = useRef(false)
   const [characters, setCharacters] = useState<CharacterDraft[]>([])
   const [charactersOpen, setCharactersOpen] = useState(false)
@@ -272,20 +272,20 @@ export function WorkbenchRoot({
     }
   }
 
-  /** Append one saved chain's whole text to the prompt (comma-joined; verbatim). */
-  const insertArtistChain = (chain: string): void => {
-    setPrompt(prompt === '' ? chain : `${prompt.replace(/\s+$/, '')}, ${chain}`)
+  /** Append one saved chain's whole tags text to the prompt (comma-joined; verbatim). */
+  const insertArtistChain = (tags: string): void => {
+    setPrompt(prompt === '' ? tags : `${prompt.replace(/\s+$/, '')}, ${tags}`)
   }
 
   const submitArtistChain = (): void => {
     const name = chainName.trim()
-    const chain = chainText.trim()
+    const tags = tagsText.trim()
     /* v8 ignore next -- unreachable from the form: the save button is disabled under the same emptiness condition */
-    if (name === '' || chain === '') return
-    void saveArtistChain({ name, chain }).then((value) => {
+    if (name === '' || tags === '') return
+    void saveArtistChain({ id: '', name, tags }).then((value) => {
       setSavedChains(value)
       setChainName('')
-      setChainText('')
+      setTagsText('')
     }).catch(() => { /* the library keeps its last served state; the next action retries */ })
   }
 
@@ -1043,8 +1043,8 @@ export function WorkbenchRoot({
                 {savedChains.map(item => (
                   <div key={item.id} className={css.artistRow}>
                     <span className={css.artistName}>{item.name}</span>
-                    <span className={css.artistPreview} title={item.chain}>{item.chain}</span>
-                    <button type="button" className={css.charAction} onClick={() => { insertArtistChain(item.chain) }}>
+                    <span className={css.artistPreview} title={item.tags}>{item.tags}</span>
+                    <button type="button" className={css.charAction} onClick={() => { insertArtistChain(item.tags) }}>
                       {t('artists.insert')}
                     </button>
                     <button type="button" className={css.charAction} onClick={() => { removeSavedChain(item.id) }}>
@@ -1061,16 +1061,16 @@ export function WorkbenchRoot({
                     onChange={(event) => { setChainName(event.target.value) }}
                   />
                   <input
-                    className={css.artistChainInput}
-                    value={chainText}
-                    placeholder={t('artists.chainPlaceholder')}
-                    aria-label={t('artists.chainLabel')}
-                    onChange={(event) => { setChainText(event.target.value) }}
+                    className={css.artistTagsInput}
+                    value={tagsText}
+                    placeholder={t('artists.tagsPlaceholder')}
+                    aria-label={t('artists.tagsLabel')}
+                    onChange={(event) => { setTagsText(event.target.value) }}
                   />
                   <button
                     type="button"
                     className={css.charAction}
-                    disabled={chainName.trim() === '' || chainText.trim() === ''}
+                    disabled={chainName.trim() === '' || tagsText.trim() === ''}
                     onClick={submitArtistChain}
                   >
                     {t('artists.add')}

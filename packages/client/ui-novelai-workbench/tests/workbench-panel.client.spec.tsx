@@ -61,8 +61,8 @@ const zh = {
   'artists.add': '添加',
   'artists.nameLabel': '画师串名称',
   'artists.namePlaceholder': '如「厚涂风」',
-  'artists.chainLabel': '画师串内容',
-  'artists.chainPlaceholder': '0.3:cola gotouryouta::, 0.5:yoneyama mai::, …（权重:画师::，逗号分隔）',
+  'artists.tagsLabel': '画师串标签串',
+  'artists.tagsPlaceholder': '0.3:cola gotouryouta::, 0.5:yoneyama mai::, …（权重:画师::，逗号分隔）',
   'enhance.action': '增强',
   'enhance.magnitude': '增强幅度',
   'enhance.explain': '增强会以当前正面与负面提示词对舞台图做二次扩散；默认保守强度以保留姿势和构图，提高幅度仍可能改变局部结构。',
@@ -218,8 +218,8 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
   const commitWorkbenchState = vi.fn(async (_sessionId: string, _state: Record<string, unknown>) => {})
   const readWorkbenchState = vi.fn(async (_sessionId: string) => undefined as NovelaiWorkbenchState | undefined)
   const artistChains = vi.fn(async () => [] as readonly NovelaiArtistChain[])
-  const saveArtistChain = vi.fn(async (request: { name: string; chain: string }) => [
-    { id: 'chain-1', name: request.name, chain: request.chain },
+  const saveArtistChain = vi.fn(async (request: { id: string; name: string; tags: string }) => [
+    { id: request.id === '' ? 'chain-1' : request.id, name: request.name, tags: request.tags },
   ] as readonly NovelaiArtistChain[])
   const removeArtistChain = vi.fn(async (_id: string) => [] as readonly NovelaiArtistChain[])
   let backfillSink: ((request: Record<string, unknown>) => void) | undefined
@@ -252,13 +252,17 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     suggestTags: vi.fn(async () => ({ tags: suggestions })),
     readEntry: vi.fn(async () => ({ data: '', mime: 'image/png' as const })),
     splitCharacters,
-    seedDraft,    onBackfillRequest,    onPatchApply,    commitWorkbenchState,    readWorkbenchState,
+    seedDraft,
+    onBackfillRequest,
+    onPatchApply,
+    commitWorkbenchState,
+    readWorkbenchState,
     artistChains, saveArtistChain, removeArtistChain,
     setViewMode: vi.fn(),
     useSessions: ((selector: (state: { current: string }) => unknown) => selector({ current: 'session-1' })) as never,
     useWorkspaces: (() => { throw new Error('workbench must not read global hooks') }) as never,
     t: (key: keyof typeof zh, params?: Record<string, string | number>): string =>
-      Object.entries(params ?? {}).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), zh[key]),
+      Object.entries(params ?? {}).reduce<string>((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), zh[key]),
   }
   return {
     props,
@@ -1122,9 +1126,9 @@ describe('workbench state restore', () => {
 })
 
 describe('artist chains section', () => {
-  /** Chain fixture as the host serves it (insertion order). */
-  function savedChain(id: string, name: string, chain: string): NovelaiArtistChain {
-    return { id, name, chain }
+  /** Chain fixture as the host serves it (newest first). */
+  function savedChain(id: string, name: string, tags: string): NovelaiArtistChain {
+    return { id, name, tags }
   }
 
   const STANDARD = '0.3:cola gotouryouta::, 0.5:yoneyama mai::, 0.7:betabeet::, 0.9:re0n::, 1.8:kim hyung tae::'
@@ -1187,7 +1191,7 @@ describe('artist chains section', () => {
     fireEvent.change(screen.getByPlaceholderText('如「厚涂风」'), { target: { value: '  厚涂风 ' } })
     fireEvent.change(screen.getByPlaceholderText(/0\.3:cola gotouryouta::/), { target: { value: ` ${STANDARD} ` } })
     fireEvent.click(screen.getByRole('button', { name: '添加' }))
-    await waitFor(() => { expect(saveArtistChain).toHaveBeenCalledWith({ name: '厚涂风', chain: STANDARD }) })
+    await waitFor(() => { expect(saveArtistChain).toHaveBeenCalledWith({ id: '', name: '厚涂风', tags: STANDARD }) })
     // The inputs reset and the row renders from the returned library.
     await waitFor(() => { expect(screen.getByText('厚涂风')).toBeTruthy() })
     expect((screen.getByPlaceholderText('如「厚涂风」') as HTMLInputElement).value).toBe('')

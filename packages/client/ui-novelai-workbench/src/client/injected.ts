@@ -67,10 +67,14 @@ export interface WorkbenchInjected extends ModeSwitchInjected {
    * @returns the unsubscribe disposer.
    */
   onPatchApply: (callback: (request: WorkbenchPatchRequest) => void) => () => void
-  /** Read the workbench's named artist-chains library, in insertion order. */
+  /** Read the workbench's named artist-chains library, newest first. */
   artistChains: () => Promise<readonly NovelaiArtistChain[]>
-  /** Save one named chain (a new name appends, an existing name replaces its text); returns the full library. */
-  saveArtistChain: (request: { readonly name: string; readonly chain: string }) => Promise<readonly NovelaiArtistChain[]>
+  /** Save one named chain (an empty id creates, a stored id updates in place); returns the full library. */
+  saveArtistChain: (request: {
+    readonly id: string
+    readonly name: string
+    readonly tags: string
+  }) => Promise<readonly NovelaiArtistChain[]>
   /** Remove one saved chain by id; returns the full library. */
   removeArtistChain: (id: string) => Promise<readonly NovelaiArtistChain[]>
 }

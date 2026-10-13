@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-13-workbench-artist-chain.md
-2026-10-13-workbench-artist-chain.md: 1b989bcadddac5294ebce9c2256f7c8d5bf5e4e6
-2026-10-13-workbench-artist-chain.zh.md: eacc89a7b8923cd3a833f5741ff23d58578355c1
+2026-10-13-workbench-artist-chain.md: be370173e9fd425d2eca866900a1bfb8202fe63d
+2026-10-13-workbench-artist-chain.zh.md: 01a4df37d2c96c72f5215f0fe0da521fe4f22557

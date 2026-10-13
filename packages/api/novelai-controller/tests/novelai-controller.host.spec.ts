@@ -510,47 +510,51 @@ describe('artist chains', () => {
     await expect(controller.artistChains()).resolves.toEqual({ chains: [] })
   })
 
-  it('saves named chains verbatim, in insertion order, with host-assigned ids', async () => {
+  it('creates named chains verbatim and serves them newest first', async () => {
     const { controller } = await harness()
-    await controller.saveArtistChain({ name: '厚涂风', chain: '0.3:cola gotouryouta::, 0.5:yoneyama mai::, 0.9:re0n::, 1.8:kim hyung tae::' })
-    const saved = await controller.saveArtistChain({ name: 'watercolor', chain: '0.8:wlop::, 1.2:artgerm::' })
-    expect(saved.chains.map(chain => chain.name)).toEqual(['厚涂风', 'watercolor'])
-    expect(saved.chains[0]?.chain).toBe('0.3:cola gotouryouta::, 0.5:yoneyama mai::, 0.9:re0n::, 1.8:kim hyung tae::')
+    await controller.saveArtistChain({ id: '', name: '厚涂风', tags: '0.3:cola gotouryouta::, 0.5:yoneyama mai::, 0.9:re0n::, 1.8:kim hyung tae::' })
+    const saved = await controller.saveArtistChain({ id: '', name: 'watercolor', tags: '0.8:wlop::, 1.2:artgerm::' })
+    expect(saved.chains.map(chain => chain.name)).toEqual(['watercolor', '厚涂风'])
+    expect(saved.chains[1]?.tags).toBe('0.3:cola gotouryouta::, 0.5:yoneyama mai::, 0.9:re0n::, 1.8:kim hyung tae::')
     for (const chain of saved.chains) expect(chain.id).toMatch(/[0-9a-f-]{36}/)
   })
 
-  it('re-saving an existing name replaces that chain in place', async () => {
+  it('updates a chain in place through its stored id', async () => {
     const { controller } = await harness()
-    await controller.saveArtistChain({ name: '厚涂风', chain: '0.3:cola gotouryouta::' })
-    const saved = await controller.saveArtistChain({ name: '厚涂风', chain: '0.3:cola gotouryouta::, 0.9:re0n::, 1.8:kim hyung tae::' })
-    expect(saved.chains).toEqual([expect.objectContaining({ name: '厚涂风', chain: '0.3:cola gotouryouta::, 0.9:re0n::, 1.8:kim hyung tae::' })])
+    const first = await controller.saveArtistChain({ id: '', name: '厚涂风', tags: '0.3:cola gotouryouta::' })
+    const target = first.chains[0]
+    if (target === undefined) throw new Error('fixture chain missing')
+    const updated = await controller.saveArtistChain({ id: target.id, name: '厚涂风', tags: '0.3:cola gotouryouta::, 0.9:re0n::, 1.8:kim hyung tae::' })
+    expect(updated.chains).toEqual([expect.objectContaining({ id: target.id, name: '厚涂风', tags: '0.3:cola gotouryouta::, 0.9:re0n::, 1.8:kim hyung tae::' })])
   })
 
-  it('removes by id and refuses an unknown id with the missing code', async () => {
+  it('removes by id and refuses unknown ids with the missing code', async () => {
     const { controller } = await harness()
-    const created = await controller.saveArtistChain({ name: '厚涂风', chain: '0.3:cola gotouryouta::' })
+    const created = await controller.saveArtistChain({ id: '', name: '厚涂风', tags: '0.3:cola gotouryouta::' })
     const target = created.chains[0]
     if (target === undefined) throw new Error('fixture chain missing')
     const after = await controller.removeArtistChain({ id: target.id })
     expect(after.chains).toEqual([])
     await expect(controller.removeArtistChain({ id: 'no-such-id' }))
       .rejects.toMatchObject({ code: 'novelai/artist-chain-missing', details: { id: 'no-such-id' } })
+    await expect(controller.saveArtistChain({ id: 'no-such-id', name: 'ok', tags: '0.9:re0n::' }))
+      .rejects.toMatchObject({ code: 'novelai/artist-chain-missing', details: { id: 'no-such-id' } })
   })
 
-  it('refuses invalid names and chain texts with the invalid code and the reason', async () => {
+  it('refuses invalid names and tags texts with the invalid code and the reason', async () => {
     const { controller } = await harness()
-    await expect(controller.saveArtistChain({ name: '   ', chain: '0.9:re0n::' }))
+    await expect(controller.saveArtistChain({ id: '', name: '   ', tags: '0.9:re0n::' }))
       .rejects.toMatchObject({ code: 'novelai/artist-chain-invalid', details: { message: expect.stringContaining('name must not be empty') } })
-    await expect(controller.saveArtistChain({ name: 'ok', chain: '   ' }))
-      .rejects.toMatchObject({ code: 'novelai/artist-chain-invalid', details: { message: expect.stringContaining('chain text must not be empty') } })
+    await expect(controller.saveArtistChain({ id: '', name: 'ok', tags: '   ' }))
+      .rejects.toMatchObject({ code: 'novelai/artist-chain-invalid', details: { message: expect.stringContaining('tags must not be empty') } })
     await expect(controller.artistChains()).resolves.toEqual({ chains: [] })
   })
 
   it('persists the library across a fresh controller over the same harness home', async () => {
     const first = await harness()
-    await first.controller.saveArtistChain({ name: '厚涂风', chain: '0.3:cola gotouryouta::, 0.9:re0n::' })
+    await first.controller.saveArtistChain({ id: '', name: '厚涂风', tags: '0.3:cola gotouryouta::, 0.9:re0n::' })
     const second = await harness()
     await expect(second.controller.artistChains())
-      .resolves.toEqual({ chains: [expect.objectContaining({ name: '厚涂风', chain: '0.3:cola gotouryouta::, 0.9:re0n::' })] })
+      .resolves.toEqual({ chains: [expect.objectContaining({ name: '厚涂风', tags: '0.3:cola gotouryouta::, 0.9:re0n::' })] })
   })
 })

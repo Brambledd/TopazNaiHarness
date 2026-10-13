@@ -23,7 +23,7 @@ import {
 import { requestAnlasBalance, requestTagSuggestions, resolveProxyUrl } from '@deepseek-ai/dsh-novelai-core/node'
 import { NovelaiImageLibrary } from './library.ts'
 import { WorkbenchStateStore, isValidWorkbenchSessionId, WORKBENCH_STATES_DIRECTORY } from './workbench-state-store.ts'
-import { ArtistChainsStore, ArtistChainsRefusalError, ARTIST_CHAINS_FILENAME } from './artist-chains.ts'
+import { ArtistChainStore, ArtistChainRefusalError, ARTIST_CHAINS_FILENAME } from './artist-chains.ts'
 import { NOVELAI_WORKBENCH_DEFAULTS, runEnhancement, runGeneration } from './generation.ts'
 import { buildReverseSystemPrompt, buildReverseUserText, parseReverseAnswer } from './reverse.ts'
 import { suggestTagsFromDictionary } from './tags.ts'
@@ -62,7 +62,7 @@ import type {
 export type * from './types.ts'
 export { NovelaiImageLibrary, LIBRARY_INDEX_FILE } from './library.ts'
 export { WorkbenchStateStore, isValidWorkbenchSessionId, WORKBENCH_STATES_DIRECTORY } from './workbench-state-store.ts'
-export { ArtistChainsStore, ArtistChainsRefusalError, ARTIST_CHAINS_FILENAME } from './artist-chains.ts'
+export { ArtistChainStore, ArtistChainRefusalError, ARTIST_CHAINS_FILENAME } from './artist-chains.ts'
 export { NOVELAI_WORKBENCH_DEFAULTS, resolveGenerationRequest, runGeneration } from './generation.ts'
 export { suggestTagsFromDictionary } from './tags.ts'
 export { TAG_DICTIONARY, type NovelaiDictEntry } from './tag-dictionary.ts'
@@ -346,30 +346,33 @@ export class NovelaiController extends TypertRemoteService {
 
   /**
    * Read the workbench's named artist-chains library (画师串): whole-string
-   * `weight:artist::` runs, each under its own name, in insertion order.
+   * `weight:artist::` runs, each under its own name, newest first.
    * @returns all saved chains.
    */
   @Remote('artistChains')
   async artistChains(): Promise<NovelaiArtistChainsValue> {
-    return { chains: await this.artistChainsStore.list() }
+    return { chains: await this.artistChainStore.list() }
   }
 
   /**
-   * Save one named chain: a new name appends, an existing name replaces that
-   * chain's text in place. The text is stored verbatim — never parsed into
-   * per-artist rows.
-   * @param request - the chain's name and its whole `weight:artist::` text.
-   * @returns the full library after the write, in insertion order.
+   * Save one named chain: an empty id creates (the chain appends as the
+   * newest), a stored id updates that chain in place. The tags text is stored
+   * verbatim — never parsed into per-artist rows.
+   * @param request - the chain id (empty to create), its name, and its whole
+   *   `weight:artist::` tags text.
+   * @returns the full library after the write, newest first.
    * @throws RemoteError `novelai/artist-chain-invalid` when the trimmed name
-   *   is empty or exceeds 60 characters, or the trimmed chain text is empty
-   *   or exceeds 4000 characters.
+   *   is empty or exceeds 80 characters, or the trimmed tags are empty
+   *   or exceed 2000 characters.
+   * @throws RemoteError `novelai/artist-chain-missing` when a non-empty id
+   *   matches no stored chain.
    */
   @Remote('saveArtistChain')
-  async saveArtistChain(request: { name: string; chain: string }): Promise<NovelaiArtistChainsValue> {
+  async saveArtistChain(request: { id: string; name: string; tags: string }): Promise<NovelaiArtistChainsValue> {
     try {
-      return { chains: await this.artistChainsStore.save(request) }
+      return { chains: await this.artistChainStore.save(request) }
     } catch (error) {
-      if (error instanceof ArtistChainsRefusalError) throw artistChainsRemoteError(error)
+      if (error instanceof ArtistChainRefusalError) throw artistChainRemoteError(error)
       throw await this.asRemoteError(error)
     }
   }
@@ -377,16 +380,16 @@ export class NovelaiController extends TypertRemoteService {
   /**
    * Remove one saved chain by id; small user data, so no confirmation round-trip.
    * @param request - the chain to remove.
-   * @returns the full library after the write, in insertion order.
+   * @returns the full library after the write, newest first.
    * @throws RemoteError `novelai/artist-chain-missing` when the id matches no
    *   stored chain.
    */
   @Remote('removeArtistChain')
   async removeArtistChain(request: { id: string }): Promise<NovelaiArtistChainsValue> {
     try {
-      return { chains: await this.artistChainsStore.remove(request.id) }
+      return { chains: await this.artistChainStore.remove(request.id) }
     } catch (error) {
-      if (error instanceof ArtistChainsRefusalError) throw artistChainsRemoteError(error)
+      if (error instanceof ArtistChainRefusalError) throw artistChainRemoteError(error)
       throw await this.asRemoteError(error)
     }
   }
@@ -830,8 +833,8 @@ function tryParseJson(candidate: string): unknown {
   }
 }
 
-/** Map one artist-chains store refusal to its namespace RemoteError code. */
-function artistChainsRemoteError(error: ArtistChainsRefusalError): RemoteError {
+/** Map one artist-chain store refusal to its namespace RemoteError code. */
+function artistChainRemoteError(error: ArtistChainRefusalError): RemoteError {
   if (error.kind === 'invalid') return new RemoteError('novelai/artist-chain-invalid', error.message, { message: error.message })
   return new RemoteError('novelai/artist-chain-missing', error.message, { id: error.id ?? '' })
 }

@@ -21,9 +21,9 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'novelai/settings-write-failed': { readonly message: string }
     /** The committed workbench panel state could not be persisted under the harness home. */
     'novelai/state-persist-failed': { readonly message: string }
-    /** An artist-chains mutation carried an empty or over-long name or chain text. */
+    /** An artist-chains mutation carried an empty or over-long name or tags text. */
     'novelai/artist-chain-invalid': { readonly message: string }
-    /** An artist-chains removal targeted an id that is not stored. */
+    /** An artist-chains save or removal targeted an id that is not stored. */
     'novelai/artist-chain-missing': { readonly id: string }
   }
 }
@@ -372,12 +372,12 @@ export interface NovelaiArtistChain {
   /** The chain's display name; the naming handle the library is organized by. */
   readonly name: string
   /** The whole chain text, stored verbatim (a `weight:artist::` run joined by `', '`). */
-  readonly chain: string
+  readonly tags: string
 }
 
 /** The named artist-chains library, served by every chains verb so the client re-renders from one source. */
 export interface NovelaiArtistChainsValue {
-  /** All saved chains in insertion order. */
+  /** All saved chains, newest first. */
   readonly chains: readonly NovelaiArtistChain[]
 }
 

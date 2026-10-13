@@ -1,13 +1,13 @@
 {
   "name": "@deepseek-ai/dsh-infinite-gen-3",
   "description": "无限三代 armor plugin: always-on armor system-prompt section, the infinite_gen3_profile tool, the armor verdict projection, and the browser badge — first-party continuation of Minglink/dsh-infinite-gen-3 v0.5.0 (MIT)",
-  "version": "0.1.0",
+  "version": "0.1.2-alpha.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Brambledd/novelai-agent.git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
     "directory": "packages/armor/infinite-gen-3"
   },
   "type": "module",
@@ -50,6 +50,7 @@
     "lib/index.js",
     "lib/invariant.js",
     "lib/client.js",
+    "lib/types/client/armor-badge.module.css",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts"
   ],

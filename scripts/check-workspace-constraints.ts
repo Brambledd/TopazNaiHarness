@@ -167,6 +167,9 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
     'resources/sql/**/*.sql',
   ],
   '@deepseek-ai/dsh-skill-badge': ['assets'],
+  // The emitted type-tree client channel imports the badge's CSS module, so the
+  // stylesheet must ship beside lib/types/client/ArmorBadge.js.
+  '@deepseek-ai/dsh-infinite-gen-3': ['lib/types/client/armor-badge.module.css'],
   // tsdown shares the repository/pack code between the lib entry and the bin
   // through a hashed chunk. The committed bin.js is the link target pnpm can
   // resolve at install time, before the build produces lib/bin.js.

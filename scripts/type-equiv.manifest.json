@@ -2010,6 +2010,136 @@
       "doc": "packages/client/ui-conversation/README.md",
       "symbol": "ComposerChainProps",
       "source": "packages/client/ui-conversation/src/client/contract/slots.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiCatalogValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiGenerationDefaults",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiEstimateRequest",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiEstimateValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiHistoryRequest",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiHistoryValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiReadEntryRequest",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiEntryContentValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiRemoveRequest",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiRemoveValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiCharacterPromptRequest",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiCharacterPromptValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiGenerateRequest",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiEnhanceRequest",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiGenerationValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiSuggestTagsRequest",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiTagSuggestion",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiTagSuggestionsValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiTagIndexStatusValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiDownloadTagIndexValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiSplitCharactersRequest",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiSplitCharactersValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiReverseRequest",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiReverseValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiInspectRequest",
+      "source": "packages/api/novelai-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/novelai.md",
+      "symbol": "NovelaiInspectValue",
+      "source": "packages/api/novelai-controller/src/types.ts"
     }
   ]
 }

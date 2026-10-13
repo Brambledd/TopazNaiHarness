@@ -1,1 +1,5 @@
-../../../../../snapshots/acp/escalation-approved/cordis.yml
+# The acp profile integration tests load the recorded snapshot composition
+# directly (see tests/*.expected.e2e.ts `configPath`); the shipped `acp`
+# profile bundle owns the product layering. This tree declares no extra
+# Loader entries of its own.
+[]

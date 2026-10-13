@@ -1,0 +1,52 @@
+/* The NovelAI generation-directory preference row inside Settings → General. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsw-gap-2, 8px);
+  padding: var(--dsw-padding-3, 12px) 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--dsw-gap-2, 8px);
+}
+
+.label {
+  font-weight: 600;
+  color: var(--dsw-text-primary, inherit);
+}
+
+.hint {
+  color: var(--dsw-text-secondary, inherit);
+  font-size: var(--dsw-font-size-sm, 12px);
+}
+
+.state {
+  display: flex;
+  align-items: center;
+  gap: var(--dsw-gap-1, 4px);
+  font-size: var(--dsw-font-size-sm, 12px);
+  color: var(--dsw-text-secondary, inherit);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--dsw-gap-2, 8px);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+}
+
+.feedback {
+  font-size: var(--dsw-font-size-sm, 12px);
+  color: var(--dsw-text-secondary, inherit);
+}
+
+.feedbackError {
+  color: var(--dsw-text-danger, inherit);
+}

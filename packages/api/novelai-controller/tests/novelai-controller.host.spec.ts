@@ -1,8 +1,8 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { estimateAnlas } from '@deepseek-ai/dsh-novelai-core'
 import { NovelaiImageLibrary } from '../src/library.ts'
@@ -14,10 +14,31 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map(ctx => ctx.fiber.dispose()))
 })
 
+/**
+ * Minimal in-memory settings provider over one document: the controller reads
+ * and writes the `novelai` namespace through `register` exactly as with the
+ * real Service Definition.
+ */
+function settingsProvider(options: { doc?: Record<string, unknown>; writable?: boolean } = {}): unknown {
+  const doc = structuredClone(options.doc ?? {})
+  const writable = options.writable ?? true
+  return {
+    register: (ns: string, schema: (input: unknown) => Record<string, unknown>) => ({
+      get: () => schema(doc[ns] ?? {}),
+      update: async (patch: Record<string, unknown>) => {
+        if (!writable) throw new Error('settings provider is read-only: "novelai" cannot be updated in-process')
+        doc[ns] = { ...(doc[ns] as Record<string, unknown> | undefined ?? {}), ...patch }
+      },
+      replace: async () => {},
+      watch: () => () => {},
+    }),
+  }
+}
+
 /** Service harness over a temporary output directory.
  * @param llmText - text streamed back by the fake LLM for the split call.
  * @param finishKind - finish reason the fake LLM reports. */
-function harness(llmText = '', finishKind: 'stop' | 'max-tokens' = 'stop'): { controller: NovelaiController; library: NovelaiImageLibrary; dir: string } {
+async function harness(llmText = '', finishKind: 'stop' | 'max-tokens' = 'stop'): Promise<{ controller: NovelaiController; library: NovelaiImageLibrary; dir: string }> {
   const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-novelai-controller-')))
   const ctx = new Context()
   roots.push(ctx)
@@ -40,26 +61,65 @@ function harness(llmText = '', finishKind: 'stop' | 'max-tokens' = 'stop'): { co
       height: 64,
     }),
   } as never)
+  // The controller's settings registration binds against this provider so the
+  // plugin fiber activates; tests without an override never read it.
+  ctx.provide('settings', settingsProvider())
+  const controller = new NovelaiController(ctx, {
+    outputDir: dir,
+    tagIndexPath: join(dir, 'tag-index.csv'),
+    splitProvider: 'mock',
+    splitModel: 'mock',
+    splitMaxTokens: 4096,
+    reverseProvider: 'mock',
+    reverseModel: 'mock',
+    reverseMaxTokens: 7000,
+  })
   const library = new NovelaiImageLibrary(dir)
-  return {
-    controller: new NovelaiController(ctx, {
-      outputDir: dir,
-      tagIndexPath: join(dir, 'tag-index.csv'),
-      splitProvider: 'mock',
-      splitModel: 'mock',
-      splitMaxTokens: 4096,
-      reverseProvider: 'mock',
-      reverseModel: 'mock',
-      reverseMaxTokens: 7000,
-    }),
-    library,
-    dir,
-  }
+  // Join the test invariant host's ready chain, so afterEach never disposes a
+  // root whose companion plugin is still mounting.
+  await ctx.plugin({ apply: () => {} })
+  return { controller, library, dir }
+}
+
+/**
+ * Harness with an optional in-memory settings provider mounted before the
+ * controller, so its `settings` registration binds.
+ */
+async function settingsHarness(options: { doc?: Record<string, unknown>; writable?: boolean } = {}): Promise<{
+  controller: NovelaiController
+  dir: string
+}> {
+  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-novelai-controller-')))
+  const ctx = new Context()
+  roots.push(ctx)
+  ctx.provide('typert', {
+    lookups: { configure: () => (): void => {} },
+    contexts: { configureHost: () => (): void => {} },
+  } as never)
+  ctx.provide('llm', { stream: async function* () {} } as never)
+  ctx.provide('settings', settingsProvider(options))
+  const controller = new NovelaiController(ctx, {
+    outputDir: dir,
+    tagIndexPath: join(dir, 'tag-index.csv'),
+    splitProvider: 'mock',
+    splitModel: 'mock',
+    splitMaxTokens: 4096,
+    reverseProvider: 'mock',
+    reverseModel: 'mock',
+    reverseMaxTokens: 7000,
+  })
+  // Join the test invariant host's ready chain before the polling wait, so
+  // afterEach never disposes a root whose companion plugin is still mounting.
+  await ctx.plugin({ apply: () => {} })
+  await vi.waitFor(() => {
+    if ((controller as unknown as { settings?: unknown }).settings === undefined) throw new Error('settings scope not bound yet')
+  })
+  return { controller, dir }
 }
 
 describe('NovelaiController verbs', () => {
   it('serves the complete generation catalog', async () => {
-    const { controller } = harness()
+    const { controller } = await harness()
     const catalog = await controller.catalog()
     expect(catalog.models).toContain('nai-diffusion-4-5-full')
     expect(catalog.samplers).toContain('k_euler')
@@ -69,18 +129,18 @@ describe('NovelaiController verbs', () => {
   })
 
   it('quotes Anlas prices through the official formula', async () => {
-    const { controller } = harness()
+    const { controller } = await harness()
     await expect(controller.estimate({ width: 832, height: 1216, steps: 28 }))
       .resolves.toEqual({ anlas: estimateAnlas(832, 1216, 28) })
   })
 
   it('returns an empty history for a fresh library', async () => {
-    const { controller } = harness()
+    const { controller } = await harness()
     await expect(controller.history({})).resolves.toEqual({ entries: [], total: 0 })
   })
 
   it('serves recorded entries through history paging', async () => {
-    const { controller, library, dir } = harness()
+    const { controller, library, dir } = await harness()
     const file = join(dir, 'a.png')
     writeFileSync(file, Buffer.from([1]))
     await library.ensure()
@@ -99,19 +159,19 @@ describe('NovelaiController verbs', () => {
   })
 
   it('rejects removal of a missing entry with the namespace error', async () => {
-    const { controller } = harness()
+    const { controller } = await harness()
     await expect(controller.removeEntry({ id: 'missing' })).rejects.toMatchObject({ code: 'novelai/entry-missing' })
   })
 
   it('reports the tag index as not downloaded and answers blank suggestions with an empty batch', async () => {
-    const { controller } = harness()
+    const { controller } = await harness()
     expect(await controller.status()).toMatchObject({ downloaded: false, count: 0, sizeBytes: 0 })
     expect(await controller.suggestTags({ prompt: '  ' })).toEqual({ tags: [] })
   })
 
   it('splits a merged prompt into base and per-character captions through the LLM', async () => {
     const text = '{"prompt":"park, masterpiece","characters":[{"prompt":"1girl, blue hair"},{"prompt":"1girl, red hair","negativePrompt":"extra ears"}]}'
-    const { controller } = harness(`Here you go: ${text}`)
+    const { controller } = await harness(`Here you go: ${text}`)
     const value = await controller.splitCharacters({ prompt: 'park, masterpiece, 2girls, blue hair, red hair' })
     expect(value.prompt).toBe('park, masterpiece')
     expect(value.characters).toHaveLength(2)
@@ -120,20 +180,20 @@ describe('NovelaiController verbs', () => {
   })
 
   it('maps an unusable split answer to the namespace error', async () => {
-    const { controller } = harness('I cannot do that')
+    const { controller } = await harness('I cannot do that')
     await expect(controller.splitCharacters({ prompt: '1girl' })).rejects.toMatchObject({ code: 'novelai/split-failed' })
   })
 
   it('accepts a complete split answer even when the finish reason is max-tokens', async () => {
     const text = '{"prompt":"park","characters":[{"prompt":"1girl, blue hair"}]}'
-    const { controller } = harness(text, 'max-tokens')
+    const { controller } = await harness(text, 'max-tokens')
     const value = await controller.splitCharacters({ prompt: 'park, 1girl' })
     expect(value.characters).toHaveLength(1)
   })
 
   it('salvages the complete character entries of a token-truncated answer', async () => {
     const truncated = '{"prompt":"park","characters":[{"prompt":"1girl, blue hair"},{"prompt":"1g'
-    const { controller } = harness(truncated, 'max-tokens')
+    const { controller } = await harness(truncated, 'max-tokens')
     const value = await controller.splitCharacters({ prompt: 'park' })
     expect(value.prompt).toBe('park')
     expect(value.characters).toEqual([
@@ -142,17 +202,17 @@ describe('NovelaiController verbs', () => {
   })
 
   it('reports truncation with the configured budget when nothing survives', async () => {
-    const { controller } = harness('{"prompt":"par', 'max-tokens')
+    const { controller } = await harness('{"prompt":"par', 'max-tokens')
     await expect(controller.splitCharacters({ prompt: 'park' })).rejects.toThrow(/splitMaxTokens/)
   })
 
   it('answers a blank split request without calling the model', async () => {
-    const { controller } = harness()
+    const { controller } = await harness()
     expect(await controller.splitCharacters({ prompt: '   ' })).toEqual({ prompt: '', characters: [] })
   })
 
   it('reverses an imported image into a prompt', async () => {
-    const { controller } = harness('1girl, solo, white background, full body, standing')
+    const { controller } = await harness('1girl, solo, white background, full body, standing')
     await expect(controller.reversePrompt({
       image: 'aGVsbG8=',
       mode: 'tags',
@@ -162,7 +222,7 @@ describe('NovelaiController verbs', () => {
   })
 
   it('splits a known-character answer into identity and appearance variants', async () => {
-    const { controller } = harness('NAME PROMPT:\ntopaz (honkai: star rail)\n\nFEATURE PROMPT:\nsilver hair, blue eyes, school uniform')
+    const { controller } = await harness('NAME PROMPT:\ntopaz (honkai: star rail)\n\nFEATURE PROMPT:\nsilver hair, blue eyes, school uniform')
     const value = await controller.reversePrompt({
       image: 'aGVsbG8=',
       mode: 'tags',
@@ -175,7 +235,7 @@ describe('NovelaiController verbs', () => {
   })
 
   it('rejects an answer without text as the namespace error', async () => {
-    const { controller } = harness('', 'stop')
+    const { controller } = await harness('', 'stop')
     await expect(controller.reversePrompt({
       image: 'aGVsbG8=',
       mode: 'tags',
@@ -185,8 +245,8 @@ describe('NovelaiController verbs', () => {
   })
 
   it('reads the NovelAI-embedded parameters of an imported PNG', async () => {
-    const { controller } = harness()
-    // signature + IHDR (832×1216) + tEXt Title + tEXt Description + tEXt Comment + IEND.
+    const { controller } = await harness()
+    // signature + IHDR (832脳1216) + tEXt Title + tEXt Description + tEXt Comment + IEND.
     const parts: Uint8Array[] = [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])]
     const chunk = (type: string, data: Uint8Array): Uint8Array => {
       const out = new Uint8Array(12 + data.length)
@@ -231,18 +291,83 @@ describe('NovelaiController verbs', () => {
   })
 
   it('reports a parameter-less image honestly', async () => {
-    const { controller } = harness()
+    const { controller } = await harness()
     await expect(controller.inspectImage({ image: 'aGVsbG8=' })).resolves.toEqual({ hasMeta: false })
   })
 
   it('maps a missing token to the namespace error', async () => {
-    const { controller } = harness()
+    const { controller } = await harness()
     const previous = process.env['NOVELAI_TOKEN']
     delete process.env['NOVELAI_TOKEN']
     try {
       await expect(controller.generate({ prompt: 'x' })).rejects.toMatchObject({ code: 'novelai/token-missing' })
     } finally {
       if (previous !== undefined) process.env['NOVELAI_TOKEN'] = previous
+    }
+  })
+})
+
+describe('generation directory', () => {
+  it('reports the deployment directory until an override is stored', async () => {
+    const { controller, dir } = await settingsHarness()
+    await expect(controller.generationDir()).resolves.toEqual({ dir, configured: false })
+    await expect(controller.effectiveOutputDir()).resolves.toBe(dir)
+  })
+
+  it('reports a pre-seeded override resolved against the process cwd', async () => {
+    const { controller } = await settingsHarness({ doc: { novelai: { generationDir: 'preset/novelai' } } })
+    await expect(controller.generationDir()).resolves.toEqual({ dir: join(process.cwd(), 'preset', 'novelai'), configured: true })
+  })
+
+  it('persists the override and serves the library from it', async () => {
+    const { controller, dir } = await settingsHarness()
+    const target = join(dir, 'custom-library')
+    const value = await controller.setGenerationDir({ dir: `  ${target}  ` })
+    expect(value).toEqual({ dir: target, configured: true })
+    await expect(controller.generationDir()).resolves.toEqual({ dir: target, configured: true })
+    mkdirSync(target, { recursive: true })
+    writeFileSync(join(target, 'placed.png'), Buffer.from([1]))
+    const page = await controller.history({})
+    expect(page.entries.map(entry => entry.id)).toContain('placed')
+  })
+
+  it('clears the override back to the deployment directory', async () => {
+    const { controller, dir } = await settingsHarness()
+    await controller.setGenerationDir({ dir: join(dir, 'custom-library') })
+    await expect(controller.setGenerationDir({ dir: '   ' })).resolves.toEqual({ dir, configured: false })
+  })
+
+  it('refuses the write when no settings provider is mounted', async () => {
+    const { controller } = await settingsHarness()
+    // Simulate the unmounted-provider composition: the scope never bound.
+    ;(controller as unknown as { settings: unknown }).settings = undefined
+    await expect(controller.setGenerationDir({ dir: 'somewhere' }))
+      .rejects.toMatchObject({ code: 'novelai/settings-write-failed' })
+  })
+
+  it('refuses the write when the provider is read-only', async () => {
+    const { controller } = await settingsHarness({ writable: false })
+    await expect(controller.setGenerationDir({ dir: 'somewhere' }))
+      .rejects.toMatchObject({ code: 'novelai/settings-write-failed', message: /read-only/ })
+  })
+
+  it('maps a filesystem failure to the library error with the effective directory', async () => {
+    const { controller, dir } = await settingsHarness()
+    const overridden = join(dir, 'overridden')
+    await controller.setGenerationDir({ dir: overridden })
+    const ensure = vi.spyOn(NovelaiImageLibrary.prototype, 'ensure')
+      .mockRejectedValue(new Error('EACCES: permission denied, mkdir'))
+    const previous = process.env['NOVELAI_TOKEN']
+    process.env['NOVELAI_TOKEN'] = 'test-token'
+    try {
+      await expect(controller.generate({ prompt: 'x' })).rejects.toMatchObject({
+        code: 'novelai/library-unavailable',
+        details: { path: overridden },
+      })
+    } finally {
+      ensure.mockRestore()
+      if (previous !== undefined) process.env['NOVELAI_TOKEN'] = previous
+      else delete process.env['NOVELAI_TOKEN']
     }
   })
 })

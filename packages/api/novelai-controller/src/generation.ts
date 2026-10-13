@@ -4,7 +4,7 @@
  * @module @deepseek-ai/dsh-api-novelai-controller/generation
  */
 
-import { writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   DEFAULT_NEGATIVE_PROMPT,
@@ -108,6 +108,8 @@ export interface GenerationDeps {
   readonly timeoutMs: number
   /** Configured output directory of the library. */
   readonly outputDir: string
+  /** Settle clock: names the PNG's `<YYYY>/<MM>/<DD>` day folders and its creation instant; the current local time applies by default. */
+  readonly now?: Date
   /** Submission seam; the paid HTTP client applies by default. */
   readonly submit?: (options: Parameters<typeof requestGeneration>[0]) => Promise<Uint8Array[]>
 }
@@ -157,7 +159,7 @@ export async function runGeneration(
   return settleGeneration(input, images, deps)
 }
 
-/** Save the returned PNG and project the completed generation value. */
+/** Save the returned PNG under the local-time `<YYYY>/<MM>/<DD>` day folders and project the completed generation value. */
 async function settleGeneration(
   input: NovelaiGenerateInput,
   images: readonly Uint8Array[],
@@ -166,8 +168,11 @@ async function settleGeneration(
 ): Promise<NovelaiGenerationValue> {
   const png = images[0]
   if (png === undefined) throw new Error('the API answered without an image')
+  const now = deps.now ?? new Date()
   const stem = generationFileStem(input.seed)
-  const file = join(deps.outputDir, `${stem}.png`)
+  const dayDir = join(deps.outputDir, ...localDaySegments(now))
+  await mkdir(dayDir, { recursive: true })
+  const file = join(dayDir, `${stem}.png`)
   await writeFile(file, png)
   return {
     id: stem,
@@ -181,9 +186,18 @@ async function settleGeneration(
     prompt: input.prompt,
     negativePrompt: input.negativePrompt,
     ...(input.characters === undefined ? {} : { characters: toCharacterValues(input.characters) }),
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
     anlasEstimate: estimateAnlas(input.width, input.height, input.steps),
   }
+}
+
+/** Local-time `YYYY`, zero-padded `MM`, and `DD` segments naming one day's folder chain. */
+function localDaySegments(now: Date): [year: string, month: string, day: string] {
+  return [
+    String(now.getFullYear()),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ]
 }
 
 /**

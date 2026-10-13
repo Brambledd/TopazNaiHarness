@@ -1,9 +1,11 @@
 /** Host NovelAI Remote owner: workbench generation and the shared output library. */
 
 import { readFile } from 'node:fs/promises'
+import { isAbsolute, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
@@ -28,6 +30,7 @@ import type {
   NovelaiDownloadTagIndexValue,
   NovelaiEnhanceRequest,
   NovelaiEntryContentValue,
+  NovelaiGenerationDirValue,
   NovelaiInspectRequest,
   NovelaiInspectValue,
   NovelaiReverseRequest,
@@ -38,6 +41,7 @@ import type {
   NovelaiGenerationValue,
   NovelaiCommitWorkbenchStateRequest,
   NovelaiReadWorkbenchStateValue,
+  NovelaiSetGenerationDirRequest,
   NovelaiWorkbenchState,
   NovelaiHistoryRequest,
   NovelaiHistoryValue,
@@ -65,9 +69,37 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+/** Settings namespace carrying the user's generation-directory override. */
+export const NOVELAI_SETTINGS_NAMESPACE = 'novelai'
+
+/** User-configurable section of the `novelai` settings namespace. */
+export interface NovelaiSettings {
+  /** Generation output directory override; the empty string follows the deployment `outputDir`. */
+  generationDir: string
+}
+
+/** Schema of the `novelai` settings section. */
+export const NOVELAI_SETTINGS_SCHEMA: z<NovelaiSettings> = z.object({
+  generationDir: z.string().default(''),
+})
+
+/**
+ * Resolve the generation output directory: a non-empty settings override wins, the
+ * deployment `outputDir` fills in otherwise. Relative values resolve against the
+ * process cwd, mirroring the library's own constructor.
+ * @param configured - the saved settings value (may be blank).
+ * @param fallback - the deployment-configured output directory.
+ * @returns the effective absolute directory and whether the override supplies it.
+ */
+export function resolveEffectiveOutputDir(configured: string, fallback: string): { dir: string; configured: boolean } {
+  const override = configured.trim()
+  if (override === '') return { dir: isAbsolute(fallback) ? fallback : resolve(fallback), configured: false }
+  return { dir: isAbsolute(override) ? override : resolve(override), configured: true }
+}
+
 /** Deployment settings of the NovelAI workbench backend. */
 export interface NovelaiControllerConfig {
-  /** Output directory of the shared image library; the generation tool must point at the same directory. */
+  /** Default output directory of the shared image library; the saved settings `generationDir` overrides it per call. */
   outputDir: string
   /** On-disk location of the optional bilingual Danbooru tag index CSV (downloaded, never bundled). */
   tagIndexPath: string
@@ -101,7 +133,10 @@ export class NovelaiController extends TypertRemoteService {
   })
 
   private readonly config: NovelaiControllerConfig
-  private readonly library: NovelaiImageLibrary
+  /** Library instance per resolved output directory; keyed by the absolute dir a cache miss created it for. */
+  private readonly libraries = new Map<string, NovelaiImageLibrary>()
+  /** Saved-generation-directory scope; absent while no settings provider is mounted. */
+  private settings: SettingsScope<NovelaiSettings> | undefined
   private readonly tagIndex: TagIndexStore
   private tagIndexDownload: Promise<unknown> | undefined
   /** Latest committed workbench panel state per session; the generation tool's prompt source.
@@ -113,8 +148,46 @@ export class NovelaiController extends TypertRemoteService {
   constructor(ctx: Context, config: NovelaiControllerConfig) {
     super(ctx, 'novelaiController', { namespace: 'novelai' })
     this.config = config
-    this.library = new NovelaiImageLibrary(config.outputDir)
     this.tagIndex = new TagIndexStore(config.tagIndexPath, resolveProxyUrl('') ?? '')
+    // Optional settings consumer: compositions without a settings provider keep
+    // the deployment `outputDir` (see resolveEffectiveOutputDir). The scope is
+    // dropped with the settings service, mirroring the agent-presets registrant.
+    ctx.inject(['settings'], (settingsCtx) => {
+      this.settings = settingsCtx.settings.register(NOVELAI_SETTINGS_NAMESPACE, NOVELAI_SETTINGS_SCHEMA)
+      settingsCtx.effect(() => () => {
+        this.settings = undefined
+      }, 'novelaiController.settings()')
+    })
+  }
+
+  /**
+   * Resolve the generation output directory for this call: the saved settings
+   * override when non-empty, the deployment `outputDir` otherwise. Relative
+   * values resolve against the process cwd.
+   * @returns the effective absolute directory.
+   */
+  async effectiveOutputDir(): Promise<string> {
+    return resolveEffectiveOutputDir(this.settings?.get().generationDir ?? '', this.config.outputDir).dir
+  }
+
+  /** Library instance for one resolved output directory, created and cached on first use. */
+  private libraryFor(dir: string): NovelaiImageLibrary {
+    const cached = this.libraries.get(dir)
+    if (cached !== undefined) return cached
+    const created = new NovelaiImageLibrary(dir)
+    this.libraries.set(dir, created)
+    return created
+  }
+
+  /** Library instance bound to the effective output directory. */
+  private async currentLibrary(): Promise<NovelaiImageLibrary> {
+    return this.libraryFor(await this.effectiveOutputDir())
+  }
+
+  /** Effective output directory plus the library instance that serves it, from one resolution. */
+  private async generationTarget(): Promise<{ dir: string; library: NovelaiImageLibrary }> {
+    const dir = await this.effectiveOutputDir()
+    return { dir, library: this.libraryFor(dir) }
   }
 
   /**
@@ -172,15 +245,16 @@ export class NovelaiController extends TypertRemoteService {
   async generate(request: NovelaiGenerateRequest): Promise<NovelaiGenerationValue> {
     const token = await this.resolveToken()
     try {
-      await this.library.ensure()
+      const { dir, library } = await this.generationTarget()
+      await library.ensure()
       const value = await runGeneration(request, {
         token,
         proxyUrl: '',
         baseUrl: 'https://image.novelai.net',
         timeoutMs: 180_000,
-        outputDir: this.config.outputDir,
+        outputDir: dir,
       })
-      await this.library.record({
+      await library.record({
         id: value.id,
         file: value.file,
         bytes: value.bytes,
@@ -196,7 +270,7 @@ export class NovelaiController extends TypertRemoteService {
       })
       return value
     } catch (error) {
-      throw this.asRemoteError(error)
+      throw await this.asRemoteError(error)
     }
   }
 
@@ -258,15 +332,16 @@ export class NovelaiController extends TypertRemoteService {
   async enhance(request: NovelaiEnhanceRequest): Promise<NovelaiGenerationValue> {
     const token = await this.resolveToken()
     try {
-      await this.library.ensure()
+      const { dir, library } = await this.generationTarget()
+      await library.ensure()
       const value = await runEnhancement(request, {
         token,
         proxyUrl: '',
         baseUrl: 'https://image.novelai.net',
         timeoutMs: 180_000,
-        outputDir: this.config.outputDir,
+        outputDir: dir,
       })
-      await this.library.record({
+      await library.record({
         id: value.id,
         file: value.file,
         bytes: value.bytes,
@@ -281,8 +356,42 @@ export class NovelaiController extends TypertRemoteService {
       })
       return value
     } catch (error) {
-      throw this.asRemoteError(error)
+      throw await this.asRemoteError(error)
     }
+  }
+
+  /**
+   * Report the effective generation output directory.
+   * @returns the absolute directory and whether the saved settings override supplies it.
+   */
+  @Remote('generationDir')
+  async generationDir(): Promise<NovelaiGenerationDirValue> {
+    return resolveEffectiveOutputDir(this.settings?.get().generationDir ?? '', this.config.outputDir)
+  }
+
+  /**
+   * Persist the generation-directory override; the empty string clears it. The
+   * next generation resolves the directory fresh, so a saved value reaches the
+   * next workbench submission or `novelai_generate` call without a restart.
+   * @param request - the directory to save, or '' to clear the override.
+   * @returns the committed directory value.
+   * @throws RemoteError `novelai/settings-write-failed` when no settings provider is mounted or the write fails.
+   */
+  @Remote('setGenerationDir')
+  async setGenerationDir(request: NovelaiSetGenerationDirRequest): Promise<NovelaiGenerationDirValue> {
+    const trimmed = request.dir.trim()
+    const settings = this.settings
+    if (settings === undefined) {
+      const message = 'no settings provider is mounted: this deployment cannot store a generation-directory override'
+      throw new RemoteError('novelai/settings-write-failed', message, { message })
+    }
+    try {
+      await settings.update({ generationDir: trimmed })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new RemoteError('novelai/settings-write-failed', message, { message })
+    }
+    return resolveEffectiveOutputDir(settings.get().generationDir, this.config.outputDir)
   }
 
   /**
@@ -292,7 +401,7 @@ export class NovelaiController extends TypertRemoteService {
    */
   @Remote('history')
   async history(request: NovelaiHistoryRequest): Promise<NovelaiHistoryValue> {
-    const entries = await this.library.list()
+    const entries = await (await this.currentLibrary()).list()
     const offset = Math.max(0, request.offset ?? 0)
     const limit = request.limit === undefined ? entries.length : Math.min(Math.max(1, request.limit), entries.length - offset)
     return {
@@ -308,7 +417,7 @@ export class NovelaiController extends TypertRemoteService {
    */
   @Remote('removeEntry')
   async removeEntry(request: NovelaiRemoveRequest): Promise<NovelaiRemoveValue> {
-    const removed = await this.library.remove(request.id)
+    const removed = await (await this.currentLibrary()).remove(request.id)
     if (!removed) {
       throw new RemoteError('novelai/entry-missing', `no library entry "${request.id}"`, { id: request.id })
     }
@@ -553,7 +662,7 @@ export class NovelaiController extends TypertRemoteService {
    */
   @Remote('readEntry')
   async readEntry(request: NovelaiReadEntryRequest): Promise<NovelaiEntryContentValue> {
-    const entries = await this.library.list()
+    const entries = await (await this.currentLibrary()).list()
     const entry = entries.find(candidate => candidate.id === request.id)
     if (entry === undefined) {
       throw new RemoteError('novelai/entry-missing', `no library entry "${request.id}"`, { id: request.id })
@@ -567,14 +676,15 @@ export class NovelaiController extends TypertRemoteService {
    * @param error - the thrown pipeline failure.
    * @returns a RemoteError carrying the namespace's error code.
    */
-  private asRemoteError(error: unknown): RemoteError {
+  private async asRemoteError(error: unknown): Promise<RemoteError> {
     if (error instanceof RemoteError) return error
     const message = error instanceof Error ? error.message : String(error)
     if (message.startsWith('no NovelAI token')) {
       return new RemoteError('novelai/token-missing', message, {})
     }
     if (/EACCES|ENOENT|EISDIR|EPERM/.test(message)) {
-      return new RemoteError('novelai/library-unavailable', `the output library at ${this.library.path} is unavailable`, { path: this.library.path })
+      const path = (await this.currentLibrary()).path
+      return new RemoteError('novelai/library-unavailable', `the output library at ${path} is unavailable`, { path })
     }
     return new RemoteError('novelai/generation-failed', message, { message })
   }

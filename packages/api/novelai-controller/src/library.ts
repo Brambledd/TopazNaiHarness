@@ -6,7 +6,8 @@
  */
 
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
-import { isAbsolute, join, resolve } from 'node:path'
+import type { Dirent } from 'node:fs'
+import { basename, isAbsolute, join, resolve } from 'node:path'
 import { parseNovelaiPngMeta, readPngSize } from '@deepseek-ai/dsh-novelai-core'
 import type { NovelaiCharacterPromptValue } from './types.ts'
 
@@ -139,23 +140,16 @@ export class NovelaiImageLibrary {
   }
 
   /**
-   * Scan the output directory for PNGs, reading each file's embedded metadata.
+   * Scan the output directory for PNGs at any depth, reading each file's embedded
+   * metadata.
    * @returns discovered entries plus the set of stems that still exist on disk.
    */
   private async scan(): Promise<{ entries: NovelaiLibraryEntry[]; existingIds: Set<string> }> {
-    let names: string[]
-    try {
-      names = await readdir(this.directory)
-    } catch (error) {
-      if (isNotExist(error)) return { entries: [], existingIds: new Set() }
-      throw error
-    }
+    const files = await this.listPngFiles(this.directory)
     const entries: NovelaiLibraryEntry[] = []
     const existingIds = new Set<string>()
-    for (const name of names.sort()) {
-      if (!name.toLowerCase().endsWith('.png') || name === LIBRARY_INDEX_FILE) continue
-      const id = name.slice(0, -4)
-      const file = join(this.directory, name)
+    for (const file of files) {
+      const id = basename(file).slice(0, -4)
       const [bytes, info] = await Promise.all([readFile(file), stat(file)])
       existingIds.add(id)
       const meta = parseNovelaiPngMeta(bytes)
@@ -175,6 +169,34 @@ export class NovelaiImageLibrary {
       })
     }
     return { entries, existingIds }
+  }
+
+  /**
+   * Depth-first list of PNG files under `dir`, sorted within each directory so the
+   * legacy root-level PNGs and the `<YYYY>/<MM>/<DD>` day folders merge into one
+   * stable listing. A missing directory contributes nothing — including one removed
+   * between listing and traversal — so a concurrent cleanup cannot break the listing.
+   * @param dir - the directory to walk.
+   * @returns the absolute PNG file paths, root files first.
+   */
+  private async listPngFiles(dir: string): Promise<string[]> {
+    let read: Dirent[]
+    try {
+      read = await readdir(dir, { withFileTypes: true })
+    } catch (error) {
+      if (isNotExist(error)) return []
+      throw error
+    }
+    const files: string[] = []
+    for (const entry of read.sort((left, right) => left.name.localeCompare(right.name))) {
+      if (entry.isDirectory()) {
+        files.push(...await this.listPngFiles(join(dir, entry.name)))
+        continue
+      }
+      if (!entry.name.toLowerCase().endsWith('.png') || entry.name === LIBRARY_INDEX_FILE) continue
+      files.push(join(dir, entry.name))
+    }
+    return files
   }
 }
 

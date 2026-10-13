@@ -123,4 +123,35 @@ describe('NovelaiImageLibrary', () => {
     const entries = await library.list()
     expect(entries.map(entry => entry.id)).toEqual(['lonely'])
   })
+
+  it('finds PNGs one and two levels deep beside the legacy root files', async () => {
+    const { library, dir } = harness()
+    await library.ensure()
+    writeFileSync(join(dir, 'legacy-root.png'), metaPng(1))
+    mkdirSync(join(dir, '2026', '01', '02'), { recursive: true })
+    writeFileSync(join(dir, '2026', '01', 'deep-two.png'), metaPng(3))
+    mkdirSync(join(dir, '2026', '02'), { recursive: true })
+    writeFileSync(join(dir, '2026', '02', 'deep-one.png'), metaPng(2))
+    const entries = await library.list()
+    expect(entries.map(entry => entry.id).sort()).toEqual(['deep-one', 'deep-two', 'legacy-root'])
+    const deep = entries.find(entry => entry.id === 'deep-two')
+    expect(deep?.file).toBe(join(dir, '2026', '01', 'deep-two.png'))
+    expect(deep).toMatchObject({ seed: 3, prompt: '1girl, solo' })
+  })
+
+  it('records an index row over a nested scan file and keeps it winning', async () => {
+    const { library, dir } = harness()
+    await library.ensure()
+    mkdirSync(join(dir, '2026', '01', '02'), { recursive: true })
+    const nested = join(dir, '2026', '01', '02', 'nested.png')
+    writeFileSync(nested, metaPng(9))
+    await library.record({
+      id: 'nested', file: nested, bytes: 5, width: 512, height: 512,
+      seed: 9, model: 'nai-diffusion-4-5-full', steps: 28, prompt: 'p', negativePrompt: 'n',
+      createdAt: new Date(0).toISOString(),
+    })
+    const entries = await library.list()
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({ bytes: 5, model: 'nai-diffusion-4-5-full', prompt: 'p' })
+  })
 })

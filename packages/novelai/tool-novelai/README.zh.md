@@ -38,14 +38,14 @@ token 从 `NOVELAI_TOKEN` 环境变量读取；也可以在插件配置里设置
 |---|---|---|
 | `token` | `''` | 持久 API token；为空时回退 `NOVELAI_TOKEN` |
 | `imageBaseUrl` | `https://image.novelai.net` | 图像 API 基础 URL |
-| `outputDir` | `workspace/novelai` | 生成 PNG 的保存目录；相对路径按进程工作目录解析 |
+| `outputDir` | `workspace/novelai` | 未挂载 NovelAI 控制器时生成 PNG 的回退目录；相对路径按进程工作目录解析。挂载了控制器时，每次调用以其活动目录（Settings → General 覆盖或控制器配置）为准 |
 | `timeoutMs` | `180000` | 单请求超时 |
 | `proxyUrl` | `''` | 访问 API 的 HTTP(S) 代理；为空时遵循 `NOVELAI_PROXY`/`HTTPS_PROXY` 环境变量，均未设置则直连 |
 | `coverBackfillSessions` | `100` | 启动时为填充会话列表封面投影而冷折叠的 Session 数（新者优先）；`0` 关闭回填 |
 
 ### 每次调用做什么
 
-模型发送提示词与可选覆盖项（模型、尺寸、步数、CFG、采样器、噪声调度、种子、负面提示词、文件名）。工具校验 schema 表达不了的约束——64 的倍数且在 64–3072 内的尺寸、1–50 的整数步数、0–10 的 CFG、不含路径分隔符的文件名——然后应用默认值（832×1216、28 步、CFG 5、`k_euler`、Heavy 负面预设、随机种子），提交一次 `POST /ai/generate-image`，从 ZIP 响应提取 PNG 并写入输出目录。成功返回保存路径、字节大小、种子与 Anlas 估算。
+模型发送提示词与可选覆盖项（模型、尺寸、步数、CFG、采样器、噪声调度、种子、负面提示词、文件名）。工具校验 schema 表达不了的约束——64 的倍数且在 64–3072 内的尺寸、1–50 的整数步数、0–10 的 CFG、不含路径分隔符的文件名——然后应用默认值（832×1216、28 步、CFG 5、`k_euler`、Heavy 负面预设、随机种子），提交一次 `POST /ai/generate-image`，从 ZIP 响应提取 PNG 并写入输出目录下按本地时间 `<YYYY>/<MM>/<DD>` 创建的日期子文件夹（按需创建），与创作台库扫描的布局一致。成功返回保存路径、字节大小、种子与 Anlas 估算。
 
 ### 费用纪律
 
@@ -65,6 +65,7 @@ token 从 `NOVELAI_TOKEN` 环境变量读取；也可以在插件配置里设置
 - **官方客户端线格式对齐。** 请求规范化自官方前端移植：V5 请求恒定提交 `noise_schedule: "karras"`，CFG 收敛到 0–10，种子收敛到 `0xffffffff`，V4+ 请求携带 API 要求的（空）角色提示词字段。默认负面提示词镜像 V4+ 的 "Heavy" 不良内容预设，因为 API 只接收合并后的文本。
 - **不静默重试。** 付费 POST 即使返回 5xx 也可能已产出并扣费，因此失败逐字上抛；只有 429 类情形交给调用方处置。
 - **令牌经 credential 缝解析。** 每次调用先读插件 config 的 `token`，再读 `NOVELAI_TOKEN` credential（Settings → General 行写入存储层），最后读裸环境变量；令牌变更无需重启即对下一次调用生效。
+- **输出目录跟随已挂载的控制器。** 挂载了 NovelAI 控制器时，工具每次调用读取其活动的 `effectiveOutputDir()`——即遵循 Settings → General 的目录覆盖——否则回退插件 config 的 `outputDir`；PNG 存入该目录下按本地时间的日期子文件夹。
 - **响应提取大声失败。** 非压缩包主体（JSON/HTML 错误页）按错误响应拒绝，绝不会被误判成「缺图需重提」。
 - **投影等待其服务。** `novelai/latestImage` 单元经 `ctx.inject(['sessionProjections'], ...)` 注册，因此即使 session-controller 插件在本插件自身依赖之后才激活，注册也能落地。没有该服务的组合保留工具本身；会话列表展示默认封面。
 
@@ -80,6 +81,7 @@ token 从 `NOVELAI_TOKEN` 环境变量读取；也可以在插件配置里设置
 | [`src/types.ts`](src/types.ts) | 模型/采样器枚举、请求与结果类型 |
 | [`src/payload.ts`](src/payload.ts) | 纯线格式体组装、Anlas 估算、文件名词干 |
 | [`src/client.ts`](src/client.ts) | 带可选代理分发的 HTTP 提交与网络失败指引 |
+| [`src/directory.ts`](src/directory.ts) | 生成根目录解析（控制器优先）与本地时间日期子文件夹路径 |
 | [`src/unzip.ts`](src/unzip.ts) | ZIP/PNG 响应提取，带尺寸上限 |
 | [`src/invariant.ts`](src/invariant.ts) | 空 invariant 伴随件：适配器不持有持久会话关系 |
 
@@ -135,5 +137,5 @@ token 从 `NOVELAI_TOKEN` 环境变量读取；也可以在插件配置里设置
 
 - **仅文生图**——img2img、局部重绘、vibe transfer、精确参考、放大与导演工具是第一阶段的刻意裁剪；它们会带着各自的参数面一起到来。
 - **无订阅感知**——Anlas 估算忽略活跃 Opus 的免费额度与参考图附加费；它给出的是最坏情况上界。
-- **单一输出目录**——同一进程的所有会话共享 `outputDir`；按会话子目录随库包一起到来。
+- **单一输出目录**——同一进程的所有会话共享解析后的目录，并按 `<YYYY>/<MM>/<DD>` 日期子文件夹组织；按会话子目录尚未到来。
 - **提交前不校验令牌**——无效的持久令牌会以 NovelAI 的 HTTP 401 出现在工具结果里；错误信息会指向 Settings → General 中保存替换令牌的行。

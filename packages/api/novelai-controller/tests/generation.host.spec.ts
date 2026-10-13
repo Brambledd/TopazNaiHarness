@@ -1,10 +1,11 @@
 import { mkdtempSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { estimateAnlas } from '@deepseek-ai/dsh-novelai-core'
 import { NOVELAI_WORKBENCH_DEFAULTS, runEnhancement, runGeneration, resolveGenerationRequest } from '../src/generation.ts'
+import { resolveEffectiveOutputDir } from '../src/index.ts'
 
 describe('resolveGenerationRequest', () => {
   it('fills every omitted parameter with the workbench default', () => {
@@ -31,6 +32,25 @@ describe('resolveGenerationRequest', () => {
   })
 })
 
+describe('resolveEffectiveOutputDir', () => {
+  it('prefers a non-blank absolute override as-is', () => {
+    const configured = join(tmpdir(), 'override')
+    expect(resolveEffectiveOutputDir(`  ${configured}  `, join(tmpdir(), 'fallback'))).toEqual({ dir: configured, configured: true })
+  })
+
+  it('resolves a relative override against the process cwd', () => {
+    expect(resolveEffectiveOutputDir('out/novelai', join(tmpdir(), 'fallback')))
+      .toEqual({ dir: resolve('out', 'novelai'), configured: true })
+  })
+
+  it('falls back to the deployment directory, resolved, when the override is blank', () => {
+    expect(resolveEffectiveOutputDir('   ', 'workspace/novelai'))
+      .toEqual({ dir: resolve('workspace', 'novelai'), configured: false })
+    const absolute = join(tmpdir(), 'fallback')
+    expect(resolveEffectiveOutputDir('', absolute)).toEqual({ dir: absolute, configured: false })
+  })
+})
+
 describe('runGeneration', () => {
   const base = {
     token: 'token-value',
@@ -54,6 +74,20 @@ describe('runGeneration', () => {
     expect(submissions).toEqual(['nai-diffusion-4-5-full'])
     expect(value.seed).toBe(11)
     expect(value.anlasEstimate).toBe(estimateAnlas(832, 1216, 28))
+    await expect(readFile(value.file)).resolves.toEqual(Buffer.from(png))
+  })
+
+  it('saves the PNG under the pinned clock local-time day folders', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4])
+    const outputDir = mkdtempSync(join(tmpdir(), 'dsh-novelai-gen-'))
+    const value = await runGeneration({ prompt: 'solo', seed: 11 }, {
+      ...base,
+      outputDir,
+      now: new Date(2026, 0, 2, 9, 30),
+      submit: async () => [png],
+    })
+    expect(value.file).toBe(join(outputDir, '2026', '01', '02', `${value.id}.png`))
+    expect(value.createdAt).toBe(new Date(2026, 0, 2, 9, 30).toISOString())
     await expect(readFile(value.file)).resolves.toEqual(Buffer.from(png))
   })
 
@@ -136,7 +170,8 @@ describe('runEnhancement', () => {
       seed: 3,
     }, {
       ...base,
-      outputDir: '.',
+      // A real directory: the settle step mkdirs the day folders and writes the PNG.
+      outputDir: mkdtempSync(join(tmpdir(), 'dsh-novelai-enh-')),
       submit: async () => [png],
     })
     expect(value.width).toBe(1664)

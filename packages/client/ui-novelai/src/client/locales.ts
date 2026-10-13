@@ -1,4 +1,4 @@
-/** `novelai` namespace dictionaries for the dedicated tool row and the token row. */
+/** `novelai` namespace dictionaries for the dedicated tool row, the token row, and the generation-directory row. */
 
 /** Dictionary namespace owned by this plugin. */
 export const NS = 'novelai'
@@ -35,6 +35,15 @@ export const zh = {
   'token.state.missing': '未设置——保存令牌前无法生图',
   'token.state.unavailable': '当前部署未挂载凭据存储，请改用插件 config 或环境变量配置令牌',
   'token.readonly': '存在只读来源遮蔽存储值，本行暂不可写',
+  'dir.label': '生图保存目录',
+  'dir.hint': '每次生图的 PNG 都会保存到该目录下按本地日期自动创建的 <年>/<月>/<日> 子文件夹；留空时使用部署配置的目录。',
+  'dir.placeholder': '保存目录（留空使用部署配置）',
+  'dir.save': '保存',
+  'dir.clear': '清除',
+  'dir.saved': '目录已保存，下一次生图生效。',
+  'dir.cleared': '已清除目录设置，恢复部署默认目录。',
+  'dir.state.configured': '已自定义',
+  'dir.state.default': '默认',
 } satisfies Record<string, string>
 
 /** The novelai namespace key union. */
@@ -72,4 +81,13 @@ export const en = {
   'token.state.missing': 'Not set — generation fails until a token is saved',
   'token.state.unavailable': 'No credential storage in this deployment; configure the token through the plugin config or environment instead',
   'token.readonly': 'A read-only source is shadowing the stored value; this row cannot write right now',
+  'dir.label': 'Image output directory',
+  'dir.hint': "Every generated PNG is saved under automatically created <year>/<month>/<day> subfolders of this directory; leave empty to use the deployment's directory.",
+  'dir.placeholder': 'Output directory (empty = deployment default)',
+  'dir.save': 'Save',
+  'dir.clear': 'Clear',
+  'dir.saved': 'Directory saved; it applies from the next generation.',
+  'dir.cleared': 'Directory override cleared; the deployment default applies.',
+  'dir.state.configured': 'Custom',
+  'dir.state.default': 'Default',
 } satisfies Record<NovelaiKey, string>

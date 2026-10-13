@@ -1,7 +1,9 @@
 /**
  * NovelAI client plugin, browser half: the dedicated `novelai_generate` keyed
- * toolview, the turn-image accumulator, the turn-tail images link, and the
- * Settings → General token row over the `NOVELAI_TOKEN` credential.
+ * toolview, the turn-image accumulator, the turn-tail images link, the
+ * Settings → General token row over the `NOVELAI_TOKEN` credential, and the
+ * Settings → General generation-directory row over the novelai Remote
+ * namespace.
  */
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and the
 // SlotRegistry service merge (ctx.slots), plus the conversation service face.
@@ -23,6 +25,8 @@ import { PatchTail } from './PatchTail.tsx'
 import { selectTurnPatches, turnPatchesDefinition } from './patch-tail.ts'
 import { TurnImages } from './TurnImages.tsx'
 import { selectTurnImages, turnImagesDefinition } from './turn-images.ts'
+import { DirRow, type DirRowInjected } from './DirRow.tsx'
+import { createNovelaiGenerationDirOperations, NovelaiGenerationDirStore } from './dir-settings.ts'
 import { TokenRow, type TokenRowInjected } from './TokenRow.tsx'
 import { createNovelaiTokenOperations, NovelaiTokenStore } from './token-settings.ts'
 import { en, NS, zh, type NovelaiKey } from './locales.ts'
@@ -35,8 +39,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Required services: the slot registry, the conversation image channel, the
- * workbench backfill bridge, the locale service, and the credentials Remote
- * namespace backing the token row. */
+ * workbench backfill bridge, the locale service, and the Remote namespaces
+ * (`remote` carries the novelai namespace backing the directory row, and
+ * `remote.credentials` backs the token row). */
 export const inject = ['slots', 'uiConversation', 'novelaiWorkbench', 'locale', 'remote', 'remote.credentials']
 
 /**
@@ -112,4 +117,17 @@ export function apply(ctx: ClientContext): void {
       t: tokenT,
     }),
   }, TokenRow))
+
+  const dirStore = new NovelaiGenerationDirStore(createNovelaiGenerationDirOperations(ctx))
+  const dirT = ctx.locale.bind(NS) as DirRowInjected['t']
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'novelai-generation-dir',
+    order: 11,
+    inject: () => ({
+      controller: dirStore,
+      hooks: { dir: dirStore.store },
+      t: dirT,
+    }),
+  }, DirRow))
 }

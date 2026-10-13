@@ -33,6 +33,8 @@ kind: "package-reference"
 
 本包还注册了 Settings → General 的 **NovelAI API 令牌** 行：经 Remote credentials 命名空间保存与清除 `NOVELAI_TOKEN` credential，展示凭据的配置状态与来源层，并随推送的 `credentials/reference-updated` 事件刷新。
 
+旁边是「生图保存目录」行：经 Remote novelai 命名空间（`generationDir`/`setGenerationDir`）编辑生图目录覆盖，显示当前生效的绝对路径以及它由已保存的覆盖还是部署配置提供；保存非空目录、清除覆盖恢复部署默认，被拒绝的写入逐字呈现宿主诊断。生成的图片按生效目录下本地时间 `<YYYY>/<MM>/<DD>` 的日期子文件夹保存。
+
 -----
 
 

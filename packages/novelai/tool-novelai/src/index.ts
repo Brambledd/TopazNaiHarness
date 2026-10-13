@@ -7,6 +7,9 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+// Type-only: pulls the api-novelai-controller Context merge (ctx.novelaiController,
+// the workbench-state and live-output-directory source) into this program.
+import type {} from '@deepseek-ai/dsh-api-novelai-controller'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
@@ -27,6 +30,7 @@ import { latestNovelaiImageProjection } from './projection.ts'
 import { backfillLatestImageCovers } from './backfill.ts'
 import { PATCH_DESCRIPTION, SETTINGS_FIELDS, normalizePatch } from './patch.ts'
 import { resolveInput, type CommittedWorkbench } from './input.ts'
+import { dayDirectory, resolveGenerationRoot } from './directory.ts'
 
 const DESCRIPTION =
   'Generate one anime-style image through the NovelAI image API and save it as a PNG. '
@@ -125,7 +129,8 @@ function safeFileStem(filename: string): string {
  * @param config - deployment configuration.
  */
 export function apply(ctx: Context, config: Config): void {
-  const outputDir = isAbsolute(config.outputDir) ? config.outputDir : resolve(config.outputDir)
+  /** Fallback root when no NovelAI controller is mounted; the controller's live directory wins per call. */
+  const fallbackOutputDir = isAbsolute(config.outputDir) ? config.outputDir : resolve(config.outputDir)
   const credentials = ctx.get('credentials')
   /** Last generation fingerprint per session; feeds the identical-rerun guard. */
   const lastGenerations = new Map<string, { prompt: string; seed: number }>()
@@ -196,15 +201,16 @@ export function apply(ctx: Context, config: Config): void {
     },
     async execute(args, exec) {
       const token = await resolveToken(config, credentials)
+      // The mounted NovelAI controller, when the composition has one: its
+      // committed workbench state is this call's prompt source, and its live
+      // output directory is where the PNG saves.
+      const controller = ctx.get('novelaiController')
       // The session's committed workbench state, when the NovelAI controller
       // is mounted: the rail beside the conversation commits on every panel
       // change, and its prompt/parameters bind this generation.
       const sessionId = exec.agent?.session.id
       let committed: CommittedWorkbench | undefined
       if (sessionId !== undefined) {
-        const controller = ctx.get('novelaiController') as
-          | { readWorkbenchState(request: { sessionId: string }): Promise<{ state?: CommittedWorkbench }> }
-          | undefined
         committed = (await controller?.readWorkbenchState({ sessionId: sessionId }))?.state
       }
       const input = resolveInput(args, committed)
@@ -254,16 +260,19 @@ export function apply(ctx: Context, config: Config): void {
       if (image === undefined) {
         throw new Error('NovelAI returned an empty image list; not retrying to avoid a duplicate charge')
       }
+      // The controller's live directory when mounted (it honors the Settings
+      // generation-directory override), the plugin config otherwise; the PNG
+      // saves under the local-time day folders, like the workbench library.
+      const outputDir = dayDirectory(await resolveGenerationRoot(fallbackOutputDir, controller), new Date())
+      await mkdir(outputDir, { recursive: true })
       if (images.length > 1) {
         // Keep sibling images beside the primary one instead of dropping paid output.
-        await mkdir(outputDir, { recursive: true })
         for (let index = 1; index < images.length; index++) {
           const sibling = images[index]
           if (sibling !== undefined) await writeFile(join(outputDir, `${stem}-${index}.png`), sibling)
         }
       }
       const path = join(outputDir, `${stem}.png`)
-      await mkdir(outputDir, { recursive: true })
       await writeFile(path, image)
       // Durable attachment for transcript display and later reuse. This channel
       // is best-effort: the generation already succeeded and the file result

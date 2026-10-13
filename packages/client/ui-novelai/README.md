@@ -33,6 +33,8 @@ The tool row derives entirely from the durable call/result events — state, pro
 
 The package also registers the Settings → General **NovelAI API token** row: it saves and clears the `NOVELAI_TOKEN` credential through the Remote credentials namespace, shows the credential's configured state and source layer, and refreshes on pushed `credentials/reference-updated` events.
 
+Beside it, the **Image output directory** row edits the generation-directory override through the Remote novelai namespace (`generationDir`/`setGenerationDir`): it shows the current effective absolute path and whether the saved override or the deployment config supplies it, saves a non-empty directory, clears the override back to the deployment default, and renders refused writes with the Host diagnostic verbatim. Generations land under the effective directory's local-time `<YYYY>/<MM>/<DD>` day folders.
+
 -----
 
 

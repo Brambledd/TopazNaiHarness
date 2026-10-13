@@ -31,17 +31,19 @@ Use this package when a browser surface must generate or browse NovelAI images w
 |---|---|
 | `catalog()` | Checkpoints, samplers, schedules, `maxSeed`, and the workbench defaults |
 | `estimate({ width, height, steps })` | Anlas price quote from the official formula |
-| `generate(request)` | Resolve → price → paid submission (never retried) → PNG saved into `outputDir` → index recorded |
+| `generate(request)` | Resolve → price → paid submission (never retried) → PNG saved under `<dir>/<YYYY>/<MM>/<DD>/` → index recorded |
 | `history({ offset?, limit? })` | One page of the merged library, newest first, with the total |
 | `removeEntry({ id })` | Delete one entry and its PNG file |
+| `generationDir()` | The effective absolute output directory and whether the saved settings override supplies it |
+| `setGenerationDir({ dir })` | Persist the directory override (empty clears it); the next generation applies it without a restart |
 
 ### Configuration
 
 | Field | Default | Meaning |
 |---|---|---|
-| `outputDir` | `workspace/novelai` | Shared image library directory; point the generation tool's `outputDir` at the same path |
+| `outputDir` | `workspace/novelai` | Default shared image library directory; point the generation tool's `outputDir` at the same path |
 
-The NovelAI token is read from the `NOVELAI_TOKEN` environment variable at submission time; a missing token answers `novelai/token-missing`.
+The effective generation directory resolves per call: the saved Settings → General **Image output directory** override (`novelai` settings namespace, `generationDir` field) first, the `outputDir` config otherwise; relative values resolve against the process working directory. Every PNG lands under the effective directory's local-time `<YYYY>/<MM>/<DD>` day folders, created on demand. The NovelAI token is read from the `NOVELAI_TOKEN` credential (store, then `.env`, then environment) at submission time; a missing token answers `novelai/token-missing`.
 
 -----
 
@@ -54,9 +56,10 @@ The NovelAI token is read from the `NOVELAI_TOKEN` environment variable at submi
 ### Design philosophy
 
 - **No LLM in the generation loop.** The workbench talks to the image API through this namespace directly; the agent stays available for prompt drafting and variation, not for form submission.
-- **One library, two producers.** Workbench submissions append full-parameter rows to `library.json`; every other PNG in the directory (tool calls, external saves) is discovered by scan and enriched with the metadata embedded in the file (`Title`/`Description`/`Comment` tEXt chunks).
+- **One library, two producers.** Workbench submissions append full-parameter rows to `library.json`; every other PNG in the directory at any depth (tool calls, external saves) is discovered by the recursive scan and enriched with the metadata embedded in the file (`Title`/`Description`/`Comment` tEXt chunks).
 - **Explicit defaulting.** `resolveGenerationRequest` is the single defaulting step: blank negative prompts fall back to the host default, omitted seeds are randomized, and the resolved input is what gets priced and submitted.
 - **Paid submissions never retry.** A failed POST may have charged for the image, so failures surface as `novelai/generation-failed` verbatim.
+- **The directory resolves live.** The library instance is cached per resolved directory, so a saved settings override moves the library (and the tool, which reads `effectiveOutputDir()`) without a restart.
 
 ### Source map
 
@@ -90,7 +93,7 @@ No direct effect; the package never assembles or sends provider requests.
 
 These limits define when the package is a poor fit. They are current package constraints, not a task backlog.
 
-- **Token through environment only** — the service reads `NOVELAI_TOKEN` at submission time; a settings-surface token flow arrives with credential integration.
+- **Token through environment only** — the service reads the `NOVELAI_TOKEN` credential (store, then `.env`, then environment) at submission time; it writes no credential itself.
 - **Text-to-image only** — img2img, inpainting, and upscale verbs are deliberate cuts until their workbench surfaces exist.
 - **No streaming progress** — `generate` is one unary call; long submissions cannot report step progress and cancellation is request-scoped only.
-- **Tool calls are not indexed** — `novelai_generate` tool PNGs appear in history through the directory scan, but the index row (exact request parameters) is only written by workbench submissions; the tool does not append to the library index.
+- **Tool calls are not indexed** — `novelai_generate` tool PNGs appear in history through the recursive directory scan, but the index row (exact request parameters) is only written by workbench submissions; the tool does not append to the library index.

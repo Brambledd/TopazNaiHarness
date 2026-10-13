@@ -17,6 +17,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'novelai/split-failed': { readonly message: string }
     /** The reverse-prompt vision call failed or returned unusable output. */
     'novelai/reverse-failed': { readonly message: string }
+    /** The generation-directory settings write was refused (no provider, read-only storage, or a failed persist). */
+    'novelai/settings-write-failed': { readonly message: string }
   }
 }
 
@@ -355,4 +357,18 @@ export interface NovelaiCommitWorkbenchStateRequest {
 export interface NovelaiReadWorkbenchStateValue {
   /** The latest committed panel state for the session. */
   readonly state?: NovelaiWorkbenchState
+}
+
+/** `generationDir()` answer: the effective output directory and who supplies it. */
+export interface NovelaiGenerationDirValue {
+  /** Effective absolute output directory; a relative settings value resolves against the process cwd. */
+  readonly dir: string
+  /** Whether the saved settings override (not the deployment config) supplies the directory. */
+  readonly configured: boolean
+}
+
+/** `setGenerationDir` request: the directory override to persist. */
+export interface NovelaiSetGenerationDirRequest {
+  /** Directory to save; the empty string clears the override so the deployment `outputDir` applies again. */
+  readonly dir: string
 }

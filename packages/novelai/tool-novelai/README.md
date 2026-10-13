@@ -38,14 +38,14 @@ The token is read from the `NOVELAI_TOKEN` environment variable; alternatively s
 |---|---|---|
 | `token` | `''` | Persistent API token; empty falls back to `NOVELAI_TOKEN` |
 | `imageBaseUrl` | `https://image.novelai.net` | Image API base URL |
-| `outputDir` | `workspace/novelai` | Directory for generated PNGs; relative paths resolve against the process working directory |
+| `outputDir` | `workspace/novelai` | Fallback directory for generated PNGs when no NovelAI controller is mounted; relative paths resolve against the process working directory. When the controller is mounted, its live directory (the Settings → General override, or the controller config) wins per call |
 | `timeoutMs` | `180000` | Per-request timeout |
 | `proxyUrl` | `''` | HTTP(S) proxy URL for reaching the API; empty defers to the `NOVELAI_PROXY`/`HTTPS_PROXY` environment variables, unset means a direct connection |
 | `coverBackfillSessions` | `100` | Cold Sessions folded at startup to fill the session-list cover projection (newest first); `0` disables the backfill |
 
 ### What each call does
 
-The model sends a prompt plus optional overrides (model, dimensions, steps, CFG, sampler, noise schedule, seed, negative prompt, filename). The tool validates the constraints the schema cannot express — 64-multiple dimensions within 64–3072, integer steps within 1–50, CFG within 0–10, a filename without path separators — applies defaults (832×1216, 28 steps, CFG 5, `k_euler`, heavy negative preset, random seed), submits one `POST /ai/generate-image`, extracts the PNG from the ZIP response, and writes it to the output directory. A success returns the saved path, byte size, seed, and Anlas estimate.
+The model sends a prompt plus optional overrides (model, dimensions, steps, CFG, sampler, noise schedule, seed, negative prompt, filename). The tool validates the constraints the schema cannot express — 64-multiple dimensions within 64–3072, integer steps within 1–50, CFG within 0–10, a filename without path separators — applies defaults (832×1216, 28 steps, CFG 5, `k_euler`, heavy negative preset, random seed), submits one `POST /ai/generate-image`, extracts the PNG from the ZIP response, and writes it under the output directory's local-time `<YYYY>/<MM>/<DD>` day folders (created on demand), the same layout the workbench library scans. A success returns the saved path, byte size, seed, and Anlas estimate.
 
 ### Cost discipline
 
@@ -65,6 +65,7 @@ Every call is paid. The tool description tells the model to batch and iterate de
 - **Official-client wire parity.** Request normalizations are ported from the official frontend: V5 requests always submit `noise_schedule: "karras"`, CFG is clamped to 0–10, the seed to `0xffffffff`, and V4+ requests carry the (empty) character-prompt fields the API requires. The default negative prompt mirrors the V4+ "Heavy" undesired-content preset because the API receives only the merged text.
 - **No silent retries.** A paid POST may have produced and charged for an image even on a 5xx, so failures surface verbatim; only 429-style situations are left to the caller.
 - **The token resolves through the credential seam.** Per call the tool reads the plugin config `token` first, then the `NOVELAI_TOKEN` credential (the Settings → General row writes the store layer), then the bare environment; a changed token reaches the next call without a restart.
+- **The output directory follows the mounted controller.** When the NovelAI controller is mounted, the tool reads its live `effectiveOutputDir()` per call — honoring the Settings → General directory override — and falls back to the plugin config `outputDir` otherwise; the PNG saves under that directory's local-time day folders.
 - **Response extraction fails loud.** A non-archive body (JSON/HTML error page) is rejected as an error response, never mistaken for a missing image that would justify a resubmission.
 - **The projection waits for its service.** The `novelai/latestImage` unit registers through `ctx.inject(['sessionProjections'], ...)`, so the registration lands even when the session-controller plugin activates after this plugin's own dependencies. Compositions without the service keep the tool; the session list serves its default cover.
 
@@ -80,6 +81,7 @@ The unit's wire value feeds the web session list (`SessionSummary.projectionValu
 | [`src/types.ts`](src/types.ts) | Model/sampler enums, request and result types |
 | [`src/payload.ts`](src/payload.ts) | Pure wire-body assembly, Anlas estimation, filename stems |
 | [`src/client.ts`](src/client.ts) | HTTP submission with optional proxy dispatch and network-failure guidance |
+| [`src/directory.ts`](src/directory.ts) | Generation root resolution (controller-preferred) and the local-time day-folder path |
 | [`src/unzip.ts`](src/unzip.ts) | ZIP/PNG response extraction with bounded sizes |
 | [`src/invariant.ts`](src/invariant.ts) | Empty invariant companion: the adapter owns no durable session relation |
 
@@ -135,5 +137,5 @@ These limits define when the tool is a poor fit. They are current package constr
 
 - **Text-to-image only** — img2img, inpainting, vibe transfer, precise reference, upscale, and director tools are deliberate Phase-1 cuts; they arrive with their own parameter surfaces.
 - **No subscription awareness** — the Anlas estimate ignores the active-Opus free allowance and reference surcharges; it bounds the worst case.
-- **Single output directory** — all sessions of one process share `outputDir`; per-session subdirectories arrive with the library package.
+- **Single output directory** — all sessions of one process share the resolved directory, organized into `<YYYY>/<MM>/<DD>` day folders; per-session subdirectories are not a thing yet.
 - **No pre-submit token validation** — an invalid persistent token surfaces as NovelAI's HTTP 401 in the tool result; the error names the Settings → General row that stores a replacement.

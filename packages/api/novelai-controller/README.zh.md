@@ -31,17 +31,19 @@ kind: "package-reference"
 |---|---|
 | `catalog()` | checkpoint、采样器、调度、`maxSeed` 与创作台默认值 |
 | `estimate({ width, height, steps })` | 按官方公式给出 Anlas 报价 |
-| `generate(request)` | 解析 → 计价 → 付费提交（绝不重试）→ PNG 存入 `outputDir` → 索引记录 |
+| `generate(request)` | 解析 → 计价 → 付费提交（绝不重试）→ PNG 存入 `<dir>/<YYYY>/<MM>/<DD>/` → 索引记录 |
 | `history({ offset?, limit? })` | 合并库的一页（新者优先）与总数 |
 | `removeEntry({ id })` | 删除一条记录与其 PNG 文件 |
+| `generationDir()` | 当前生效的绝对输出目录，以及它是否由已保存的设置覆盖提供 |
+| `setGenerationDir({ dir })` | 持久化目录覆盖（空字符串清除）；下一次生图即生效，无需重启 |
 
 ### 配置
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `outputDir` | `workspace/novelai` | 共享图片库目录；把生成工具的 `outputDir` 指向同一路径 |
+| `outputDir` | `workspace/novelai` | 共享图片库的默认目录；把生成工具的 `outputDir` 指向同一路径 |
 
-NovelAI token 在提交时从 `NOVELAI_TOKEN` 环境变量读取；缺失时回答 `novelai/token-missing`。
+生效的生图目录按次解析：先读已保存的 Settings → General「生图保存目录」覆盖（`novelai` 设置命名空间的 `generationDir` 字段），否则用 `outputDir` 配置；相对路径按进程工作目录解析。每张 PNG 都存入生效目录下按本地时间 `<YYYY>/<MM>/<DD>` 创建的日期子文件夹。NovelAI token 在提交时从 `NOVELAI_TOKEN` 凭据（凭据存储、`.env`、环境变量依次读取）；缺失时回答 `novelai/token-missing`。
 
 -----
 
@@ -54,9 +56,10 @@ NovelAI token 在提交时从 `NOVELAI_TOKEN` 环境变量读取；缺失时回�
 ### 设计原则
 
 - **生成循环里没有 LLM。** 创作台直接与本命名空间后的图像 API 对话；agent 保持可用于提示词起草与变体，而不是表单提交。
-- **一个库、两个生产者。** 创作台提交向 `library.json` 追加全参数行；目录里的其他 PNG（工具调用、外部保存）经扫描发现，并用文件内嵌的元数据（`Title`/`Description`/`Comment` tEXt 块）丰富。
+- **一个库、两个生产者。** 创作台提交向 `library.json` 追加全参数行；目录里任意深度的其他 PNG（工具调用、外部保存）经递归扫描发现，并用文件内嵌的元数据（`Title`/`Description`/`Comment` tEXt 块）丰富。
 - **显式默认化。** `resolveGenerationRequest` 是唯一的默认化步骤：空白负面提示词回退宿主默认，缺省种子随机化，被计价与提交的就是解析后的输入。
 - **付费提交绝不重试。** 失败的 POST 可能已为图片扣费，因此失败逐字上抛为 `novelai/generation-failed`。
+- **目录实时解析。** 库实例按解析后的目录缓存，已保存的设置覆盖因此能在不重启的情况下移动库（以及读取 `effectiveOutputDir()` 的生成工具）。
 
 ### Source map
 
@@ -92,7 +95,7 @@ Indirectly, through 创作台与 `novelai_generate` 工具：命名空间在无�
 
 这些边界界定本包何时不适用。它们是当前包约束，不是任务清单。
 
-- **token 仅经环境变量**——服务在提交时读取 `NOVELAI_TOKEN`；设置面的 token 流程随 credential 集成一起到来。
+- **token 仅经环境变量**——服务在提交时读取 `NOVELAI_TOKEN` 凭据（凭据存储、`.env`、环境变量依次读取）；它自身不写入凭据。
 - **仅文生图**——img2img、局部重绘与放大动词在其创作台面存在前是刻意裁剪。
 - **无流式进度**——`generate` 是一次一元调用；长提交无法报告步进进度，取消仅限请求作用域。
-- **工具调用不入索引**——`novelai_generate` 工具的 PNG 经目录扫描出现在历史里，但索引行（精确请求参数）只由创作台提交写入；工具不追加库索引。
+- **工具调用不入索引**——`novelai_generate` 工具的 PNG 经递归目录扫描出现在历史里，但索引行（精确请求参数）只由创作台提交写入；工具不追加库索引。

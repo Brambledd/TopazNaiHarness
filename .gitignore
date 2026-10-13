@@ -46,3 +46,7 @@ worktrees/
 
 # Generated NovelAI run artifacts (Phase 5 asset library will own storage)
 /workspace/
+
+# Generation outputs that landed in the repo root when outputDir was
+# misconfigured to "."; the configured library directory owns real storage.
+/novelai-*.png

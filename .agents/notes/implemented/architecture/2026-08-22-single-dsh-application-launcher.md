@@ -14,7 +14,7 @@ The Python SDK distributes a native executable through four platform wheels. Its
 
 ### Launch scope
 
-Every supported Node application starts through the `dsh` CLI and one named profile. The shipped application commands are `dsh web`, `dsh --profile headless`, `dsh --profile sdk`, `dsh --profile sdk-minimal`, and `dsh --profile acp`; `dsh web` is the deliberate convenience alias for `--profile web`, not another application entry.
+Every supported Node application starts through a launcher CLI and one named profile. The shipped `dsh` application commands are `dsh web`, `dsh --profile headless`, `dsh --profile sdk`, `dsh --profile sdk-minimal`, and `dsh --profile acp`; `dsh web` is the deliberate convenience alias for `--profile web`, not another application entry. The [topaz-nai second launcher](2026-10-10-topaz-nai-second-launcher.md) partially supersedes the single-launcher scope: `topaz-nai` reuses this note's profile mechanics behind a second product identity with its own instance home.
 
 Vendor CLIs, build-only and test-only executables, direct in-process plugin mounting, and the private browser WebWorker preview are outside the application-launch inventory. A package app bin or root demo that launches a package entry is not an accepted extension point.
 
@@ -52,7 +52,7 @@ The executable family is `deepseek-harness-sdk-runtime-<platform>-<arch>`. The S
 
 ### Enforcement
 
-`verify-application-entrypoints` scans application/package manifests, executable sources, and root demo scripts. The allowlist classifies the `dsh` product bin, vendor-excluded scope, the private WebWorker build tool, and test support. An unclassified shebang, a new package bin, or a demo wrapper that bypasses `apps/cli/src/bin.ts` fails hygiene and the primary/static CI aggregates.
+`verify-application-entrypoints` scans application/package manifests, executable sources, and root demo scripts. The allowlist classifies the `dsh` and `topaz-nai` product bins, vendor-excluded scope, the private WebWorker build tool, and test support. An unclassified shebang, a new package bin, or a demo wrapper that bypasses a supported launcher (`apps/cli/src/bin.ts` or `apps/topaz-nai/src/bin.ts`) fails hygiene and the primary/static CI aggregates.
 
 ## Existing decisions and supersession
 

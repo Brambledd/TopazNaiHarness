@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write apps/topaz-nai/README.md
+README.md: 0267ddea591a0c1f55272ff884e35937aa7e68f8
+README.zh.md: 71a6973ba39fd0f2c35e95ccf66ef715cfbb5ec5

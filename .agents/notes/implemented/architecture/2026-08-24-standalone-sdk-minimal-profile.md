@@ -16,7 +16,7 @@ A complete caller-supplied Cordis tree gives an exact roster but bypasses profil
 
 `dsh --profile sdk-minimal` is a shipped startup-only profile. Its manifest lists only `@deepseek-ai/dsh-sdk-minimal`; it does not list `@deepseek-ai/dsh-base`. The bundle inserts the complete Cordis tree over the launcher's empty profile root, while the profile patch, home patch, and ordered invocation patches retain their ordinary precedence above it.
 
-The `dsh` CLI remains the only application launcher. The Python example selects `sdk-minimal` through the public `profile` field and an explicit Harness home. Python exposes no complete-config or arbitrary-argv path. The full Python and TypeScript SDK defaults remain `sdk`.
+The `dsh` and `topaz-nai` launchers are the only application launchers ([topaz-nai second launcher](2026-10-10-topaz-nai-second-launcher.md)); SDK profiles remain behind `dsh`. The Python example selects `sdk-minimal` through the public `profile` field and an explicit Harness home. Python exposes no complete-config or arbitrary-argv path. The full Python and TypeScript SDK defaults remain `sdk`.
 
 The bundle reuses `@deepseek-ai/dsh-sdk-app` for command help, stdin EOF, and bounded shutdown. The startup provider accepts a profile-name config so both SDK profiles render their actual command without duplicating process lifecycle code.
 

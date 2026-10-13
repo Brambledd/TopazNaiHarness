@@ -21,8 +21,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 }
 
 /** Checkpoint, sampler, and schedule catalogs plus the workbench defaults, served by `catalog()`. */
-export interface NovelaiCatalogValue {
-  /** Selectable checkpoints. */
+export interface NovelaiCatalogValue {  /** Selectable checkpoints. */
   readonly models: readonly string[]
   /** Selectable samplers. */
   readonly samplers: readonly string[]
@@ -318,4 +317,42 @@ export interface NovelaiReverseValue {
   readonly namePrompt?: string
   /** Appearance-only variant, when the known-character mode answered both sections. */
   readonly featurePrompt?: string
+}
+
+/** One committed workbench panel state: the prompt source `novelai_generate` binds to for that session. */
+export interface NovelaiWorkbenchState {
+  /** Positive prompt, Danbooru-tag style. */
+  readonly prompt: string
+  /** Negative prompt. */
+  readonly negativePrompt: string
+  /** Checkpoint id. */
+  readonly model: string
+  /** Image width in pixels. */
+  readonly width: number
+  /** Image height in pixels. */
+  readonly height: number
+  /** Diffusion steps. */
+  readonly steps: number
+  /** CFG scale. */
+  readonly cfgScale: number
+  /** Sampler id. */
+  readonly sampler: string
+  /** Noise schedule id. */
+  readonly noiseSchedule: string
+  /** Fixed seed; absent means random per run. */
+  readonly seed?: number
+}
+
+/** `commitWorkbenchState` request: the session whose workbench panel committed. */
+export interface NovelaiCommitWorkbenchStateRequest {
+  /** Session the panel state belongs to. */
+  readonly sessionId: string
+  /** The committed panel state. */
+  readonly state: NovelaiWorkbenchState
+}
+
+/** `readWorkbenchState` answer: the latest committed state, absent when none. */
+export interface NovelaiReadWorkbenchStateValue {
+  /** The latest committed panel state for the session. */
+  readonly state?: NovelaiWorkbenchState
 }

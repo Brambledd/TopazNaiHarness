@@ -8,7 +8,7 @@ import { NOVELAI_TOKEN_REF, resolveToken } from '../src/token.ts'
 function provider(table: Partial<Record<string, string>> = {}): CredentialProvider {
   return {
     resolve: async (ref: CredentialRef): Promise<ResolvedCredential | undefined> => {
-      const value = table[`${ref}`]
+      const value = table[ref]
       return value === undefined || value === '' ? undefined : { value, source: 'file' }
     },
   } as unknown as CredentialProvider

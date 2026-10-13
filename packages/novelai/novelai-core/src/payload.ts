@@ -54,7 +54,12 @@ export function maxNovelaiCharacters(model: string): number {
   return isV4Plus(model) ? 6 : 0
 }
 
-/** Fold per-character captions into one pipe-joined prompt (`base | char1 | char2`). */
+/**
+ * Fold per-character captions into one pipe-joined prompt (`base | char1 | char2`).
+ * @param prompt - base caption text.
+ * @param characters - per-character captions in prompt order.
+ * @returns the single pipe-joined prompt string.
+ */
 export function charactersToPipePrompt(prompt: string, characters: readonly NovelaiCharacterInput[]): string {
   if (characters.length === 0) return prompt
   return [prompt, ...characters.map(character => character.prompt.trim())]
@@ -197,6 +202,7 @@ export function estimateAnlas(width: number, height: number, steps: number): num
 /**
  * Produce a deterministic filename stem for one saved generation.
  * @param seed - seed the image was generated with.
+ * @param now - wall clock used for the timestamp segment.
  * @returns the filename stem, e.g. `novelai-1042-3838384747`.
  */
 export function generationFileStem(seed: number, now = new Date()): string {

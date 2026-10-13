@@ -8,6 +8,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import type { AttachmentIdType, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { AgentContext } from '../scope.ts'
 import type { SessionSearchResultItem } from '../sessions/manager.ts'
@@ -84,6 +85,19 @@ export interface ISessions {
     query: string,
     signal: AbortSignal,
   ): Promise<RemoteResult<{ items: SessionSearchResultItem[]; hasMore: boolean }>>
+  /**
+   * Resolve one durable image referenced by one session, without opening the
+   * session. The Host authorizes the read against that session's log (the
+   * attachment must appear in it), so only genuinely referenced images are
+   * readable — the session-card cover path for cold sessions.
+   * @param sessionId - session whose log references the attachment.
+   * @param attachmentId - opaque id found in that session's folded log.
+   * @returns the authenticated reference and decoded bytes.
+   */
+  readSessionAttachment(
+    sessionId: SessionId,
+    attachmentId: AttachmentIdType,
+  ): Promise<RemoteResult<{ attachment: ImageAttachmentRef; data: Uint8Array }>>
   /**
    * Fork a session from a completed-turn prefix of the source; on resolution
    * the child is in the list store and `open()` can target it.

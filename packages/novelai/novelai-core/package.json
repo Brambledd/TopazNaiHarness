@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-novelai-core",
   "description": "Isomorphic NovelAI image domain library: parameter model, wire-payload assembly, Anlas estimation, and the Node-side submission client",
-  "version": "0.1.0",
+  "version": "0.1.2-alpha.2",
   "publishConfig": {
     "access": "public"
   },

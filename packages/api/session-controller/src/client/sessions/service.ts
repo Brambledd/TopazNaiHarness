@@ -17,6 +17,7 @@
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { AttachmentIdType, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { SESSION_SEARCH_RESULT_LIMIT } from '../../types.ts'
@@ -337,6 +338,20 @@ export class ClientSessions implements ISessions {
     signal: AbortSignal,
   ): Promise<RemoteResult<{ items: SessionSearchResultItem[]; hasMore: boolean }>> {
     return this.manager.search(query, signal)
+  }
+
+  /**
+   * Resolve one durable image referenced by one session, without opening the
+   * session (the session-card cover read for cold sessions).
+   * @param sessionId - session whose log references the attachment.
+   * @param attachmentId - opaque id found in that session's folded log.
+   * @returns the authenticated reference and decoded bytes.
+   */
+  readSessionAttachment(
+    sessionId: SessionId,
+    attachmentId: AttachmentIdType,
+  ): Promise<RemoteResult<{ attachment: ImageAttachmentRef; data: Uint8Array }>> {
+    return this.manager.readSessionAttachment(sessionId, attachmentId)
   }
 
   /**

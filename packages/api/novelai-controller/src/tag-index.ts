@@ -34,7 +34,11 @@ export interface DanbooruTag {
   category: number
 }
 
-/** Parse one CSV line honoring double-quoted fields with `""` escapes. */
+/**
+ * Parse one CSV line honoring double-quoted fields with `""` escapes.
+ * @param line - one raw CSV record without its line terminator.
+ * @returns the unquoted field values.
+ */
 export function parseCsvLine(line: string): string[] {
   const out: string[] = []
   let current = ''
@@ -65,7 +69,11 @@ export function parseCsvLine(line: string): string[] {
   return out
 }
 
-/** Parse and validate a GBK CSV buffer into index rows; throws on a wrong header. */
+/**
+ * Parse and validate a GBK CSV buffer into index rows; throws on a wrong header.
+ * @param buffer - raw `danbooru-cn.csv` bytes (GBK-encoded).
+ * @returns the parsed rows, sorted by post count descending.
+ */
 export function parseTagIndexFromBuffer(buffer: Uint8Array): DanbooruTag[] {
   const text = new TextDecoder('gbk').decode(buffer)
   const lines = text.split(/\r?\n/u)
@@ -88,9 +96,15 @@ export function parseTagIndexFromBuffer(buffer: Uint8Array): DanbooruTag[] {
   return out
 }
 
-/** Scored search over parsed rows: CJK queries match Chinese aliases, latin
+/**
+ * Scored search over parsed rows: CJK queries match Chinese aliases, latin
  * queries match the underscore-normalized English name; exact > prefix >
- * substring, ties by post count descending. */
+ * substring, ties by post count descending.
+ * @param index - parsed rows to search.
+ * @param query - user text at the caret, in either language.
+ * @param limit - maximum suggestions to return.
+ * @returns the best suggestions, best first.
+ */
 export function searchTagIndexEntries(index: readonly DanbooruTag[], query: string, limit = 12): NovelaiWireTagSuggestion[] {
   const raw = query.trim()
   if (raw === '') return []
@@ -153,7 +167,10 @@ export class TagIndexStore {
     private readonly fetchBinary: (url: string, proxyUrl: string) => Promise<Uint8Array> = defaultFetchBinary,
   ) {}
 
-  /** Whether a valid index exists on disk (present and above the record floor). */
+  /**
+   * Whether a valid index exists on disk (present and above the record floor).
+   * @returns the presence report; zeroed fields when the file is absent or corrupt.
+   */
   async status(): Promise<{ downloaded: boolean; count: number; sizeBytes: number }> {
     let sizeBytes = 0
     try {
@@ -169,7 +186,10 @@ export class TagIndexStore {
     }
   }
 
-  /** Download the pinned CSV, validate it, and atomically replace the file. */
+  /**
+   * Download the pinned CSV, validate it, and atomically replace the file.
+   * @returns the outcome report; `ok: false` with a reason on any failure.
+   */
   async download(): Promise<{ ok: boolean; message: string; count: number }> {
     let buffer: Uint8Array
     try {
@@ -201,7 +221,10 @@ export class TagIndexStore {
     return { ok: true, message: `downloaded the bilingual tag index (${String(parsed.length)} records)`, count: parsed.length }
   }
 
-  /** Load the on-disk index (cached); throws when absent or corrupt. */
+  /**
+   * Load the on-disk index (cached); throws when absent or corrupt.
+   * @returns the parsed rows; concurrent callers share one load.
+   */
   async load(): Promise<DanbooruTag[]> {
     if (this.index !== undefined) return this.index
     if (this.loading !== undefined) return this.loading
@@ -218,7 +241,12 @@ export class TagIndexStore {
     return loading
   }
 
-  /** Search the index, returning [] when it is not downloaded. */
+  /**
+   * Search the index, returning [] when it is not downloaded.
+   * @param query - user text at the caret, in either language.
+   * @param limit - maximum suggestions to return.
+   * @returns the best suggestions, best first.
+   */
   async search(query: string, limit = 12): Promise<NovelaiWireTagSuggestion[]> {
     let index: DanbooruTag[]
     try {

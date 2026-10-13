@@ -9,6 +9,9 @@
   ],
   "references": [
     {
+      "path": "../../api/novelai-controller"
+    },
+    {
       "path": "../../../vendor/cosmokit"
     },
     {
@@ -18,10 +21,22 @@
       "path": "../../core/tools"
     },
     {
+      "path": "../../core/session"
+    },
+    {
       "path": "../../attachment/attachment"
     },
     {
       "path": "../../credentials/credentials"
+    },
+    {
+      "path": "../../session/session-projection"
+    },
+    {
+      "path": "../../session/session-projection-cache"
+    },
+    {
+      "path": "../../session-query/session-query"
     },
     {
       "path": "../../../vendor/schemastery"

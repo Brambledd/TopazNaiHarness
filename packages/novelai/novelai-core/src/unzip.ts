@@ -47,7 +47,7 @@ export function extractImages(body: Uint8Array): Buffer[] {
   let total = 0
   for (const name of names.sort()) {
     const data = entries[name]
-    if (data === undefined || data instanceof Uint8Array === false) {
+    if (data === undefined || !( data instanceof Uint8Array)) {
       throw new Error(`NovelAI archive entry ${name} could not be read as file content`)
     }
     const file = data as Uint8Array

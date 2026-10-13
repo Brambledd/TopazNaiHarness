@@ -200,6 +200,9 @@ export class TestSessions implements ISessions {
   /** Replaceable search behavior (see {@link TestSessions.stubSearch}). */
   private searchStub: ((query: string, signal: AbortSignal) => { items: SessionSearchResultItem[]; hasMore: boolean }) | undefined
   private createStub: ((opts: Parameters<ISessions['create']>[0]) => Promise<SessionId>) | undefined
+  private readSessionAttachmentStub:
+    | ((...args: Parameters<ISessions['readSessionAttachment']>) => ReturnType<ISessions['readSessionAttachment']>)
+    | undefined
 
   /**
    * @param stabilize - the owning runtime's act wrapper.
@@ -507,6 +510,30 @@ export class TestSessions implements ISessions {
   fork(opts: { sessionId: SessionId; atSeq?: number; increaseTitle?: boolean }): Promise<SessionId> {
     this.calls.push({ method: 'fork', args: [opts] })
     return Promise.resolve(opts.sessionId)
+  }
+
+  /**
+   * Fail-loud cold-attachment read; install bytes through
+   * {@link TestSessions.stubReadSessionAttachment} for cover-cache benches.
+   * @param args - the bound read arguments (session id, then attachment id),
+   * forwarded verbatim to the installed stub.
+   * @returns never — always throws unless stubbed.
+   */
+  async readSessionAttachment(...args: Parameters<ISessions['readSessionAttachment']>): ReturnType<ISessions['readSessionAttachment']> {
+    if (this.readSessionAttachmentStub === undefined) {
+      throw new Error(`test sessions: readSessionAttachment is not stubbed — call stubReadSessionAttachment() for "${String(args[1])}" first`)
+    }
+    return this.readSessionAttachmentStub(...args)
+  }
+
+  /**
+   * Install cold-attachment read behavior for cover benches.
+   * @param impl - implementation returning the Host's decoded result.
+   */
+  stubReadSessionAttachment(
+    impl: (...args: Parameters<ISessions['readSessionAttachment']>) => ReturnType<ISessions['readSessionAttachment']>,
+  ): void {
+    this.readSessionAttachmentStub = impl
   }
 
   /**

@@ -41,6 +41,7 @@ The token is read from the `NOVELAI_TOKEN` environment variable; alternatively s
 | `outputDir` | `workspace/novelai` | Directory for generated PNGs; relative paths resolve against the process working directory |
 | `timeoutMs` | `180000` | Per-request timeout |
 | `proxyUrl` | `''` | HTTP(S) proxy URL for reaching the API; empty defers to the `NOVELAI_PROXY`/`HTTPS_PROXY` environment variables, unset means a direct connection |
+| `coverBackfillSessions` | `100` | Cold Sessions folded at startup to fill the session-list cover projection (newest first); `0` disables the backfill |
 
 ### What each call does
 
@@ -65,6 +66,11 @@ Every call is paid. The tool description tells the model to batch and iterate de
 - **No silent retries.** A paid POST may have produced and charged for an image even on a 5xx, so failures surface verbatim; only 429-style situations are left to the caller.
 - **The token resolves through the credential seam.** Per call the tool reads the plugin config `token` first, then the `NOVELAI_TOKEN` credential (the Settings → General row writes the store layer), then the bare environment; a changed token reaches the next call without a restart.
 - **Response extraction fails loud.** A non-archive body (JSON/HTML error page) is rejected as an error response, never mistaken for a missing image that would justify a resubmission.
+- **The projection waits for its service.** The `novelai/latestImage` unit registers through `ctx.inject(['sessionProjections'], ...)`, so the registration lands even when the session-controller plugin activates after this plugin's own dependencies. Compositions without the service keep the tool; the session list serves its default cover.
+
+### Session-list cover column
+
+The unit's wire value feeds the web session list (`SessionSummary.projectionValues['novelai/latestImage']`), which renders each session's latest generation as its cover. At startup a bounded backfill (`coverBackfillSessions`, newest first) cold-folds persisted Sessions whose cached cell is missing and writes the projection-cache row the next boot skips; resident Sessions are skipped because their mandatory cache points already checkpoint them. A failed fold logs and leaves that session on default art until its next activity.
 
 ### Source map
 

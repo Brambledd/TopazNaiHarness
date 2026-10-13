@@ -5,6 +5,7 @@
 import type { SubagentAddress, SubagentCatalog } from '@deepseek-ai/dsh-subagent/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import type { AttachmentIdType, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type {
   SessionControlBaseline,
   SessionControlFrame,
@@ -25,6 +26,7 @@ import { Notifier } from './notifier.ts'
 import { ProjectionValueStore } from './projection-store.ts'
 import { Session } from './session.ts'
 import type { SessionRemotes } from './remotes.ts'
+import { decodeAttachmentPayload } from './attachment-decode.ts'
 
 /**
  * List arrival lifecycle, orthogonal to the pull-activity `state` axis:
@@ -537,6 +539,23 @@ export class SessionManager {
         hasMore: result.value.hasMore,
       },
     }
+  }
+
+  /**
+   * Resolve one durable image referenced by one session, without opening the
+   * session. List-level covers (session cards) read this for cold sessions;
+   * the Host authorizes the same way as the bound-session read: the
+   * attachment must be referenced by that session's log.
+   * @param sessionId - session whose log references the attachment.
+   * @param attachmentId - opaque id found in that session's folded log.
+   * @returns the authenticated reference and decoded bytes.
+   */
+  async readSessionAttachment(
+    sessionId: SessionId,
+    attachmentId: AttachmentIdType,
+  ): Promise<RemoteResult<{ attachment: ImageAttachmentRef; data: Uint8Array }>> {
+    const result = await this.remote.session.attachment({ sessionId, attachmentId })
+    return decodeAttachmentPayload(result)
   }
 
   /**

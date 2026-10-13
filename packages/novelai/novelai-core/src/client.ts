@@ -117,6 +117,37 @@ export async function requestGeneration(options: {
   return extractImages(new Uint8Array(await response.arrayBuffer()))
 }
 
+/**
+ * Read the account's remaining Anlas through the free subscription endpoint.
+ * @param options - token, API base URL, timeout, and optional proxy.
+ * @returns the total Anlas balance (fixed + purchased training steps); undefined when the account exposes none.
+ * @throws when the request cannot reach the API or the token is rejected.
+ */
+export async function requestAnlasBalance(options: {
+  token: string
+  baseUrl: string
+  timeoutMs: number
+  proxyUrl: string | undefined
+}): Promise<number | undefined> {
+  const proxyUrl = options.proxyUrl?.trim() ?? ''
+  const dispatcher: Dispatcher | undefined = proxyUrl === '' ? undefined : new ProxyAgent(proxyUrl)
+  const response = await fetch(`${options.baseUrl.replace(/\/+$/, '')}/user/subscription`, {
+    headers: { Authorization: `Bearer ${options.token}` },
+    signal: AbortSignal.timeout(options.timeoutMs),
+    ...(dispatcher === undefined ? {} : { dispatcher }),
+  })
+  if (!response.ok) {
+    throw new Error(`NovelAI subscription read failed: HTTP ${response.status} ${response.statusText}`)
+  }
+  const body = await response.json() as {
+    trainingStepsLeft?: { fixedTrainingStepsLeft?: unknown; purchasedTrainingStepsLeft?: unknown }
+  }
+  const fixed = body.trainingStepsLeft?.fixedTrainingStepsLeft
+  const purchased = body.trainingStepsLeft?.purchasedTrainingStepsLeft
+  if (typeof fixed !== 'number' && typeof purchased !== 'number') return undefined
+  return (typeof fixed === 'number' ? fixed : 0) + (typeof purchased === 'number' ? purchased : 0)
+}
+
 /** One tag suggestion as served by the NovelAI suggest-tags endpoint. */
 export interface NovelaiWireTagSuggestion {
   /** English Danbooru tag in underscore form. */

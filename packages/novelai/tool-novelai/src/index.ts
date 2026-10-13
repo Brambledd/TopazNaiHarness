@@ -10,20 +10,67 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
-import type { AttachmentStore, ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
+import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
+import type {} from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session-projection'
+import type {} from '@deepseek-ai/dsh-session-projection-cache'
+import type {} from '@deepseek-ai/dsh-session-query'
 import {
-  MAX_NOVELAI_SEED,
   NOVELAI_MODELS,
   NOVELAI_NOISE_SCHEDULES,
   NOVELAI_SAMPLERS,
-  type NovelaiModel,
-  type NovelaiGenerateInput,
-  type NovelaiNoiseSchedule,
-  type NovelaiSampler,
 } from './types.ts'
-import { DEFAULT_NEGATIVE_PROMPT, buildNovelaiPayload, estimateAnlas, generationFileStem } from './payload.ts'
+import { buildNovelaiPayload, estimateAnlas, generationFileStem } from './payload.ts'
 import { requestGeneration, resolveProxyUrl } from './client.ts'
 import { NOVELAI_TOKEN_REF, resolveToken } from './token.ts'
+import { latestNovelaiImageProjection } from './projection.ts'
+import { backfillLatestImageCovers } from './backfill.ts'
+import { PATCH_DESCRIPTION, SETTINGS_FIELDS, normalizePatch } from './patch.ts'
+import { resolveInput, type CommittedWorkbench } from './input.ts'
+
+const DESCRIPTION =
+  'Generate one anime-style image through the NovelAI image API and save it as a PNG. '
+  + 'When the session has a live workbench panel (the rail beside the conversation), this tool ALWAYS '
+  + "runs off the workbench's committed prompt and parameters — pass only an optional seed or filename. "
+  + 'WORKFLOW: if the user requests a scene or any visual change not already in the workbench, FIRST call '
+  + 'novelai_prompt_patch with the needed tags and WAIT for the user to apply it — never generate a scene '
+  + 'the workbench does not describe. Generate ONCE per request; iterate only when the user asks. '
+  + 'A repeat with an unchanged workbench prompt and seed is rejected (it returns a near-identical image). '
+  + 'Without a workbench, write the prompt in Danbooru-tag style (e.g. "1girl, solo, blue hair, white dress"). '
+  + 'Every call is PAID (Anlas): batch and iterate deliberately, never in a loop. '
+  + 'The result reports the saved file path and the seed, so a follow-up can vary one element '
+  + 'while keeping the rest identical by reusing that seed. '
+  + 'Never post-process, rename, copy, or "fix" the produced image files with other tools; '
+  + 'show the user the generated image and let them decide.'
+
+export const name = 'tool-novelai'
+export const inject = ['tools']
+
+/** Model-facing NovelAI tool configuration. */
+export interface Config {
+  /** Persistent API token; when empty the `NOVELAI_TOKEN` credential (credential store, then environment) supplies it. */
+  token: string
+  /** Image API base URL. */
+  imageBaseUrl: string
+  /** Directory the generated PNGs are written to; relative paths resolve against the process working directory. */
+  outputDir: string
+  /** Per-request timeout in milliseconds. */
+  timeoutMs: number
+  /** HTTP(S) proxy URL for reaching the NovelAI API, e.g. `http://127.0.0.1:7890`; empty defers to `NOVELAI_PROXY`/`HTTPS_PROXY` environment variables, unset means a direct connection. */
+  proxyUrl: string
+  /** Cold Sessions folded at startup to fill the session-list cover projection (newest first); `0` disables the backfill. */
+  coverBackfillSessions: number
+}
+
+/** Schemastery configuration for the NovelAI tool consumer. */
+export const Config: z<Config> = z.object({
+  token: z.string().default(''),
+  imageBaseUrl: z.string().default('https://image.novelai.net'),
+  outputDir: z.string().default('workspace/novelai'),
+  timeoutMs: z.number().default(180_000),
+  proxyUrl: z.string().default(''),
+  coverBackfillSessions: z.natural().default(100),
+})
 
 /**
  * Re-brand the schema-projected attachment value into the durable reference an
@@ -60,93 +107,6 @@ function attachmentRefOf(value: {
   }
 }
 
-export const name = 'tool-novelai'
-export const inject = ['tools']
-
-/** Model-facing NovelAI tool configuration. */
-export interface Config {
-  /** Persistent API token; when empty the `NOVELAI_TOKEN` credential (credential store, then environment) supplies it. */
-  token: string
-  /** Image API base URL. */
-  imageBaseUrl: string
-  /** Directory the generated PNGs are written to; relative paths resolve against the process working directory. */
-  outputDir: string
-  /** Per-request timeout in milliseconds. */
-  timeoutMs: number
-  /** HTTP(S) proxy URL for reaching the NovelAI API, e.g. `http://127.0.0.1:7890`; empty defers to `NOVELAI_PROXY`/`HTTPS_PROXY` environment variables, unset means a direct connection. */
-  proxyUrl: string
-}
-
-/** Schemastery configuration for the NovelAI tool consumer. */
-export const Config: z<Config> = z.object({
-  token: z.string().default(''),
-  imageBaseUrl: z.string().default('https://image.novelai.net'),
-  outputDir: z.string().default('workspace/novelai'),
-  timeoutMs: z.number().default(180_000),
-  proxyUrl: z.string().default(''),
-})
-
-const DESCRIPTION =
-  'Generate one anime-style image through the NovelAI image API and save it as a PNG. '
-  + 'Write the prompt in Danbooru-tag style (e.g. "1girl, solo, blue hair, white dress, garden, sunlight"). '
-  + 'Every call is PAID (Anlas): batch and iterate deliberately, never in a loop. '
-  + 'The result reports the saved file path and the seed, so a follow-up can vary one element '
-  + 'while keeping the rest identical by reusing that seed.'
-
-/** Model arguments after schema validation, before default resolution. */
-interface NovelaiArgs {
-  prompt: string
-  negativePrompt?: string
-  model?: string
-  width?: number
-  height?: number
-  steps?: number
-  cfgScale?: number
-  sampler?: string
-  noiseSchedule?: string
-  seed?: number
-  filename?: string
-}
-
-/**
- * Resolve model arguments into the canonical request: apply defaults and reject values the
- * schema cannot express (non-64-multiple dimensions, out-of-range steps, a filename that
- * escapes the output directory).
- * @param args - validated model arguments.
- * @returns the canonical generation input with a resolved seed.
- */
-function resolveInput(args: NovelaiArgs): NovelaiGenerateInput {
-  const width = args.width ?? 832
-  const height = args.height ?? 1216
-  if (width % 64 !== 0 || height % 64 !== 0 || width < 64 || width > 3072 || height < 64 || height > 3072) {
-    throw new Error(`invalid dimensions: ${width}x${height} (each side must be a multiple of 64 within 64–3072)`)
-  }
-  const steps = args.steps ?? 28
-  if (!Number.isInteger(steps) || steps < 1 || steps > 50) {
-    throw new Error(`invalid steps: ${steps} (must be an integer within 1–50)`)
-  }
-  const cfgScale = args.cfgScale ?? 5
-  if (cfgScale < 0 || cfgScale > 10) {
-    throw new Error(`invalid cfgScale: ${cfgScale} (must be within 0–10)`)
-  }
-  const seed = args.seed ?? Math.floor(Math.random() * (MAX_NOVELAI_SEED + 1))
-  if (!Number.isInteger(seed) || seed < 0 || seed > MAX_NOVELAI_SEED) {
-    throw new Error(`invalid seed: ${seed} (must be an integer within 0–${MAX_NOVELAI_SEED})`)
-  }
-  return {
-    prompt: args.prompt.trim(),
-    negativePrompt: args.negativePrompt?.trim() || DEFAULT_NEGATIVE_PROMPT,
-    model: (args.model ?? 'nai-diffusion-4-5-full') as NovelaiModel,
-    width,
-    height,
-    steps,
-    cfgScale,
-    sampler: (args.sampler ?? 'k_euler') as NovelaiSampler,
-    noiseSchedule: (args.noiseSchedule ?? 'native') as NovelaiNoiseSchedule,
-    seed,
-  }
-}
-
 /**
  * Sanitize a caller-supplied filename into a safe stem inside the output directory.
  * @param filename - caller-supplied name; `..`, separators, and non-word characters are rejected.
@@ -167,13 +127,27 @@ function safeFileStem(filename: string): string {
 export function apply(ctx: Context, config: Config): void {
   const outputDir = isAbsolute(config.outputDir) ? config.outputDir : resolve(config.outputDir)
   const credentials = ctx.get('credentials')
+  /** Last generation fingerprint per session; feeds the identical-rerun guard. */
+  const lastGenerations = new Map<string, { prompt: string; seed: number }>()
+  // The projection service materializes with the session-controller plugin,
+  // which can land after this plugin's own dependencies (tools) resolve. The
+  // inject waits for it; compositions without the service keep the tool with
+  // the session list on its default cover. The disposer rides the inject fiber.
+  ctx.inject(['sessionProjections'], (projections) => {
+    projections.sessionProjections.register(latestNovelaiImageProjection)
+    if (config.coverBackfillSessions > 0) {
+      void projections.inject(['sessionQuery', 'sessionProjectionCache'], (cold) => {
+        void backfillLatestImageCovers(cold, config.coverBackfillSessions)
+      })
+    }
+  })
   ctx.tools.register(defineTool({
     name: 'novelai_generate',
     description: DESCRIPTION,
     parameters: {
-      prompt: { type: 'string', required: true, description: 'Positive prompt, Danbooru-tag style.' },
+      prompt: { type: 'string', description: 'Positive prompt, Danbooru-tag style. Ignored when the session has a live workbench panel — the committed workbench prompt binds.' },
       negativePrompt: { type: 'string', description: 'Negative prompt; defaults to the official heavy undesired-content preset.' },
-      model: { type: 'string', enum: [...NOVELAI_MODELS], description: 'Checkpoint; defaults to nai-diffusion-4-5-full.' },
+      model: { type: 'string', enum: [...NOVELAI_MODELS], description: 'Checkpoint; defaults to nai-diffusion-5-full.' },
       width: { type: 'integer', description: 'Width in pixels, multiple of 64; defaults to 832.' },
       height: { type: 'integer', description: 'Height in pixels, multiple of 64; defaults to 1216.' },
       steps: { type: 'integer', description: 'Diffusion steps, 1–50; defaults to 28.' },
@@ -222,7 +196,35 @@ export function apply(ctx: Context, config: Config): void {
     },
     async execute(args, exec) {
       const token = await resolveToken(config, credentials)
-      const input = resolveInput(args)
+      // The session's committed workbench state, when the NovelAI controller
+      // is mounted: the rail beside the conversation commits on every panel
+      // change, and its prompt/parameters bind this generation.
+      const sessionId = exec.agent?.session.id
+      let committed: CommittedWorkbench | undefined
+      if (sessionId !== undefined) {
+        const controller = ctx.get('novelaiController') as
+          | { readWorkbenchState(request: { sessionId: string }): Promise<{ state?: CommittedWorkbench }> }
+          | undefined
+        committed = (await controller?.readWorkbenchState({ sessionId: sessionId }))?.state
+      }
+      const input = resolveInput(args, committed)
+      // Identical-rerun guard: the same prompt+seed returns a near-identical
+      // image, so a back-to-back repeat with an unchanged workbench is a paid
+      // no-op. The model must change something (novelai_prompt_patch, a seed
+      // override, or wait for the user) before generating again.
+      const lastKey = sessionId === undefined ? undefined : sessionId
+      if (lastKey !== undefined) {
+        const previous = lastGenerations.get(lastKey)
+        if (previous !== undefined && previous.prompt === input.prompt && previous.seed === input.seed) {
+          throw new Error(
+            'blocked identical rerun: the workbench prompt and seed are unchanged since the previous generation, '
+            + 'so this call would return a near-identical image for the same Anlas. '
+            + 'Change the workbench through novelai_prompt_patch (wait for the user to apply), '
+            + 'pass a different seed, or stop — one generation per request unless the user asks to iterate.',
+          )
+        }
+        lastGenerations.set(lastKey, { prompt: input.prompt, seed: input.seed })
+      }
       const stem = args.filename ? safeFileStem(args.filename) : generationFileStem(input.seed)
       const payload = buildNovelaiPayload(input)
       const timeout = AbortSignal.timeout(config.timeoutMs)
@@ -268,7 +270,7 @@ export function apply(ctx: Context, config: Config): void {
       // stands on its own, so an unavailable store or a failed save must not
       // fail the paid call's result.
       let attachment: ImageAttachmentRef | undefined
-      const store = ctx.get('attachments') as AttachmentStore | undefined
+      const store = ctx.get('attachments')
       if (store !== undefined) {
         try {
           attachment = await store.saveImage({
@@ -284,7 +286,7 @@ export function apply(ctx: Context, config: Config): void {
       // Plain JSON projection of the durable reference: branded ids and
       // interfaces do not cross the canonical-value boundary.
       const attachmentJson = attachment === undefined ? undefined : {
-        attachmentId: `${attachment.attachmentId}`,
+        attachmentId: attachment.attachmentId,
         mediaType: attachment.mediaType,
         bytes: attachment.bytes,
         width: attachment.width,
@@ -312,6 +314,57 @@ export function apply(ctx: Context, config: Config): void {
       title: 'Generate NovelAI image',
       kind: 'other' as const,
       rawInput: { prompt: args.prompt, model: args.model, seed: args.seed },
+    }),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'novelai_prompt_patch',
+    description: PATCH_DESCRIPTION,
+    parameters: {
+      slot: {
+        type: 'string', enum: ['positive', 'negative', 'settings'], required: true,
+        description: 'Which workbench slot the operations target.',
+      },
+      operations: {
+        type: 'array', required: true,
+        description: 'Ordered operations; the workbench rail applies them as one patch.',
+        items: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            op: { type: 'string', enum: ['add', 'remove', 'modify'], required: true, description: 'Tag verb (add/remove/modify); on the settings slot only modify (set) is meaningful.' },
+            tag: { type: 'string', description: 'Danbooru tag (positive/negative slots). `modify` rewrites this tag to `value`.' },
+            field: { type: 'string', enum: [...SETTINGS_FIELDS], description: 'Settings field (settings slot): model, width, height, steps, cfgScale, sampler, noiseSchedule, seed.' },
+            value: { type: 'string', description: 'Replacement tag (modify) or the settings field value as a string.' },
+          },
+        },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          slot: { type: 'string', required: true },
+          operations: { type: 'array', required: true, items: { type: 'json' } },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Proposed ${value.operations.length} ${value.slot}-slot operation(s). WAIT: do not call novelai_generate `
+          + 'until the user confirms the patch is applied in the workbench rail — generation reads the workbench, '
+          + 'and an unapplied patch means the image will not contain these tags.',
+      }],
+    },
+    async execute(args) {
+      const patch = normalizePatch(args)
+      return patch
+    },
+    presentCall: args => ({
+      card: 'generic' as const,
+      title: 'Propose workbench prompt patch',
+      kind: 'other' as const,
+      rawInput: { slot: args.slot, count: Array.isArray(args.operations) ? args.operations.length : 0 },
     }),
   }))
 }

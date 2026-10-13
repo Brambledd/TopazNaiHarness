@@ -22,6 +22,7 @@ export interface NovelaiDictEntry {
   readonly aliases?: readonly string[]
 }
 
+/** Curated bilingual prompt dictionary backing `suggestTagsFromDictionary`. */
 export const TAG_DICTIONARY: NovelaiDictEntry[] = [
   // ── 人数 / 主体 ───────────────────────────────────────────────
   { tag: '1girl', count: 19_000_000, category: 0, zh: '一个女孩', keywords: ['女孩', '少女', '单女', '一个女生', '妹子'], aliases: ['girl'] },

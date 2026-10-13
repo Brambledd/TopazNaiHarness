@@ -34,6 +34,7 @@ import { ProjectionValueStore } from './projection-store.ts'
 import type { ProjectionsBaseline } from './projection-store.ts'
 import { resolvedClientTimeZone } from '../time-zone.ts'
 import { SessionQueueMirror } from './queue-mirror.ts'
+import { decodeAttachmentPayload } from './attachment-decode.ts'
 
 /** Messages requested per history page. */
 export const PAGE_MESSAGES = 50
@@ -273,10 +274,7 @@ export class Session implements SessionFace {
       sessionId: this.sessionId,
       attachmentId,
     })
-    if (!result.ok) return result
-    const binary = atob(result.value.data)
-    const data = Uint8Array.from(binary, char => char.charCodeAt(0))
-    return { ok: true, value: { attachment: result.value.attachment, data } }
+    return decodeAttachmentPayload(result)
   }
 
   /** Apply one operation to a still-pending queue occurrence. */

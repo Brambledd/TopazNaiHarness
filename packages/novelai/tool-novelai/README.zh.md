@@ -41,6 +41,7 @@ token 从 `NOVELAI_TOKEN` 环境变量读取；也可以在插件配置里设置
 | `outputDir` | `workspace/novelai` | 生成 PNG 的保存目录；相对路径按进程工作目录解析 |
 | `timeoutMs` | `180000` | 单请求超时 |
 | `proxyUrl` | `''` | 访问 API 的 HTTP(S) 代理；为空时遵循 `NOVELAI_PROXY`/`HTTPS_PROXY` 环境变量，均未设置则直连 |
+| `coverBackfillSessions` | `100` | 启动时为填充会话列表封面投影而冷折叠的 Session 数（新者优先）；`0` 关闭回填 |
 
 ### 每次调用做什么
 
@@ -65,6 +66,11 @@ token 从 `NOVELAI_TOKEN` 环境变量读取；也可以在插件配置里设置
 - **不静默重试。** 付费 POST 即使返回 5xx 也可能已产出并扣费，因此失败逐字上抛；只有 429 类情形交给调用方处置。
 - **令牌经 credential 缝解析。** 每次调用先读插件 config 的 `token`，再读 `NOVELAI_TOKEN` credential（Settings → General 行写入存储层），最后读裸环境变量；令牌变更无需重启即对下一次调用生效。
 - **响应提取大声失败。** 非压缩包主体（JSON/HTML 错误页）按错误响应拒绝，绝不会被误判成「缺图需重提」。
+- **投影等待其服务。** `novelai/latestImage` 单元经 `ctx.inject(['sessionProjections'], ...)` 注册，因此即使 session-controller 插件在本插件自身依赖之后才激活，注册也能落地。没有该服务的组合保留工具本身；会话列表展示默认封面。
+
+### 会话列表封面列
+
+该单元的 wire 值供给 web 会话列表（`SessionSummary.projectionValues['novelai/latestImage']`），列表把每个会话最新一次生成渲染为封面。启动时有一次有界回填（`coverBackfillSessions`，新者优先）：对缓存单元格缺失的持久化 Session 做冷折叠并写回 projection-cache 行，下次启动即跳过；resident Session 一并跳过，因为其强制缓存点已经落过检查点。某次折叠失败只记日志，该会话保持默认封面直至下次活动。
 
 ### Source map
 

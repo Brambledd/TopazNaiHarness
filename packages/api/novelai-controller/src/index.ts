@@ -5,7 +5,6 @@ import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import { Remote, TypertRemoteService, RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -18,7 +17,7 @@ import {
   parseNovelaiPngMeta,
   readPngSize,
 } from '@deepseek-ai/dsh-novelai-core'
-import { requestTagSuggestions, resolveProxyUrl } from '@deepseek-ai/dsh-novelai-core/node'
+import { requestAnlasBalance, requestTagSuggestions, resolveProxyUrl } from '@deepseek-ai/dsh-novelai-core/node'
 import { NovelaiImageLibrary } from './library.ts'
 import { NOVELAI_WORKBENCH_DEFAULTS, runEnhancement, runGeneration } from './generation.ts'
 import { buildReverseSystemPrompt, buildReverseUserText, parseReverseAnswer } from './reverse.ts'
@@ -37,6 +36,9 @@ import type {
   NovelaiEstimateValue,
   NovelaiGenerateRequest,
   NovelaiGenerationValue,
+  NovelaiCommitWorkbenchStateRequest,
+  NovelaiReadWorkbenchStateValue,
+  NovelaiWorkbenchState,
   NovelaiHistoryRequest,
   NovelaiHistoryValue,
   NovelaiReadEntryRequest,
@@ -102,6 +104,10 @@ export class NovelaiController extends TypertRemoteService {
   private readonly library: NovelaiImageLibrary
   private readonly tagIndex: TagIndexStore
   private tagIndexDownload: Promise<unknown> | undefined
+  /** Latest committed workbench panel state per session; the generation tool's prompt source.
+   *  Plain property (not a #field): the Typert dispatch invokes Remotes through a
+   *  proxy receiver, and a true private field would throw on the wrong `this`. */
+  private readonly workbenchStates = new Map<string, NovelaiWorkbenchState>()
 
   /** @param ctx - Host context carrying the typert registry. @param config - deployment settings. */
   constructor(ctx: Context, config: NovelaiControllerConfig) {
@@ -191,6 +197,54 @@ export class NovelaiController extends TypertRemoteService {
       return value
     } catch (error) {
       throw this.asRemoteError(error)
+    }
+  }
+
+  /**
+   * Commit one session's workbench panel state. The state lives in host memory
+   * for the server's lifetime: the panel re-commits on every change, so a
+   * client reload simply re-commits its fresh state.
+   * @param request - the session and its latest panel state.
+   * @returns an ack.
+   */
+  @Remote('commitWorkbenchState')
+  async commitWorkbenchState(request: NovelaiCommitWorkbenchStateRequest): Promise<{ ok: true }> {
+    this.workbenchStates.set(request.sessionId, request.state)
+    return { ok: true }
+  }
+
+  /**
+   * Read one session's latest committed workbench panel state.
+   * @param request - the session id.
+   * @returns the committed state, absent when the panel never committed.
+   */
+  @Remote('readWorkbenchState')
+  async readWorkbenchState(request: { sessionId: string }): Promise<NovelaiReadWorkbenchStateValue> {
+    const state = this.workbenchStates.get(request.sessionId)
+    return state === undefined ? {} : { state }
+  }
+
+  /**
+   * Read the account's remaining Anlas through the free subscription endpoint.
+   * @returns the balance; absent when the account or API exposes none.
+   */
+  @Remote('anlasBalance')
+  async anlasBalance(): Promise<{ anlas?: number }> {
+    const token = await this.resolveToken()
+    if (token === '') return {}
+    try {
+      const anlas = await requestAnlasBalance({
+        token,
+        // Third-party tools must read the account through the image domain —
+        // api.novelai.net answers this endpoint with a 400 refresh notice.
+        baseUrl: 'https://image.novelai.net',
+        timeoutMs: 10_000,
+        proxyUrl: resolveProxyUrl(''),
+      })
+      return anlas === undefined ? {} : { anlas }
+    } catch {
+      // The balance is advisory: an unreachable endpoint degrades to absent.
+      return {}
     }
   }
 
@@ -363,7 +417,7 @@ export class NovelaiController extends TypertRemoteService {
    */
   @Remote('reversePrompt')
   async reversePrompt(request: NovelaiReverseRequest): Promise<NovelaiReverseValue> {
-    const attachments = this.ctx.get('attachments') as AttachmentStore | undefined
+    const attachments = this.ctx.get('attachments')
     if (attachments === undefined) {
       const message = 'no attachment store mounted: reverse needs one to carry the image to the model'
       throw new RemoteError('novelai/reverse-failed', message, { message })

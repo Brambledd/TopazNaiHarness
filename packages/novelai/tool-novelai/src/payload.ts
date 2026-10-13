@@ -104,6 +104,7 @@ export function estimateAnlas(width: number, height: number, steps: number): num
 /**
  * Produce a deterministic filename stem for one saved generation.
  * @param seed - seed the image was generated with.
+ * @param now - wall clock used for the timestamp prefix.
  * @returns the filename stem, e.g. `novelai-1042-3838384747`.
  */
 export function generationFileStem(seed: number, now = new Date()): string {

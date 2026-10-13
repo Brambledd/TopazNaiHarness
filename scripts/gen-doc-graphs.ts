@@ -157,6 +157,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns Session commands, cold reads, durable-event following, live control state, model catalogs, workspace opening, and Agent activation policy.',
   },
   {
+    key: 'novelaiController',
+    pkg: 'api-novelai-controller',
+    title: 'Host NovelAI workbench Remote controller',
+    mode: 'core',
+    note: 'Owns workbench generation (txt2img and enhance), the shared image library, tag tooling, and the character-split and reverse-prompt LLM auxiliary calls.',
+  },
+  {
     key: 'sessionFileReferences',
     pkg: 'api-session-controller',
     title: 'Session-addressed file-reference Remote adapter',

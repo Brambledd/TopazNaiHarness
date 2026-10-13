@@ -35,8 +35,9 @@ export const SIDEBAR_AUTO_COLLAPSE = 1024
 export const DETAILS_MIN = 300
 /** Details drag clamp ceiling. */
 export const DETAILS_MAX = 520
-/** Details width before any user drag. */
-export const DETAILS_DEFAULT = 360
+/** Details width before any user drag. Wide enough for the workbench rail's
+ *  control column at full field width (the ZZZ console cut). */
+export const DETAILS_DEFAULT = 380
 
 /**
  * Clamp a panel width into its contract range.

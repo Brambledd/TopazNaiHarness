@@ -20,14 +20,33 @@ import {
 export type ViewMode = 'conversation' | 'workbench'
 
 /**
+ * The frame's navigation level: the feed (the InterKnot-style session-card
+ * wall, the outermost surface — no conversation content anywhere) or an
+ * entered center (the conversation/workbench panes per `viewMode`). Boot
+ * always lands on the feed; card activation enters, the feed's back control
+ * and the sidebar's feed segment exit.
+ */
+export type SessionView = 'feed' | 'entered'
+
+/**
  * Layout store state: panel width preferences in px (0 = closed), the
  * narrow-viewport pair — `narrow` mirrors AppFrame's breakpoint reading
  * (viewport < SIDEBAR_AUTO_COLLAPSE) so toggleSidebar can pick semantics, and
  * `narrowExpanded` is the manual override that re-expands the auto-collapsed
  * sidebar over the squeezed center without rewriting the width preference —
- * plus the active center `viewMode`.
+ * plus the active center `viewMode`, the navigation level `sessionView`, and
+ * `feedExpanded`, the same kind of manual override for the feed level's
+ * forced sidebar collapse.
  */
-type LayoutState = { sidebar: number; details: number; narrow: boolean; narrowExpanded: boolean; viewMode: ViewMode }
+type LayoutState = {
+  sidebar: number
+  details: number
+  narrow: boolean
+  narrowExpanded: boolean
+  viewMode: ViewMode
+  sessionView: SessionView
+  feedExpanded: boolean
+}
 
 /**
  * Annotation twin of the actions literal below (the export needs a declared
@@ -41,6 +60,8 @@ type LayoutActions = {
   openDetails: (draft: LayoutState) => void
   closeDetails: (draft: LayoutState) => void
   setViewMode: (draft: LayoutState, mode: ViewMode) => void
+  enterSession: (draft: LayoutState) => void
+  exitToFeed: (draft: LayoutState) => void
 }
 
 /**
@@ -50,19 +71,25 @@ type LayoutActions = {
  * into the panel's contract range and never cross the open/closed line;
  * open/close transitions write 0 / the default explicitly. Below the
  * auto-collapse breakpoint (AppFrame feeds setNarrow) the sidebar toggle
- * flips the narrowExpanded override instead of the preference.
+ * flips the narrowExpanded override instead of the preference; on the feed
+ * level (the forced rail) it flips feedExpanded the same way.
  * @returns the store handle (spec + type + identity + factory in one).
  */
 export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutActions>  {
   const handle = defineStore({
-    init: (): LayoutState => ({ sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, viewMode: 'conversation' }),
+    init: (): LayoutState => ({
+      sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false,
+      viewMode: 'conversation', sessionView: 'feed', feedExpanded: false,
+    }),
     actions: {
       setSidebar: (d, px: number) => { d.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX) },
       setDetails: (d, px: number) => { d.details = clampWidth(px, DETAILS_MIN, DETAILS_MAX) },
-      // Narrow toggles flip only the override: the width preference survives
-      // untouched, so re-widening restores the pre-squeeze layout.
+      // Narrow and feed toggles flip only their override: the width
+      // preference survives untouched, so re-widening restores the
+      // pre-squeeze layout.
       toggleSidebar: (d) => {
-        if (d.narrow) d.narrowExpanded = !d.narrowExpanded
+        if (d.sessionView === 'feed') d.feedExpanded = !d.feedExpanded
+        else if (d.narrow) d.narrowExpanded = !d.narrowExpanded
         else d.sidebar = d.sidebar === 0 ? SIDEBAR_DEFAULT : 0
       },
       // Crossing the breakpoint in either direction drops the override: the
@@ -74,7 +101,24 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
       },
       openDetails: (d) => { if (d.details === 0) d.details = DETAILS_DEFAULT },
       closeDetails: (d) => { d.details = 0 },
-      setViewMode: (d, mode: ViewMode) => { d.viewMode = mode },
+      // The workbench view is its own full center surface: its details rail
+      // would duplicate the console, so switching there closes it; switching
+      // back to the conversation restores the rail beside the chat.
+      setViewMode: (d, mode: ViewMode) => {
+        d.viewMode = mode
+        if (mode === 'workbench') d.details = 0
+        else if (mode === 'conversation' && d.sessionView === 'entered' && d.details === 0) d.details = DETAILS_DEFAULT
+      },
+      // Entering drops the feed's manual expansion: the entered level starts
+      // from the plain preference solve, exactly like a fresh wide boot. The
+      // details rail (the conversation's workbench seat) opens with it — every
+      // entry path lands with the console beside the chat.
+      enterSession: (d) => {
+        d.sessionView = 'entered'
+        d.feedExpanded = false
+        if (d.viewMode !== 'workbench' && d.details === 0) d.details = DETAILS_DEFAULT
+      },
+      exitToFeed: (d) => { d.sessionView = 'feed' },
     },
   })
   return handle

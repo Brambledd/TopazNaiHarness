@@ -12,6 +12,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { IWorkspaces, WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { ILayout } from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { AttachmentIdType } from '@deepseek-ai/dsh-attachment'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { HostObservable, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the Controller service merges.
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
@@ -23,8 +26,11 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the Session root standard-hook merge.
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from './contract/slots.ts'
+import type { FeedWallInjected } from './rows/FeedWall.tsx'
 import { UiWorkspaceService } from './navigation.ts'
+import { createCoverCache } from './cover-cache.ts'
 import { createWorkspaceViewStore } from './stores.ts'
+import { FeedWall } from './rows/FeedWall.tsx'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
@@ -53,14 +59,14 @@ const NS = 'workspace'
 
 /**
  * Required services (cordis fiber inject). The target slots are declared by
- * the ui-sidebar / ui-conversation applies, whose activation order relative
- * to this one is NOT constrained: dsh.client.inject edges are informational
- * (loading/prefetch metadata, never apply sequencing) and neither owner
- * provides a waitable service. apply therefore depends on each slot
- * declaration through `slots.inject()` instead of assuming order.
+ * the ui-layout / ui-sidebar / ui-conversation applies, whose activation
+ * order relative to this one is NOT constrained: dsh.client.inject edges are
+ * informational (loading/prefetch metadata, never apply sequencing) and
+ * neither owner provides a waitable service. apply therefore depends on each
+ * slot declaration through `slots.inject()` instead of assuming order.
  */
 export const inject = [
-  'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker',
+  'slots', 'sessions', 'workspaces', 'locale', 'layout', 'remote', 'remote.directoryPicker',
 ]
 
 /**
@@ -72,6 +78,7 @@ export const inject = [
 export function apply(ctx: Context): void {
   const sessions = ctx.get('sessions') as ISessions
   const workspaces = ctx.get('workspaces') as IWorkspaces
+  const layout = ctx.get('layout') as ILayout
   const uiWorkspace = new UiWorkspaceService(
     ctx, ctx.remote.directoryPicker, workspaces, sessions)
   ctx.slots.provideRoot({ hooks: { workspaces: workspaces.list } })
@@ -82,6 +89,15 @@ export function apply(ctx: Context): void {
     if (!result.ok) throw new Error(result.error.message)
     return result.value
   }
+
+  // Card-cover cache over the list-level attachment read (LRU + reference
+  // counting, no module-level state); revoked with the plugin fiber.
+  const coverCache = createCoverCache(async (sessionId, attachmentId) => {
+    const result = await sessions.readSessionAttachment(sessionId as SessionId, attachmentId as AttachmentIdType)
+    if (!result.ok) throw new Error(result.error.message)
+    return { mediaType: result.value.attachment.mediaType, bytes: result.value.data }
+  })
+  ctx.effect(() => () => { coverCache.dispose() }, 'ui-workspace: cover cache')
 
   // Stable per-surface occupancy sources (the renderer's hook cache keys by
   // source identity): true while the surface's directory-flow hole is filled.
@@ -98,8 +114,22 @@ export function apply(ctx: Context): void {
   const browserInjected = (): WorkspaceBrowserInjected => ({
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
-    startSession: (workspaceId) => { uiWorkspace.startSession(workspaceId) },
-    open: (sessionId) => { sessions.open(sessionId) },
+    startSession: (workspaceId) => {
+      uiWorkspace.startSession(workspaceId)
+      // A started session is the user's explicit destination: land on the
+      // conversation surface and enter the session level (the store opens the
+      // workbench rail with it).
+      layout.setViewMode('conversation')
+      layout.enterSession()
+    },
+    open: (sessionId) => {
+      sessions.open(sessionId)
+      // Card activation enters the session level on the conversation surface
+      // (the InterKnot feed → post-detail model; the feed back bar returns;
+      // the store opens the workbench rail with entry).
+      layout.setViewMode('conversation')
+      layout.enterSession()
+    },
     searchSessions,
     searchResultLimit: sessions.searchResultLimit,
     renameSession: async (sessionId, title) => {
@@ -112,7 +142,14 @@ export function apply(ctx: Context): void {
     },
     forkSession: (sessionId) => {
       sessions.fork({ sessionId, increaseTitle: true })
-        .then((childId) => { sessions.open(childId) })
+        .then((childId) => {
+          sessions.open(childId)
+          // The forked child is the user's explicit destination: land on the
+          // conversation surface and enter the session level (the store opens
+          // the workbench rail with entry).
+          layout.setViewMode('conversation')
+          layout.enterSession()
+        })
         .catch(() => {
           // Fork or child-rename failure keeps the current selection.
         })
@@ -127,6 +164,7 @@ export function apply(ctx: Context): void {
       await workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
     },
     createWorkspace: input => workspaces.create(input),
+    coverCache,
     hooks: { directoryFlow: browserFlowSource, hostInfo },
   })
   const pickerInjected = (): WorkspacePickerInjected => ({
@@ -153,5 +191,24 @@ export function apply(ctx: Context): void {
       locale: NS,
     },
     WorkspacePicker,
+  ))
+  // The feed level's card wall: the frame's feed pane occupant (declared by
+  // ui-layout's root entry). One injected face sharing the browser's session
+  // verbs (the closures above already enter the session level on open/fork).
+  const browser = browserInjected()
+  const feedInjected = (): FeedWallInjected => ({
+    open: browser.open,
+    forkSession: browser.forkSession,
+    renameSession: browser.renameSession,
+    archiveSession: browser.archiveSession,
+    coverCache,
+  })
+  ctx.slots.inject('shell.feed', () => ctx.slots.register(
+    {
+      name: 'shell.feed',
+      inject: feedInjected,
+      locale: NS,
+    },
+    FeedWall,
   ))
 }

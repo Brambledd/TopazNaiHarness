@@ -105,6 +105,10 @@ export type SidebarRootInjected = {
   toggleSidebar: () => void
   /** Switch the frame's center surface through the layout service. */
   setViewMode: (mode: ViewMode) => void
+  /** Return to the feed level through the layout service. */
+  exitToFeed: () => void
+  /** Enter the session level through the layout service. */
+  enterSession: () => void
 }
 
 /**

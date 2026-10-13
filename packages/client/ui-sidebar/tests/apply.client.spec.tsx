@@ -9,7 +9,10 @@ import type { SidebarRootInjected } from '@deepseek-ai/dsh-client-ui-sidebar/cli
 async function bench(declare = true) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
-  const layout = { toggleSidebar: vi.fn() }
+  const layout = {
+    toggleSidebar: vi.fn(), openDetails: vi.fn(), closeDetails: vi.fn(),
+    setViewMode: vi.fn(), enterSession: vi.fn(), exitToFeed: vi.fn(),
+  }
   const uiWorkspace = { startSession: vi.fn() }
   ctx.provide('layout', layout)
   ctx.provide('uiWorkspace', uiWorkspace as never)
@@ -41,14 +44,22 @@ describe('ui-sidebar apply', () => {
     // Copy rides the standard locale seat, not the inject face.
     expect(b.slots.entries('sidebar')[0]!.locale).toBe('sidebar')
     const injected = (b.slots.entries('sidebar')[0]!.inject as () => SidebarRootInjected)()
-    expect(Object.keys(injected)).toEqual(['startSession', 'toggleSidebar', 'setViewMode'])
-    // Both arms delegate to the Workspace UI's shared New Session action.
+    expect(Object.keys(injected)).toEqual(['startSession', 'toggleSidebar', 'setViewMode', 'exitToFeed', 'enterSession'])
+    // Both arms delegate to the Workspace UI's shared New Session action,
+    // and a start lands on the conversation surface at the session level.
     injected.startSession('workspace' as never)
     expect(b.uiWorkspace.startSession).toHaveBeenCalledWith('workspace')
+    expect(b.layout.setViewMode).toHaveBeenCalledWith('conversation')
+    expect(b.layout.enterSession).toHaveBeenCalled()
     injected.startSession()
     expect(b.uiWorkspace.startSession).toHaveBeenLastCalledWith(undefined)
+    expect(b.layout.enterSession).toHaveBeenCalledTimes(2)
     injected.toggleSidebar()
     expect(b.layout.toggleSidebar).toHaveBeenCalledOnce()
+    injected.exitToFeed()
+    expect(b.layout.exitToFeed).toHaveBeenCalledOnce()
+    injected.enterSession()
+    expect(b.layout.enterSession).toHaveBeenCalledTimes(3) // two starts + the explicit enter
   })
 
   it('fails when no live owner declared the sidebar slot', async () => {

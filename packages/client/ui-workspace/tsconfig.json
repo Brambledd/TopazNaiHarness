@@ -45,6 +45,9 @@
       "path": "../ui-sidebar"
     },
     {
+      "path": "../ui-layout"
+    },
+    {
       "path": "../ui-conversation"
     },
     {
@@ -58,6 +61,9 @@
     },
     {
       "path": "../../util/workspace-path"
+    },
+    {
+      "path": "../../novelai/tool-novelai"
     }
   ]
 }

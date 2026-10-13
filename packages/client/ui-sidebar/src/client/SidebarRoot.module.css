@@ -147,14 +147,18 @@
   gap: 6px;
   min-width: 0;
   height: 24px;
+  font-family: var(--dsw-zzz-font-display);
   font-size: 18px;
-  font-weight: 600;
+  /* InterKnot wordmark weight: the bold game face (InterKnot Sans bold cut
+   * starts at 700). */
+  font-weight: 800;
   line-height: 24px;
   letter-spacing: 0.04em;
 }
 
 .fallbackBrandName {
   font-size: 17px;
+  font-style: italic;
   letter-spacing: 0px;
   white-space: nowrap;
 }
@@ -244,7 +248,8 @@
 }
 
 /* New Session: 38px bar, 12px radius (figma 133:7634 geometry, squared-off
-   corners); collapsed it renders as the rail's plain icon control. */
+ * corners); collapsed it renders as the rail's plain icon control. ZZZ skin:
+ * ink-edged elevated capsule; hover wakes the chessboard hatch. */
 .newSession {
   flex: none;
   display: flex;
@@ -255,19 +260,25 @@
   padding: 8px 16px;
   margin: 0 2px 8px;
   box-sizing: border-box;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--dsw-zzz-panel-edge);
   border-radius: 12px;
   background: var(--dsw-alias-button-elevated-fill);
+  box-shadow: 0 0 0 1px var(--dsw-zzz-panel-ring);
   color: var(--dsw-alias-label-primary);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   line-height: 22px;
   cursor: pointer;
   overflow: hidden;
+  transition: background-color var(--ds-transition-duration-fast) var(--ds-ease-in-out);
 }
 
 .newSession:hover {
-  background: var(--dsw-alias-button-floating-hover);
+  background-color: var(--dsw-alias-button-floating-hover);
+  background-image: var(--dsw-zzz-pattern-squares);
+  background-size: 6px 6px;
+  background-position: var(--dsw-zzz-pattern-squares-position);
 }
 
 .collapsed .newSession {
@@ -279,10 +290,13 @@
   gap: 0;
   border-color: transparent;
   background: transparent;
+  background-image: none;
+  box-shadow: none;
 }
 
 .collapsed .newSession:hover {
   background: var(--dsw-alias-interactive-bg-hover);
+  background-image: none;
 }
 
 .newSessionLabel {

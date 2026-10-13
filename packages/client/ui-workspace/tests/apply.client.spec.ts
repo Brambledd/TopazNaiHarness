@@ -6,6 +6,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
+import { FeedWall } from '../src/client/rows/FeedWall.tsx'
 import { WorkspacePicker } from '../src/client/WorkspacePicker.tsx'
 
 async function bench() {
@@ -62,6 +63,15 @@ async function bench() {
   const directoryPicker = { pick: pickDirectory }
   Object.assign(new TestRemote(ctx), { directoryPicker })
   ctx.provide('remote.directoryPicker', directoryPicker as never)
+  const layout = {
+    toggleSidebar: vi.fn(),
+    openDetails: vi.fn(),
+    closeDetails: vi.fn(),
+    setViewMode: vi.fn(),
+    enterSession: vi.fn(),
+    exitToFeed: vi.fn(),
+  }
+  ctx.provide('layout', layout as never)
   const locale = new LocaleRuntime(ctx)
   // These specs assert the shipped Chinese copy. There is no jsdom `window`
   // in this lane, so browser-language detection never runs and the locale
@@ -70,11 +80,11 @@ async function bench() {
   ctx.provide('locale', locale)
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, rename,
-    insertSessionBefore, open, clear, search, renameSession, binding, fork, pickDirectory,
+    insertSessionBefore, open, clear, search, renameSession, binding, fork, pickDirectory, layout,
   }
 }
 
-type HoleName = 'sidebar.workspaces' | 'conversation.hero.workspace' | 'conversation.empty.workspace'
+type HoleName = 'sidebar.workspaces' | 'conversation.hero.workspace' | 'conversation.empty.workspace' | 'shell.feed'
 
 /** Declare any subset of the holes with a single root registration ('root' is a single slot). */
 function declare(slots: SlotRegistry, ...names: HoleName[]): () => void {
@@ -85,11 +95,11 @@ function declare(slots: SlotRegistry, ...names: HoleName[]): () => void {
 describe('ui-workspace apply', () => {
   it('declares the services it drives', () => {
     expect(inject).toEqual([
-      'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker',
+      'slots', 'sessions', 'workspaces', 'locale', 'layout', 'remote', 'remote.directoryPicker',
     ])
   })
 
-  it('registers browser and pickers for declarations arriving before or after apply', async () => {
+  it('registers browser, pickers, and the feed wall for declarations arriving before or after apply', async () => {
     const before = await bench()
     declare(before.slots, 'sidebar.workspaces')
     await before.ctx.plugin({ inject: [...inject], apply }).await()
@@ -107,6 +117,16 @@ describe('ui-workspace apply', () => {
     // expect(after.slots.entries('conversation.empty.workspace')[0]!.component).toBe(WorkspacePicker)
   })
 
+  it('registers the feed wall once the frame declares the shell.feed hole', async () => {
+    const b = await bench()
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    declare(b.slots, 'shell.feed')
+    await vi.waitFor(() => {
+      expect(b.slots.entries('shell.feed')[0]!.component).toBe(FeedWall)
+    })
+    expect(b.slots.entries('shell.feed')[0]!.locale).toBe('workspace')
+  })
+
   it('routes browser actions and picker creation to the services', async () => {
     const b = await bench()
     declare(b.slots, 'sidebar.workspaces', 'conversation.hero.workspace')
@@ -114,13 +134,18 @@ describe('ui-workspace apply', () => {
     const startSession = vi.spyOn(b.ctx.uiWorkspace, 'startSession').mockImplementation(() => undefined)
 
     const browser = (b.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
-    // Both arms delegate to the shared Session navigation action.
+    // Both arms delegate to the shared Session navigation action, and an
+    // activation lands on the conversation surface at the session level.
     browser.startSession('ws' as never)
     expect(startSession).toHaveBeenCalledWith('ws')
+    expect(b.layout.setViewMode).toHaveBeenCalledWith('conversation')
+    expect(b.layout.enterSession).toHaveBeenCalled()
     browser.startSession()
     expect(startSession).toHaveBeenLastCalledWith(undefined)
     browser.open('session' as never)
     expect(b.open).toHaveBeenCalledWith('session')
+    expect(b.layout.setViewMode).toHaveBeenCalledWith('conversation')
+    expect(b.layout.enterSession).toHaveBeenCalled()
     const signal = new AbortController().signal
     await expect(browser.searchSessions('match', signal)).resolves.toEqual({
       items: [{ sessionId: 'session', snippet: 'match' }],
@@ -134,6 +159,8 @@ describe('ui-workspace apply', () => {
     browser.forkSession('session' as never)
     await vi.waitFor(() => {
       expect(b.open).toHaveBeenCalledWith('forked')
+      expect(b.layout.setViewMode).toHaveBeenCalledWith('conversation')
+      expect(b.layout.enterSession).toHaveBeenCalled()
     })
     expect(b.fork).toHaveBeenCalledWith({ sessionId: 'session', increaseTitle: true })
     await browser.renameWorkspace('ws' as never, 'renamed')

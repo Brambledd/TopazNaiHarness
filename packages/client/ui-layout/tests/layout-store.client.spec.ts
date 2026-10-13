@@ -17,9 +17,12 @@ const PERSIST_KEY = 'dsh.layout.panels'
 beforeEach(() => { localStorage.clear() })
 
 describe('createLayoutStore', () => {
-  it('initializes the sidebar at its default width, details closed, wide viewport assumed', () => {
+  it('initializes on the feed level, sidebar at its default width, details closed, wide viewport assumed', () => {
     const { store } = createLayoutStore().create()
-    expect(store.getSnapshot()).toEqual({ sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false, viewMode: 'conversation' })
+    expect(store.getSnapshot()).toEqual({
+      sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false,
+      viewMode: 'conversation', sessionView: 'feed', feedExpanded: false,
+    })
   })
 
   it('each create() is an independent instance (factory is not a singleton)', () => {
@@ -41,8 +44,9 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot().details).toBe(DETAILS_MAX)
   })
 
-  it('toggleSidebar flips closed <-> contract default (drag width forgotten)', () => {
+  it('toggleSidebar flips closed <-> contract default on the entered level (drag width forgotten)', () => {
     const { store, actions } = createLayoutStore().create()
+    actions.enterSession()
     actions.setSidebar(400)
     actions.toggleSidebar()
     expect(store.getSnapshot().sidebar).toBe(0)
@@ -50,12 +54,38 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot().sidebar).toBe(SIDEBAR_DEFAULT)
   })
 
+  it('feed toggleSidebar flips only the feed expansion override; the width preference survives', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.setSidebar(400)
+    actions.toggleSidebar()
+    expect(store.getSnapshot()).toMatchObject({ sessionView: 'feed', feedExpanded: true, sidebar: 400 })
+    actions.toggleSidebar()
+    expect(store.getSnapshot().feedExpanded).toBe(false)
+    expect(store.getSnapshot().sidebar).toBe(400)
+  })
+
+  it('enterSession moves to the entered level and drops the feed expansion; exitToFeed returns', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.toggleSidebar()
+    expect(store.getSnapshot().feedExpanded).toBe(true)
+    actions.enterSession()
+    expect(store.getSnapshot()).toMatchObject({ sessionView: 'entered', feedExpanded: false })
+    actions.exitToFeed()
+    expect(store.getSnapshot().sessionView).toBe('feed')
+  })
+
   it('narrow toggleSidebar flips only the re-expand override; the width preference survives', () => {
     const { store, actions } = createLayoutStore().create()
+    actions.enterSession()
     actions.setSidebar(400)
     actions.setNarrow(true)
     actions.toggleSidebar()
-    expect(store.getSnapshot()).toEqual({ sidebar: 400, details: 0, narrow: true, narrowExpanded: true, viewMode: 'conversation' })
+    // Entry opened the workbench rail; the narrow override leaves it open
+    // (the frame's narrow solve concedes the track, not the store).
+    expect(store.getSnapshot()).toEqual({
+      sidebar: 400, details: DETAILS_DEFAULT, narrow: true, narrowExpanded: true,
+      viewMode: 'conversation', sessionView: 'entered', feedExpanded: false,
+    })
     actions.toggleSidebar()
     expect(store.getSnapshot().narrowExpanded).toBe(false)
     expect(store.getSnapshot().sidebar).toBe(400)
@@ -63,6 +93,7 @@ describe('createLayoutStore', () => {
 
   it('crossing the breakpoint drops the override; a same-value setNarrow keeps it', () => {
     const { store, actions } = createLayoutStore().create()
+    actions.enterSession()
     actions.setNarrow(true)
     actions.toggleSidebar()
     expect(store.getSnapshot().narrowExpanded).toBe(true)
@@ -99,6 +130,8 @@ describe('createLayoutStore', () => {
       narrow: false,
       narrowExpanded: false,
       viewMode: 'conversation',
+      sessionView: 'feed',
+      feedExpanded: false,
     })
   })
 
@@ -109,5 +142,23 @@ describe('createLayoutStore', () => {
     expect(store.getSnapshot().viewMode).toBe('workbench')
     actions.setViewMode('conversation')
     expect(store.getSnapshot().viewMode).toBe('conversation')
+  })
+
+  it('entry arms the workbench rail; the workbench view closes it, conversation restores it', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.enterSession()
+    expect(store.getSnapshot().details).toBe(DETAILS_DEFAULT)
+    // The workbench view is its own full center surface: its rail would
+    // duplicate the console, so switching there closes it.
+    actions.setViewMode('workbench')
+    expect(store.getSnapshot().details).toBe(0)
+    // Returning to the conversation at the entered level restores the rail.
+    actions.setViewMode('conversation')
+    expect(store.getSnapshot().details).toBe(DETAILS_DEFAULT)
+    // At the feed level the mode switch leaves the stored width alone: the
+    // frame's feed solve drops the track, and entry re-arms it on return.
+    actions.exitToFeed()
+    actions.setViewMode('conversation')
+    expect(store.getSnapshot().details).toBe(DETAILS_DEFAULT)
   })
 })

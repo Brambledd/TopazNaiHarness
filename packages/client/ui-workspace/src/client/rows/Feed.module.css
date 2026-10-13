@@ -1,0 +1,39 @@
+/* The feed wall (shell.feed): the InterKnot feed-page cut — a centered
+ * multi-column masonry on the app backdrop (VirtualMasonry's geometry:
+ * ~240px target columns, 16px gap, 2–6 columns, shortest-column placement,
+ * row-major so the newest card stays top-left). The wall scrolls inside the
+ * center pane; the pointer-following scrollbar rebind applies here too. */
+
+.viewport {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.wall {
+  position: relative;
+  /* 1552 outer = 1520 content at the 32px padding: exactly six 240px
+     columns at wide viewports, the VirtualMasonry cap. */
+  width: min(1552px, 100%);
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+  box-sizing: border-box;
+}
+
+/* The absolute placement cell; the transform carries the slot offset. */
+.cell {
+  position: absolute;
+  top: 0;
+  left: 16px;
+  contain: layout style paint;
+}
+
+.empty {
+  position: relative;
+  padding: 24px 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+}

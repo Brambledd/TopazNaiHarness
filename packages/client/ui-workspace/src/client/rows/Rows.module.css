@@ -1,22 +1,26 @@
 .projectRow,
 .sessionRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: 8px;
-  padding: 0 8px;
   cursor: pointer;
   user-select: none;
   color: var(--dsw-alias-label-primary);
 }
 
-.projectRow:hover,
-.sessionRow:hover {
+.projectRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 0 8px;
+}
+
+.projectRow:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+/* ZZZ skin: the selected session carries the electric accent edge. */
 .sessionRow.selected {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+  box-shadow: inset 2px 0 0 var(--dsw-zzz-electric);
 }
 
 .searchResultRow {
@@ -100,21 +104,173 @@
   height: 20px;
 }
 
-/* Session cell (figma): pad 8, a 16px status slot, then a 4px title gap. */
+/*
+ * Session card (InterKnot PostCard cut): a black outer frame with the
+ * bottom-right corner squared, an inner cover face at the feed's 1.576
+ * aspect, then the title/meta row. State rides the frame color — hover
+ * turns it lime, selection turns it yellow — with the running state as a
+ * breathing chip pinned to the cover.
+ */
 .sessionRow {
-  height: 32px;
-  gap: 0;
-  /* Mount fade: session rows appear by unfolding a group (or the tree
-     mounting). Stable row keys keep already-visible rows from replaying it. */
+  display: block;
+  margin-top: 10px;
+  border-radius: 20px 20px 0 20px;
+  padding: 3px;
+  background: var(--dsw-zzz-panel-edge);
+  transition:
+    background-color 140ms var(--ds-ease-in-out),
+    translate 140ms var(--ds-ease-in-out);
   animation: row-in 150ms var(--ds-ease-in-out);
 }
 
-.sessionRow .title {
-  margin: 0 6px 0 4px;
+.sessionRow:hover,
+.sessionRow.menuOpen {
+  background: var(--dsw-zzz-lime);
+  translate: 0 -1px;
 }
 
-.flatSessionRowWithoutStatus .title {
-  margin-left: 0;
+.sessionRow.selected {
+  background: var(--dsw-zzz-yellow);
+  box-shadow: none;
+}
+
+.sessionRow.selected:hover {
+  background: var(--dsw-zzz-yellow);
+}
+
+.cardCover {
+  display: block;
+  position: relative;
+  border-radius: 16px 16px 0 16px;
+  overflow: hidden;
+  /* The default art fills the cover; no skin texture overlays it — the 3px
+     square-grid pattern read as a dark dot matrix over the artwork. The
+     background color only backs the pre-load frame. The aspect cut lives on
+     the image itself: the masonry swaps in the real cover's intrinsic ratio
+     once it decodes, and the box follows. */
+  background-color: #151515;
+  background-image: url('interknot/images/default-cover-novelai.webp');
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.cardCoverImage {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.576;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 180ms var(--ds-ease-in-out);
+}
+
+.cardCoverImageLoaded {
+  opacity: 1;
+}
+
+/* Breathing yellow chip: the session is running. */
+.cardRunning {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  max-width: calc(100% - 16px);
+  border: 1px solid var(--dsw-zzz-yellow);
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: rgba(8, 8, 10, 0.78);
+  color: var(--dsw-zzz-yellow);
+  font-family: var(--dsw-zzz-font-display);
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: zzz-pulse-border var(--dsw-zzz-pulse-duration) var(--dsw-zzz-pulse-ease) infinite alternate;
+  pointer-events: none;
+}
+
+/* Card verbs surface as one chip on the cover's top-right on hover. */
+.cardActions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  padding: 2px;
+  background: rgba(8, 8, 10, 0.78);
+  opacity: 0;
+  transition: opacity 120ms var(--ds-ease-in-out);
+}
+
+.sessionRow:hover .cardActions,
+.sessionRow.menuOpen .cardActions,
+.sessionRow .cardActions:focus-within {
+  opacity: 1;
+}
+
+/* The hover ×: destructive accent on an otherwise quiet affordance. */
+.iconButtonDelete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 8px;
+  padding: 0;
+  background: none;
+  color: var(--dsw-text-secondary, inherit);
+  cursor: pointer;
+}
+
+.iconButtonDelete:hover {
+  color: var(--dsw-text-danger, inherit);
+  background: var(--dsw-interactive-bg-hover, transparent);
+}
+
+/* Cover/meta strip below the cover: status dot, title, relative time. */
+.cardBody {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 7px 6px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.sessionRow .title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  /* InterKnot card cut: the resting title is the brand-blue anchor of the
+     wall; hover/selected brighten it and the frame carries the state color. */
+  color: var(--dsw-zzz-primary);
+}
+
+/* A provisional New Session row has no real title yet — stay gray. */
+.sessionRow.blankRow .title {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.sessionRow:hover .title,
+.sessionRow.menuOpen .title,
+.sessionRow.selected .title {
+  color: var(--dsw-zzz-electric);
+}
+
+.sessionRow .time {
+  font-size: 11px;
+  line-height: 16px;
 }
 
 @keyframes row-in {
@@ -188,10 +344,6 @@
   outline: none;
 }
 
-.sessionRow .title {
-  flex: 1;
-}
-
 .meta {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -238,21 +390,13 @@
 }
 
 .projectRow:hover .rowActions,
-.sessionRow:hover .rowActions,
-.projectRow.menuOpen .rowActions,
-.sessionRow.menuOpen .rowActions {
+.projectRow.menuOpen .rowActions {
   display: inline-flex;
-}
-
-.sessionRow:hover .time,
-.sessionRow.menuOpen .time {
-  display: none;
 }
 
 /* An open row menu pins the hover affordances (figma: the row keeps its
    hover fill while its dropdown is up). */
-.projectRow.menuOpen,
-.sessionRow.menuOpen {
+.projectRow.menuOpen {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
@@ -361,6 +505,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .sessionRow,
+  .cardCoverImage,
+  .cardRunning,
+  .cardActions,
   .arrow {
     animation: none;
     transition: none;

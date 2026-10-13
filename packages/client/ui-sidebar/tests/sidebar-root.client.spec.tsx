@@ -28,7 +28,7 @@ type AttentionSnapshot = Parameters<Parameters<SidebarRootComponentProps['useSes
 const noAttention: AttentionSnapshot = new Map()
 const useSessionPendingInteraction: SidebarRootComponentProps['useSessionPendingInteraction'] = selector => selector(noAttention)
 
-function mountShell({ collapsed = false, width = 300, viewMode = 'conversation' as 'conversation' | 'workbench' }: { collapsed?: boolean; width?: number; viewMode?: 'conversation' | 'workbench' } = {}) {
+function mountShell({ collapsed = false, width = 300, viewMode = 'conversation', sessionView = 'entered' }: { collapsed?: boolean; width?: number; viewMode?: 'conversation' | 'workbench'; sessionView?: 'feed' | 'entered' } = {}) {
   const startSession = vi.fn()
   const toggleSidebar = vi.fn()
   let regionOwner: SidebarSectionOwnerProps | undefined
@@ -36,12 +36,12 @@ function mountShell({ collapsed = false, width = 300, viewMode = 'conversation' 
   let footerActionOwner: SidebarFooterActionOwnerProps | undefined
   const brandMark = <span data-testid="custom-brand-mark">M</span>
   const brandName = <span data-testid="custom-brand-name">Custom Brand</span>
-  let current = { collapsed, width, viewMode }
+  let current = { collapsed, width, viewMode, sessionView }
   const root = () => (
     <SidebarRoot
-      collapsed={current.collapsed} width={current.width} viewMode={current.viewMode}
+      collapsed={current.collapsed} width={current.width} viewMode={current.viewMode} sessionView={current.sessionView}
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
-      startSession={startSession} toggleSidebar={toggleSidebar} setViewMode={vi.fn()} t={t}
+      startSession={startSession} toggleSidebar={toggleSidebar} setViewMode={vi.fn()} exitToFeed={vi.fn()} enterSession={vi.fn()} t={t}
       renderSlot={((
         key: string,
         owner: SidebarFooterActionOwnerProps | SidebarSectionOwnerProps | SidebarSettingsOwnerProps,
@@ -103,9 +103,9 @@ describe('SidebarRoot shell', () => {
     vi.stubEnv('DSH_CLIENT_GIT_DIRTY', 'true')
     vi.stubEnv('DSH_CLIENT_VERSION', '1.2.3-rc.4')
     const { container } = render(<SidebarRoot
-      collapsed={false} width={300} viewMode='conversation'
+      collapsed={false} width={300} viewMode='conversation' sessionView='entered'
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
-      startSession={vi.fn()} toggleSidebar={vi.fn()} setViewMode={vi.fn()} t={t}
+      startSession={vi.fn()} toggleSidebar={vi.fn()} setViewMode={vi.fn()} exitToFeed={vi.fn()} enterSession={vi.fn()} t={t}
       renderSlot={((_key: string, _owner: unknown, options?: { fallback?: ReactNode }) =>
         options?.fallback ?? null) as SidebarRootComponentProps['renderSlot']}
     />)
@@ -121,9 +121,9 @@ describe('SidebarRoot shell', () => {
   ])('omits unavailable build-version suffixes from %j', (environment, expected) => {
     for (const [name, value] of Object.entries(environment)) vi.stubEnv(name, value)
     render(<SidebarRoot
-      collapsed={false} width={300} viewMode='conversation'
+      collapsed={false} width={300} viewMode='conversation' sessionView='entered'
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
-      startSession={vi.fn()} toggleSidebar={vi.fn()} setViewMode={vi.fn()} t={t}
+      startSession={vi.fn()} toggleSidebar={vi.fn()} setViewMode={vi.fn()} exitToFeed={vi.fn()} enterSession={vi.fn()} t={t}
       renderSlot={((_key: string, _owner: unknown, options?: { fallback?: ReactNode }) =>
         options?.fallback ?? null) as SidebarRootComponentProps['renderSlot']}
     />)
@@ -134,9 +134,9 @@ describe('SidebarRoot shell', () => {
 
   it('retains the local-build fallback without complete build metadata', () => {
     render(<SidebarRoot
-      collapsed={false} width={300} viewMode='conversation'
+      collapsed={false} width={300} viewMode='conversation' sessionView='entered'
       useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction} useWorkspaces={neverHook}
-      startSession={vi.fn()} toggleSidebar={vi.fn()} setViewMode={vi.fn()} t={t}
+      startSession={vi.fn()} toggleSidebar={vi.fn()} setViewMode={vi.fn()} exitToFeed={vi.fn()} enterSession={vi.fn()} t={t}
       renderSlot={((_key: string, _owner: unknown, options?: { fallback?: ReactNode }) =>
         options?.fallback ?? null) as SidebarRootComponentProps['renderSlot']}
     />)

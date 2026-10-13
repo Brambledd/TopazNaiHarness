@@ -25,7 +25,11 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-侧边栏是导航外壳：用户看到品牌、启动新会话、折叠轨道并到达 Settings。功能插件填充它的席位——ui-workspace 填充 `sidebar.workspaces`，ui-settings 在 `sidebar.settings` 注册触发行与设置面板。
+侧边栏是导航外壳：用户看到品牌、启动新会话、在列表、对话与创作台之间切换中央界面、折叠轨道并到达 Settings。功能插件填充它的席位——ui-workspace 填充 `sidebar.workspaces`，ui-settings 在 `sidebar.settings` 注册触发行与设置面板。
+
+### 界面切换
+
+品牌下方的模式切换渲染三段：**列表**回到最外层 feed 级别（`layout.exitToFeed`），**对话**与**创作台**设置中央视图模式并进入会话级别（`layout.enterSession`）——激活段跟随 owner share 的实时 `sessionView`/`viewMode`。收起轨道把每段标签截为首字符，因此切换在轨道宽度下依然可达。
 
 ### 品牌与 New Session
 
@@ -47,7 +51,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-外壳是纯组合：`SidebarRootComponentProps` 组合布局 owner share、全局 `useSessions` 与 `useWorkspaces` 钩子、已声明的品牌、`sidebar.workspaces` 与 `sidebar.settings` 子 slot，以及注入的 `startSession` 与侧边栏切换回调。这里没有插件 store。
+外壳是纯组合：`SidebarRootComponentProps` 组合布局 owner share（`viewMode` 与 `sessionView` 级别）、全局 `useSessions` 与 `useWorkspaces` 钩子、已声明的品牌、`sidebar.workspaces` 与 `sidebar.settings` 子 slot，以及注入的 `startSession`、侧边栏切换与 feed 导航回调。这里没有插件 store。
 
 ### Slot 纪律
 

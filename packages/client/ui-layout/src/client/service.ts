@@ -27,8 +27,15 @@ export interface ILayout {
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
-  /** Switch the center surface between the conversation and the workbench. */
+  /**
+   * Switch the center surface between the conversation and the workbench.
+   * @param mode - target center surface.
+   */
   setViewMode(mode: ViewMode): void
+  /** Enter the session level: the conversation/workbench center replaces the feed. */
+  enterSession(): void
+  /** Return to the feed level (the outermost session-card wall). */
+  exitToFeed(): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -61,9 +68,22 @@ export class LayoutController implements ILayout {
     this.#require().closeDetails()
   }
 
-  /** Switch the center surface between the conversation and the workbench. */
+  /**
+   * Switch the center surface between the conversation and the workbench.
+   * @param mode - target center surface.
+   */
   setViewMode(mode: ViewMode): void {
     this.#require().setViewMode(mode)
+  }
+
+  /** Enter the session level: the conversation/workbench center replaces the feed. */
+  enterSession(): void {
+    this.#require().enterSession()
+  }
+
+  /** Return to the feed level (the outermost session-card wall). */
+  exitToFeed(): void {
+    this.#require().exitToFeed()
   }
 
   #require(): PanelActions {

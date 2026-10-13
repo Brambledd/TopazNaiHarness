@@ -84,24 +84,43 @@ export function probeFreePort(): Promise<number> {
 }
 
 /**
+ * Enter the session level the same way a user does: the sidebar capsule that
+ * is reachable in both sidebar states (expanded label, rail aria-label).
+ * Boot lands on the feed, so a scenario whose page still shows the feed wall
+ * activates a blank session first; a page already past the gate (the hero
+ * picker is visible) skips the click, keeping repeated connects on one page
+ * from spawning extra blank sessions.
+ * @param page - the page under test.
+ * @param pickerName - localized accessible name of the hero's workspace picker.
+ */
+async function enterSessionLevel(page: Page, pickerName: string): Promise<void> {
+  const picker = page.getByRole('textbox', { name: pickerName })
+  if (await picker.isVisible().catch(() => false)) return
+  await page.getByRole('button', { name: pickerName === '选择工作区' ? '新建会话' : 'New session' }).click()
+  // Entering reveals the conversation pane with the blank hero.
+  await picker.waitFor({ timeout: 15_000 })
+}
+
+/**
  * Drive the hero's workspace picker through the composed directory dialog
- * until the live composer unlocks. A fresh world has no Workspace, so the boot
- * lands in the Workspace-trigger view state (startup auto-selection has nothing to
- * select); every scenario that types into the composer must connect one
- * first. With nothing to list, activating the composer surface raises the dialog directly —
- * adding a workspace is the picker's only entry. The directory is staged here
- * and adopted through the path editor, which is idempotent across the repeated
- * connects a scenario may make; creating a folder from inside the dialog (the
- * product's other half of the same route) is covered by
- * workspace-management.e2e.ts. The default name 'workspace' keeps the session
- * header cwd at <root>/workspace, the materialization proof several scenarios
- * assert.
+ * until the live composer unlocks. A fresh world has no Workspace, so the
+ * entered blank session lands in the Workspace-trigger view state (startup
+ * auto-selection has nothing to select); every scenario that types into the
+ * composer must connect one first. With nothing to list, activating the
+ * composer surface raises the dialog directly — adding a workspace is the
+ * picker's only entry. The directory is staged here and adopted through the
+ * path editor, which is idempotent across the repeated connects a scenario
+ * may make; creating a folder from inside the dialog (the product's other
+ * half of the same route) is covered by workspace-management.e2e.ts. The
+ * default name 'workspace' keeps the session header cwd at
+ * <root>/workspace, the materialization proof several scenarios assert.
  * @param page - the page under test.
  * @param root - host directory the workspace folder is staged in (the scaffold's `workspaceCwd`).
  * @param name - folder name staged and adopted as the workspace.
  */
 export async function connectFreshWorkspace(page: Page, root: string, name = 'workspace'): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
+  await enterSessionLevel(page, 'Choose workspace')
   await page.getByRole('textbox', { name: 'Choose workspace' }).click()
   const dialog = page.getByRole('dialog', { name: 'Select Workspace Directory' })
   await dialog.waitFor({ timeout: 10_000 })
@@ -127,6 +146,7 @@ export async function connectFreshWorkspace(page: Page, root: string, name = 'wo
  */
 export async function connectFreshWorkspaceZh(page: Page, root: string, name = 'workspace'): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
+  await enterSessionLevel(page, '选择工作区')
   await page.getByRole('textbox', { name: '选择工作区' }).click()
   const dialog = page.getByRole('dialog', { name: '选择工作区目录' })
   await dialog.waitFor({ timeout: 10_000 })

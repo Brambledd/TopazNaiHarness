@@ -53,9 +53,12 @@ export function SidebarRoot({
   collapsed,
   width,
   viewMode,
+  sessionView,
   startSession,
   toggleSidebar,
   setViewMode,
+  exitToFeed,
+  enterSession,
   t,
   renderSlot,
 }: SidebarRootComponentProps) {
@@ -201,22 +204,33 @@ export function SidebarRoot({
         </button>
       </Tooltip>
 
-      {/* Center-surface mode switch: conversation ⟷ workbench. The rail keeps
-          both segments as icon-sized text so the switch never hides. */}
+      {/* Center-surface mode switch: feed ⟷ conversation ⟷ workbench. The
+          feed segment is the outermost level; the conversation/workbench
+          segments enter the session level (a switch from the feed enters it).
+          The rail keeps all three segments as icon-sized text so the switch
+          never hides. */}
       <div className={css.newSession} role="group" aria-label={t('mode.workbench')}>
         <button
           type="button"
           className={css.iconButton}
-          aria-pressed={viewMode === 'conversation'}
-          onClick={() => { setViewMode('conversation') }}
+          aria-pressed={sessionView === 'feed'}
+          onClick={() => { exitToFeed() }}
+        >
+          {wide ? t('mode.feed') : t('mode.feed').slice(0, 1)}
+        </button>
+        <button
+          type="button"
+          className={css.iconButton}
+          aria-pressed={sessionView === 'entered' && viewMode === 'conversation'}
+          onClick={() => { setViewMode('conversation'); enterSession() }}
         >
           {wide ? t('mode.conversation') : t('mode.conversation').slice(0, 1)}
         </button>
         <button
           type="button"
           className={css.iconButton}
-          aria-pressed={viewMode === 'workbench'}
-          onClick={() => { setViewMode('workbench') }}
+          aria-pressed={sessionView === 'entered' && viewMode === 'workbench'}
+          onClick={() => { setViewMode('workbench'); enterSession() }}
         >
           {wide ? t('mode.workbench') : t('mode.workbench').slice(0, 1)}
         </button>

@@ -41,6 +41,9 @@ describe('web e2e: rail search click survives its own document-level bubble', ()
 
   it('expands the search and lands focus in the input from one rail click', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-rail-search-expand'))
+    // Boot lands on the feed with the sidebar force-collapsed to its rail;
+    // enter the session level so the wide chrome and its collapse control exist.
+    await page.getByRole('button', { name: 'New session' }).click()
     await page.getByRole('button', { name: 'Collapse sidebar' }).click()
     const railSearch = page.getByRole('button', { name: 'Search sessions' })
     // The wide chrome stays mounted through the 150ms collapse crossfade; the

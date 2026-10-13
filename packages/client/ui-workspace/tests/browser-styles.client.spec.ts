@@ -101,11 +101,35 @@ describe('WorkspaceBrowser.module.css list', () => {
     expect(declarations('.sessionOverflowButton')?.get('height')).toBe('28px')
     expect(declarations('.searchExpanded')?.get('height')).toBe('30px')
     expect(rowDeclarations('.projectRow')?.get('height')).toBe('34px')
-    expect(rowDeclarations('.sessionRow')?.get('height')).toBe('32px')
-    expect(rowDeclarations('.flatSessionRowWithoutStatus .title')?.get('margin-left')).toBe('0')
     expect(rowDeclarations('.searchResultRow')?.get('min-height')).toBe('48px')
-    expect(rowDeclarations('.sessionRow.selected')?.get('background'))
-      .toBe('var(--dsw-alias-interactive-bg-hover)')
+  })
+
+  it('cuts session rows as InterKnot cover cards with state-colored frames', () => {
+    const card = rowDeclarations('.sessionRow')
+    expect(card?.get('aspect-ratio')).toBeUndefined()
+    expect(card?.get('padding')).toBe('3px')
+    expect(card?.get('border-radius')).toBe('20px 20px 0 20px')
+    expect(card?.get('background')).toBe('var(--dsw-zzz-panel-edge)')
+    expect(rowDeclarations('.cardCoverImage')?.get('aspect-ratio')).toBe('1.576')
+    // The aspect cut rides the image: the masonry swaps in the real cover's
+    // intrinsic ratio at decode time, and the box follows.
+    expect(rowDeclarations('.cardCover')?.get('aspect-ratio')).toBeUndefined()
+    expect(rowDeclarations('.cardCover')?.get('border-radius')).toBe('16px 16px 0 16px')
+    expect(rowDeclarations('.cardCover')?.get('background-color')).toBe('#151515')
+    expect(rowDeclarations('.cardCover')?.get('background-image')).toContain('interknot/images/default-cover-novelai.webp')
+    // No skin texture overlays the default art (the 3px square-grid pattern
+    // read as a dark dot matrix over the artwork).
+    expect(rowDeclarations('.cardCover')?.get('background-size')).toBe('cover')
+    expect(rowDeclarations('.cardCover')?.get('background-repeat')).toBe('no-repeat')
+    expect(rowDeclarations('.sessionRow:hover')?.get('background')).toBe('var(--dsw-zzz-lime)')
+    expect(rowDeclarations('.sessionRow.selected')?.get('background')).toBe('var(--dsw-zzz-yellow)')
+    expect(rowDeclarations('.cardRunning')?.get('border')).toContain('var(--dsw-zzz-yellow)')
+    // The card verbs are one hover-revealed chip pinned to the cover.
+    expect(rowDeclarations('.cardActions')?.get('position')).toBe('absolute')
+    expect(rowDeclarations('.sessionRow:hover .cardActions')?.get('opacity')).toBe('1')
+    // The real cover fades in over the default art only after it settles.
+    expect(rowDeclarations('.cardCoverImage')?.get('opacity')).toBe('0')
+    expect(rowDeclarations('.cardCoverImageLoaded')?.get('opacity')).toBe('1')
   })
 
   it('pins both rail controls to the shared left anchor during the column slide', () => {

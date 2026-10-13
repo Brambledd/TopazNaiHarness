@@ -5,7 +5,7 @@
  * except workspace Rename/Delete and session Rename/Fork/Archive; the session
  * and workspace hover cards are suppressed while a menu is open.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import {
   HoverCard, IconAlarmClockOutline16, IconArchiveOutline20, IconBranchOutline16,
@@ -15,9 +15,16 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
+import type { CoverCache } from '../cover-cache.ts'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { GroupNode, SearchResultNode, SessionNode } from '../tree.ts'
 import css from './Rows.module.css'
+
+/** Bundled default cover art for sessions with no NovelAI generation yet.
+ *  The `-novelai` suffix is the cache-busting asset name: the original
+ *  `default-cover.webp` URL stayed poisoned in long-lived browser caches
+ *  after the artwork was replaced. */
+const DEFAULT_COVER_URL = 'interknot/images/default-cover-novelai.webp'
 
 /** The standard locale seat, prop-passed from the browser root. */
 type RowTranslate = WorkspaceBrowserProps['t']
@@ -361,6 +368,71 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
 }
 
 /**
+ * One session card cover (InterKnot feed-card cut): the session's latest
+ * NovelAI-generated image, or the bundled default cover until one exists.
+ * The card cache dedupes loads and owns URL lifetimes; this component pairs
+ * acquire/release with its mount lifecycle and fades the real cover in over
+ * the default art.
+ * @param props.node - derived session node (cover attachment id source).
+ * @param props.coverCache - injected card cover cache; undefined renders the default art only.
+ * @returns the cover element.
+ */
+function SessionCardCover({ node, coverCache }: {
+  node: SessionNode
+  coverCache: CoverCache | undefined
+}) {
+  const attachmentId = node.coverAttachmentId
+  const [url, setUrl] = useState<string | undefined>(undefined)
+  const [settled, setSettled] = useState(false)
+  // The real cover's intrinsic ratio takes over the cover box once the image
+  // decodes: portrait generations run tall, landscape ones squat — that is
+  // the masonry's stagger. The default art keeps the fallback cut.
+  const [ratio, setRatio] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (coverCache === undefined || attachmentId === undefined) return
+    let active = true
+    let attempts = 0
+    let retry: ReturnType<typeof setTimeout> | undefined
+    const run = (): void => {
+      void coverCache.acquire(node.id, attachmentId).then((resolved) => {
+        if (!active) return
+        if (resolved !== undefined) {
+          setUrl(resolved)
+          setSettled(true)
+          return
+        }
+        // A failed read (the cold-boot projection race) retries a bounded
+        // number of times, so a card never sticks on the default art.
+        attempts++
+        if (attempts < 3) retry = setTimeout(run, 3_000 * attempts)
+      })
+    }
+    run()
+    return () => {
+      active = false
+      if (retry !== undefined) clearTimeout(retry)
+      coverCache.release(attachmentId)
+    }
+  }, [coverCache, node.id, attachmentId])
+  return (
+    <img
+      className={clsx(css.cardCoverImage, settled && url !== undefined && css.cardCoverImageLoaded)}
+      src={url ?? DEFAULT_COVER_URL}
+      style={ratio === undefined ? undefined : { aspectRatio: ratio }}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      draggable={false}
+      onLoad={(e) => {
+        if (url === undefined) return
+        const image = e.currentTarget
+        if (image.naturalWidth > 0 && image.naturalHeight > 0) setRatio(`${image.naturalWidth} / ${image.naturalHeight}`)
+      }}
+    />
+  )
+}
+
+/**
  * One top-level 34px session row: status dot (pending user interaction outranks
  * own or descendant activity), title, relative time, and the row actions menu.
  * @param props.node - derived session node.
@@ -375,7 +447,26 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @param props.t - the browser root's locale seat.
  * @returns the session row.
  */
-export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork, onArchive, drag, flat = false, t }: {
+/**
+ * One session card (InterKnot feed-card cut): the latest NovelAI-generated
+ * image as the cover (default cover art before the first generation), title
+ * + relative time meta row, hover-revealed actions, and the live status dot.
+ * Click opens the session; drag markers and the ... menu keep the row
+ * semantics. Blank provisional rows render the same card shell without time
+ * or verbs.
+ * @param props.node - derived session node.
+ * @param props.currentId - selected session id (row highlight).
+ * @param props.now - epoch ms for relative-time formatting.
+ * @param props.onOpen - open a session by id.
+ * @param props.onRename - open the session rename dialog (id + current title).
+ * @param props.onFork - fork a session at its last completed turn.
+ * @param props.onArchive - archive a session by id.
+ * @param props.coverCache - card cover cache over the list-level attachment read.
+ * @param props.drag - optional draggable-row wiring.
+ * @param props.t - the browser root's locale seat.
+ * @returns the session card.
+ */
+export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork, onArchive, coverCache, drag, t }: {
   node: SessionNode
   currentId: string | undefined
   now: number
@@ -386,18 +477,20 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
   onFork: (id: SessionNode['id']) => void
   /** Archive this session (row menu action; commits without a dialog). */
   onArchive: (id: SessionNode['id']) => void
+  /** Present only through the browser registration (injected cover cache). */
+  coverCache?: CoverCache | undefined
   /** Present only on draggable rows (workspace-group sessions outside search). */
   drag?: RowDragProps | undefined
-  /** The row is rendered without a parent Workspace header. */
-  flat?: boolean | undefined
   t: RowTranslate
 }) {
   const row = node
   const title = displayTitle(node, t)
   const selected = node.id === currentId
   const statuses = sessionStatuses(node, t)
-  const primaryStatus = statuses[0]
-  const showStatus = primaryStatus.state !== 'done' || row.completed
+  // Pending interaction and own or descendant activity outrank the
+  // finished-but-unviewed reminder, which returns after activity stops and
+  // is cleared by opening the session; a quiet idle card carries no dot.
+  const showStatus = statuses[0].state !== 'done' || row.completed
   const [menuOpen, setMenuOpen] = useState(false)
   // Archive hides the row through the registry-global archive set and never
   // touches the session log, so it is not styled as destructive and needs no
@@ -408,12 +501,11 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
     // 20-native glyph in the menu's 16px icon slot (Menu.module.css .itemIcon).
     { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutline20 size={16} /> },
   ]
-  // Figma session cell: pad 8, status slot 16, then a 4px title gap.
   const ownRow = (
     <div
       className={clsx(
         css.sessionRow, selected && css.selected, menuOpen && css.menuOpen,
-        flat && !showStatus && css.flatSessionRowWithoutStatus,
+        row.blank && css.blankRow,
         drag?.marker === 'before' && css.dropBefore, drag?.marker === 'after' && css.dropAfter,
       )}
       role="treeitem"
@@ -444,48 +536,67 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
           drag.drop(rowHalf(e))
         }}
     >
-      {/* Pending interaction and own or descendant activity outrank the
-          finished-but-unviewed reminder, which returns after activity stops
-          and is cleared by opening the session. */}
-      {(!flat || showStatus) && (
+      <span className={css.cardCover}>
+        <SessionCardCover node={node} coverCache={coverCache} />
+        {node.running && <span className={css.cardRunning}>{t('status.running')}</span>}
+        {/* A blank New Session row is a provisional placeholder: nothing has
+            happened in it yet, so a "now" timestamp and the row verbs
+            (rename/fork/archive) would all act on content that does not
+            exist — the actions chip stays off until the first prompt. */}
+        {!row.blank && (
+          <span className={css.cardActions}>
+            <button
+              type="button"
+              className={css.iconButtonDelete}
+              aria-label={t('actions.session.delete', { name: title })}
+              title={t('actions.session.delete.hint')}
+              onClick={(e) => {
+                e.stopPropagation()
+                // The hover × rides the archive verb: the row leaves the list
+                // immediately while the durable log stays recoverable.
+                onArchive(node.id)
+              }}
+            >
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden>
+                <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+            <Menu
+              open={menuOpen}
+              onClose={() => { setMenuOpen(false) }}
+              items={sessionMenuItems}
+              onSelect={(id) => {
+                setMenuOpen(false)
+                if (id === 'rename') onRename(node.id, row.title)
+                if (id === 'fork') onFork(node.id)
+                if (id === 'archive') onArchive(node.id)
+              }}
+              portal
+              closeOnPointerLeave
+              anchor={(
+                <button
+                  type="button"
+                  className={css.iconButton}
+                  aria-label={t('actions.session.aria', { name: title })}
+                  onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v) }}
+                >
+                  <IconEllipsisOutline16 />
+                </button>
+              )}
+            />
+          </span>
+        )}
+      </span>
+      <span className={css.cardBody}>
         <span className={css.slot}>
           {showStatus && <SessionStatusDots statuses={statuses} />}
         </span>
-      )}
-      <span className={css.title}>{title}</span>
-      {row.hasActiveSchedule && <ActiveScheduleIndicator t={t} />}
-      {/* A blank New Session row is a provisional placeholder: nothing has
-          happened in it yet, so a "now" timestamp and the row verbs
-          (rename/fork/archive) would all act on content that does not
-          exist — both trailing cells stay off until the first prompt. */}
-      {!row.blank && <span className={css.time}>{timeLabel(row.updatedAt, now, t)}</span>}
-      {!row.blank && (
-        <span className={css.rowActions}>
-          <Menu
-            open={menuOpen}
-            onClose={() => { setMenuOpen(false) }}
-            items={sessionMenuItems}
-            onSelect={(id) => {
-              setMenuOpen(false)
-              if (id === 'rename') onRename(node.id, row.title)
-              if (id === 'fork') onFork(node.id)
-              if (id === 'archive') onArchive(node.id)
-            }}
-            portal
-            closeOnPointerLeave
-            anchor={(
-              <button
-                type="button"
-                className={css.iconButton}
-                aria-label={t('actions.session.aria', { name: title })}
-                onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v) }}
-              >
-                <IconEllipsisOutline16 />
-              </button>
-            )}
-          />
-        </span>
-      )}
+        <span className={css.title}>{title}</span>
+        {row.hasActiveSchedule && <ActiveScheduleIndicator t={t} />}
+        {/* Same placeholder rule as the actions chip: no timestamp before the
+            first prompt. */}
+        {!row.blank && <span className={css.time}>{timeLabel(row.updatedAt, now, t)}</span>}
+      </span>
     </div>
   )
   return (

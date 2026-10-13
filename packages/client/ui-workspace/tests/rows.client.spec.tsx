@@ -63,12 +63,16 @@ describe('workspace browser rows', () => {
       runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
     }
     const view = render(<SessionNodeItem node={idle} currentId={undefined} now={0} onOpen={vi.fn()}
-      onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} flat t={t} />)
+      onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
     const title = screen.getByText('Flat Session')
-    expect(title.previousElementSibling).toBeNull()
+    // The card body always renders the status slot span; an idle row leaves
+    // it without a dot.
+    const slot = title.previousElementSibling as HTMLElement | null
+    expect(slot?.className ?? '').toMatch(/slot/)
+    expect(slot?.querySelector('[data-state]')).toBeNull()
 
     view.rerender(<SessionNodeItem node={{ ...idle, running: true }} currentId={undefined} now={0}
-      onOpen={vi.fn()} onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} flat t={t} />)
+      onOpen={vi.fn()} onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
     expect(screen.getByText('Flat Session').previousElementSibling?.querySelector('[data-state="ongoing"]')).toBeTruthy()
   })
 
@@ -196,7 +200,7 @@ describe('workspace browser rows', () => {
 
     view.rerender(
       <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen}
-        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} flat t={t} />,
+        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />,
     )
     assertIndicator()
   })
@@ -266,12 +270,14 @@ describe('workspace browser rows', () => {
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
       const row = screen.getByRole('treeitem')
       expect(row.querySelectorAll('[data-state="ongoing"]')).toHaveLength(1)
-      expect(screen.getByText('进行中')).toBeTruthy()
+      // The card cut's cover carries the running chip beside the hidden
+      // reminder label.
+      expect(screen.getAllByText('进行中')).toHaveLength(2)
       expect(screen.getByText('1 个子代理运行中')).toBeTruthy()
 
       fireEvent.pointerEnter(row.parentElement as HTMLElement)
       act(() => { vi.advanceTimersByTime(500) })
-      expect(screen.getAllByText('进行中')).toHaveLength(2)
+      expect(screen.getAllByText('进行中')).toHaveLength(3)
       expect(screen.getAllByText('1 个子代理运行中')).toHaveLength(2)
     } finally {
       vi.useRealTimers()
@@ -499,7 +505,8 @@ describe('workspace browser rows', () => {
       // Card body: full title + relative time + running status.
       expect(screen.getAllByText('Hovered')).toHaveLength(2)
       expect(screen.getByText('1分钟前')).toBeTruthy()
-      expect(screen.getAllByText('进行中')).toHaveLength(2)
+      // Cover chip + hidden reminder + hover-card status line.
+      expect(screen.getAllByText('进行中')).toHaveLength(3)
       fireEvent.pointerLeave(wrapper)
       // Menu open (disabled=true) suppresses the card for the same hover.
       fireEvent.click(screen.getByRole('button', { name: '会话“Hovered”的操作' }))
@@ -622,5 +629,66 @@ describe('workspace browser rows', () => {
         onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} drag={after} t={t} />,
     )
     expect(screen.getByRole('treeitem').className).toMatch(/dropAfter/)
+  })
+})
+
+describe('session card cover', () => {
+  const baseNode: SessionNode = {
+    id: sid('s1'), title: 'Covered', blank: false, running: false,
+    runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
+  }
+
+  it('the hover × archives the session without opening it', () => {
+    const onArchive = vi.fn()
+    const onOpen = vi.fn()
+    const { container } = render(<SessionNodeItem node={baseNode} currentId={undefined} now={0}
+      onOpen={onOpen} onRename={vi.fn()} onFork={vi.fn()} onArchive={onArchive} t={t} />)
+    const deleteButton = container.querySelector('button[aria-label^="删除会话"]') as HTMLButtonElement
+    expect(deleteButton).toBeTruthy()
+    fireEvent.click(deleteButton)
+    expect(onArchive).toHaveBeenCalledWith(baseNode.id)
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+
+  it('sessions without a resolved cover show the bundled default art, not the loaded state', () => {
+    const { container } = render(<SessionNodeItem node={baseNode} currentId={undefined} now={0}
+      onOpen={vi.fn()} onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
+    const cover = container.querySelector('img')
+    expect(cover?.getAttribute('src')).toBe('interknot/images/default-cover-novelai.webp')
+    expect(cover?.className).not.toMatch(/cardCoverImageLoaded/)
+  })
+
+  it('the card cache resolves a cover attachment, fades it in, and releases on unmount', async () => {
+    const acquire = vi.fn().mockResolvedValue('blob:cover-1')
+    const release = vi.fn()
+    const node = { ...baseNode, coverAttachmentId: 'att-1' }
+    const { container, unmount } = render(
+      <SessionNodeItem node={node} currentId={undefined} now={0}
+        onOpen={vi.fn()} onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()}
+        coverCache={{ acquire, release } as never} t={t} />,
+    )
+    await act(async () => {})
+    const cover = container.querySelector('img')
+    expect(acquire).toHaveBeenCalledWith(node.id, 'att-1')
+    expect(cover?.getAttribute('src')).toBe('blob:cover-1')
+    expect(cover?.className).toMatch(/cardCoverImageLoaded/)
+    expect(cover?.style.aspectRatio).toBe('')
+    // Decoding a portrait cover hands its intrinsic ratio to the masonry.
+    Object.defineProperty(cover, 'naturalWidth', { value: 832, configurable: true })
+    Object.defineProperty(cover, 'naturalHeight', { value: 1216, configurable: true })
+    await act(async () => { fireEvent.load(cover as HTMLImageElement) })
+    expect(cover?.style.aspectRatio).toBe('832 / 1216')
+    unmount()
+    expect(release).toHaveBeenCalledWith('att-1')
+  })
+
+  it('a default-art card never adopts the placeholder image ratio', async () => {
+    const { container } = render(<SessionNodeItem node={baseNode} currentId={undefined} now={0}
+      onOpen={vi.fn()} onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />)
+    const cover = container.querySelector('img') as HTMLImageElement
+    Object.defineProperty(cover, 'naturalWidth', { value: 1024, configurable: true })
+    Object.defineProperty(cover, 'naturalHeight', { value: 1024, configurable: true })
+    await act(async () => { fireEvent.load(cover) })
+    expect(cover.style.aspectRatio).toBe('')
   })
 })

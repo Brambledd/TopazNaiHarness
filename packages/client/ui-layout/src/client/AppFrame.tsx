@@ -10,8 +10,9 @@
  * through the three framework shares — zero cordis or framework imports,
  * zero self-made hooks.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { IconChevronLeftOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -23,7 +24,7 @@ import css from './AppFrame.module.css'
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type AppFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'workbench' | 'details' | 'shell.overlay'>
+  & PropsRenderSlots<'sidebar' | 'conversation' | 'workbench' | 'details' | 'shell.feed' | 'shell.overlay'>
   & PropsStore<ReturnType<typeof createLayoutStore>>
   & PropsLocale<'common'>
 
@@ -97,6 +98,9 @@ export function AppFrame({
   t,
 }: AppFrameProps) {
   const panels = useStore(s => s)
+  // The details rail is the conversation's persistent workbench seat: it stays
+  // open across Session switches (the console's state is session-independent).
+  // No-session and blank sessions collapse the track in the column solve below.
   const detailsSession = useSessions((s) => {
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
@@ -107,15 +111,6 @@ export function AppFrame({
   })
   const frameRef = useRef<HTMLDivElement | null>(null)
   const [viewport, setViewport] = useState(() => window.innerWidth)
-
-  const lastSession = useRef(detailsSession)
-  useLayoutEffect(() => {
-    if (detailsSession === undefined) return
-    if (lastSession.current !== undefined && lastSession.current !== detailsSession) {
-      actions.closeDetails()
-    }
-    lastSession.current = detailsSession
-  }, [actions, detailsSession])
 
   // Track the frame's own box (not the window): rAF-throttled ResizeObserver.
   useEffect(() => {
@@ -142,14 +137,20 @@ export function AppFrame({
   // re-expand override, stores.ts). Collapsed is decided here, so the
   // solver stays breakpoint-free: a narrow re-expand passes the preference
   // (or the default when the wide preference is closed) and the center
-  // absorbs the squeeze.
+  // absorbs the squeeze. The feed level force-collapses the sidebar to the
+  // rail (the InterKnot feed owns the screen) with its own manual override.
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
   useEffect(() => { actions.setNarrow(narrow) }, [actions, narrow])
-  const sidebarCollapsed = narrow ? !panels.narrowExpanded : panels.sidebar === 0
+  const onFeed = panels.sessionView === 'feed'
+  const sidebarCollapsed = onFeed
+    ? !panels.feedExpanded
+    : (narrow ? !panels.narrowExpanded : panels.sidebar === 0)
   const sidebarPreference = sidebarCollapsed
     ? 0
     : panels.sidebar === 0 ? SIDEBAR_DEFAULT : panels.sidebar
-  const cols = computeColumns(viewport, sidebarPreference, detailsSession === undefined ? 0 : panels.details)
+  // The feed level owns the whole screen (its solve drops the details track);
+  // no session or a blank session collapses the rail the same way.
+  const cols = computeColumns(viewport, sidebarPreference, onFeed || detailsSession === undefined ? 0 : panels.details)
   const colsRef = useRef(cols)
   colsRef.current = cols
 
@@ -190,26 +191,47 @@ export function AppFrame({
             sidebar keeps the mounted slot at the compact-rail width, and the
             component sees its rendered state as owner params decided here
             (collapsed follows the resolved rail, so a derived auto-collapse
-            renders the rail UI too). The active view mode rides along: the
-            sidebar's foot seats relay it to mode-switch occupants. */}
+            renders the rail UI too). The active view mode and navigation
+            level ride along: the sidebar's foot seats relay them to
+            mode-switch occupants. */}
         {renderSlot('sidebar', {
           collapsed: sidebarCollapsed,
           width: cols.sidebar,
           viewMode: panels.viewMode,
+          sessionView: panels.sessionView,
         })}
       </div>
       <>
-        {/* Both center occupants stay at fixed tree positions from first
-            paint and remain mounted across mode switches (the inactive pane
-            is display:none, so a switch never remounts the conversation).
-            The conversation is session-maybe; SessionProvider withholds the
-            strict details entry while no session is current. The workbench
-            pane receives the live mode as its owner share. */}
+        {/* Every center occupant stays at a fixed tree position from first
+            paint and remains mounted across surface switches (the inactive
+            pane is display:none, so a switch never remounts the
+            conversation). The feed pane is the outermost level and gates the
+            other two: the entered conversation/workbench panes show only
+            after card activation (enterSession) and return via the feed back
+            bar (exitToFeed). The conversation is session-maybe;
+            SessionProvider withholds the strict details entry while no
+            session is current. The workbench pane receives the live mode as
+            its owner share. */}
         <CenterColumn>
-          <div className={panels.viewMode === 'conversation' ? css.centerPane : css.centerPaneHidden}>
-            {renderSlot('conversation', {})}
+          <div className={onFeed ? css.centerPane : css.centerPaneHidden}>
+            {renderSlot('shell.feed', {})}
           </div>
-          <div className={panels.viewMode === 'workbench' ? css.centerPane : css.centerPaneHidden}>
+          <div className={!onFeed && panels.viewMode === 'conversation' ? css.centerPane : css.centerPaneHidden}>
+            <div className={css.backBar}>
+              <button
+                type="button"
+                className={css.backButton}
+                aria-label={t('feed.backToList')}
+                onClick={() => { actions.exitToFeed() }}
+              >
+                <IconChevronLeftOutline14 size={14} />
+                <span>{t('feed.backToList')}</span>
+              </button>
+              {documentTitle !== undefined && <span className={css.backTitle}>{documentTitle}</span>}
+            </div>
+            <div className={css.paneBody}>{renderSlot('conversation', {})}</div>
+          </div>
+          <div className={!onFeed && panels.viewMode === 'workbench' ? css.centerPane : css.centerPaneHidden}>
             {renderSlot('workbench', { mode: panels.viewMode })}
           </div>
         </CenterColumn>

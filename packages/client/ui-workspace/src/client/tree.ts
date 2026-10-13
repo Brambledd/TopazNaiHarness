@@ -11,6 +11,8 @@ import type {
   SessionPendingInteractionBase,
 } from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-schedule/client'
+// Type-only: pulls the 'novelai/latestImage' SessionProjectionMap augmentation.
+import type {} from '@deepseek-ai/dsh-tool-novelai/projection'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
 import {
@@ -41,6 +43,8 @@ export interface SessionNode {
   /** The current list projection contains at least one active Schedule record. */
   hasActiveSchedule: boolean
   updatedAt: number
+  /** Durable id of the session's latest NovelAI-generated image, when the host projection has one. */
+  coverAttachmentId?: string
 }
 
 /** Session order selected by the Workspace browser. */
@@ -247,6 +251,7 @@ function sessionNode(
   pendingInteractions: SessionPendingInteractions,
 ): SessionNode {
   const pendingInteraction = visiblePendingKind(pendingInteractions.get(s.id)?.kind)
+  const latestImage = s.projectionValues?.['novelai/latestImage']
   return {
     id: s.id,
     title: sessionTitle(s),
@@ -257,6 +262,9 @@ function sessionNode(
     hasActiveSchedule: hasActiveSchedule(s),
     updatedAt: s.updatedAt,
     ...(pendingInteraction === undefined ? {} : { pendingInteraction }),
+    ...(latestImage === undefined || latestImage === null
+      ? {}
+      : { coverAttachmentId: latestImage.attachmentId }),
   }
 }
 

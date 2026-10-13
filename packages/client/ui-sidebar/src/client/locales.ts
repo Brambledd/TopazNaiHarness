@@ -6,6 +6,7 @@ export const zh = {
   'session.new.label': '新建会话',
   'toggle.open': '打开侧边栏',
   'toggle.collapse': '收起侧边栏',
+  'mode.feed': '列表',
   'mode.conversation': '对话',
   'mode.workbench': '创作台',
 } satisfies Record<string, string>
@@ -19,6 +20,7 @@ export const en = {
   'session.new.label': 'New session',
   'toggle.open': 'Open sidebar',
   'toggle.collapse': 'Collapse sidebar',
+  'mode.feed': 'Feed',
   'mode.conversation': 'Chat',
   'mode.workbench': 'Studio',
 } satisfies Record<SidebarKey, string>

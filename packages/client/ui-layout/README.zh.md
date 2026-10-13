@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 root 槽位挂载本插件；它随即围绕占据侧栏、会话与详情栏的内容渲染应用框架。用户拖动不可见命中条带缩放侧栏、拖动浮动胶囊缩放详情面板；窗口变窄时只有详情栏收缩，随后自动关闭。关闭的侧栏保留 56px 控制栏；详情栏关闭到零宽度。
+在 root 槽位挂载本插件；它随即围绕占据侧栏与中央各栏的内容渲染应用框架。最外层是 feed 级别：frame 启动在 feed 上，显示 `shell.feed` 的占位组件（会话封面卡片墙），侧栏强制收起为控制栏，且在主动激活会话级别之前看不到任何对话详情。进入（`ctx.layout.enterSession`，由卡片的 open 动作接线）会显露中央各栏及其两个视图模式——对话与创作台——经 `ctx.layout.setViewMode` 切换；feed 与两个中央占位组件都在门后持续挂载，因此导航从不重挂对话，对话 pane 上方带有返回条，其按钮回到 feed（`exitToFeed`）。用户拖动不可见命中条带缩放侧栏、拖动浮动胶囊缩放详情面板；窗口变窄时只有详情栏收缩，随后自动关闭。关闭的侧栏保留 56px 控制栏；详情栏关闭到零宽度。
 
 ### 主题呈现
 
@@ -39,7 +39,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-一次 `register()` 调用把 `AppFrame` 贡献进运行时的内建 `'root'` 槽位，并在同一刻声明四个子槽位（`sidebar`、`conversation`、`details`、`shell.overlay`）、安放布局 store（面板几何）并接好 `ctx.layout` 面板动作服务。瞬时布局 store 以默认宽度启动侧栏、保持详情栏关闭，从不读写 `localStorage`。AppFrame 始终挂载会话与详情两栏；已连接 Session 经 `SessionProvider` 渲染。它把所选 Session 标题投影到构建配置的产品标题或本地化 `common.brand.localBuild` 回退值之上，因此 locale revision 会随根 entry 一起更新文档元数据。主题呈现器是第二个 effect：从解析后的快照做纯 DOM 写入——初始状态经 getter 读取一次，此后仅事件驱动，不经过 React。它先应用调色板、字号与 token 变量，再把渲染出的背景测量为唯一的颜色依据。
+一次 `register()` 调用把 `AppFrame` 贡献进运行时的内建 `'root'` 槽位，并在同一刻声明六个子槽位（`sidebar`、`shell.feed`、`conversation`、`workbench`、`details`、`shell.overlay`）、安放布局 store（面板几何、活跃中央 `viewMode` 与两级 `sessionView` 门控）并接好 `ctx.layout` 面板动作服务（含 `setViewMode`、`enterSession` 与 `exitToFeed`）。瞬时布局 store 以默认宽度启动侧栏、保持详情栏关闭、停在对话模式与 feed 级别，从不读写 `localStorage`。AppFrame 始终挂载 feed、对话、创作台与详情四栏；隐藏 pane 用 `display:none` 而非卸载，侧栏 owner props 把实时 `viewMode` 与 `sessionView` 转继给模式切换座位。已连接 Session 经 `SessionProvider` 渲染。它把所选 Session 标题投影到构建配置的产品标题或本地化 `common.brand.localBuild` 回退值之上，因此 locale revision 会随根 entry 一起更新文档元数据；对话 pane 的返回条把同一标题显示在返回按钮上方。主题呈现器是第二个 effect：从解析后的快照做纯 DOM 写入——初始状态经 getter 读取一次，此后仅事件驱动，不经过 React。它先应用调色板、字号与 token 变量，再把渲染出的背景测量为唯一的颜色依据。
 
 </details>
 

@@ -1,7 +1,7 @@
 /**
  * Layout plugin, browser half: one register() call contributes AppFrame into
  * the runtime's built-in 'root' slot and, in the same breath, declares the
- * four child slots (declaration = exclusive render authority), seats the
+ * five child slots (declaration = exclusive render authority), seats the
  * layout store (panel geometry), and wires the panel-action service face.
  * ctx.layout is the cross-plugin panel-action contract; navigation state lives
  * with the runtime sessions service. A second effect seats the theme
@@ -15,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type { PanelActions } from './service.ts'
 import { AppFrame } from './AppFrame.tsx'
 import { createLayoutStore } from './stores.ts'
-import type { ViewMode } from './stores.ts'
+import type { SessionView, ViewMode } from './stores.ts'
 import { LayoutController } from './service.ts'
 import { ThemePresenter } from './theme-presenter.ts'
 
@@ -28,7 +28,7 @@ import { ThemePresenter } from './theme-presenter.ts'
 // factory are package-internal.
 export { LayoutController } from './service.ts'
 export type { ILayout } from './service.ts'
-export type { ViewMode } from './stores.ts'
+export type { SessionView, ViewMode } from './stores.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -77,6 +77,18 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'workbench': { kind: 'single'; scope: 'root'; owner: WorkbenchOwnerProps }
     /**
+     * The feed level's center surface: the InterKnot-style session-card wall
+     * — the app's outermost view, rendered whenever the layout store's
+     * `sessionView` is 'feed' (the boot state). Card activation enters the
+     * conversation/workbench level through `ctx.layout.enterSession()`; the
+     * frame's feed back bar returns. OCCUPIED by ui-workspace's feed wall;
+     * registering here replaces the whole wall.
+     *
+     * No owner props: the wall derives every fact from the framework's
+     * global sessions hooks and its own inject face.
+     */
+    'shell.feed': { kind: 'single'; scope: 'root'; owner: FeedOwnerProps }
+    /**
      * The right details column, shown when the layout opens it. OCCUPIED by
      * ui-conversation's DetailsPanel, which declares the tool-details seat
      * inside it — registering here replaces the column and takes that seat
@@ -114,6 +126,8 @@ export interface SidebarOwnerProps {
   width: number
   /** The frame's active center surface, relayed to mode-switch seats. */
   viewMode: ViewMode
+  /** The frame's navigation level, relayed to the mode-switch seats. */
+  sessionView: SessionView
 }
 
 /** Conversation owner share: business state and actions belong to the registrant. */
@@ -128,6 +142,9 @@ export interface WorkbenchOwnerProps {
   mode: ViewMode
 }
 
+/** Empty owner share for the feed wall — everything arrives through hooks and inject. */
+export interface FeedOwnerProps {}
+
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
 export interface DetailsOwnerProps {}
 
@@ -136,7 +153,7 @@ export const inject = ['slots', 'theme', 'locale']
 
 /**
  * Client plugin body: provide ctx.layout, then one register() call — AppFrame
- * into 'root' with the four child-slot declarations, the layout store seat,
+ * into 'root' with the five child-slot declarations, the layout store seat,
  * and the inject hook that hands the store's bound actions to the service.
  * @param ctx - client root context.
  */
@@ -152,6 +169,7 @@ export function apply(ctx: ClientContext): void {
         'conversation': { kind: 'single', scope: 'session-maybe' },
         'workbench': { kind: 'single', scope: 'root' },
         'details': { kind: 'single', scope: 'session' },
+        'shell.feed': { kind: 'single', scope: 'root' },
         'shell.overlay': { kind: 'list', scope: 'root' },
       },
       // Exclusive store: the factory itself — the framework instantiates per

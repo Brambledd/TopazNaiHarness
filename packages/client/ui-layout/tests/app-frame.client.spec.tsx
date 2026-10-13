@@ -15,7 +15,7 @@ import { act, cleanup, render } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import { AppFrame } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
 import type { AppFrameProps } from '@deepseek-ai/dsh-client-ui-layout/src/client/AppFrame.tsx'
-import { SIDEBAR_COLLAPSED } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
+import { SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 import { createLayoutStore } from '@deepseek-ai/dsh-client-ui-layout/src/client/stores.ts'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -54,15 +54,20 @@ function hookOf<T>(inst: { subscribe: (fn: () => void) => () => void; getSnapsho
   return function useSelector<S>(sel: (s: T) => S): S { return sel(useSyncExternalStore(inst.subscribe, inst.getSnapshot)) }
 }
 
-function mountFrame() {
+function mountFrame({ entered = true }: { entered?: boolean } = {}) {
   window.innerWidth = frameWidth // first-render viewport source before the observer fires
   const instance = createLayoutStore().create()
+  // The frame boots on the feed level; the geometry/drag suites exercise the
+  // entered level (the conversation/workbench center), so most tests enter
+  // through the store's own action before mounting.
+  if (entered) instance.actions.enterSession()
   const slotCalls: { key: string; props: unknown }[] = []
   const renderSlot = ((key: string, owner: object) => {
     slotCalls.push({ key, props: owner })
     if (key === 'sidebar') return <div data-testid="sidebar-content" />
     if (key === 'conversation') return <div data-testid="center-content" />
     if (key === 'details') return <div data-testid="details-content" />
+    if (key === 'shell.feed') return <div data-testid="feed-content" />
     if (key === 'conversation.empty') return <div data-testid="empty-content" />
     return <div data-testid="other-content" />
   }) as AppFrameProps['renderSlot']
@@ -175,7 +180,8 @@ describe('AppFrame', () => {
 
   it('renders three tracks from store state', () => {
     const { frame } = mountFrame()
-    expect(tracks(frame)).toEqual([280, 0])
+    // Entry opens the workbench rail with the conversation (stores.ts).
+    expect(tracks(frame)).toEqual([280, 380])
   })
 
   it('renders the session pair with empty owner shares (sessionId is framework-standard)', () => {
@@ -210,65 +216,69 @@ describe('AppFrame', () => {
     expect(slotCalls.map(c => c.key)).toContain('details')
   })
 
-  it('ignores unselected states and closes only when the Session id changes', () => {
+  it('keeps the rail open across Session switches; blank and absent sessions collapse the track only', () => {
     const { frame, instance, rerenderFrame } = mountFrame()
-    expect(tracks(frame)).toEqual([280, 0])
+    expect(tracks(frame)).toEqual([280, 380])
 
     act(() => { instance.actions.openDetails() })
-    expect(tracks(frame)).toEqual([280, 360])
+    expect(tracks(frame)).toEqual([280, 380])
 
+    // The rail is the persistent workbench seat: a Session switch keeps it.
     selectedSession.current = 's-next' as SessionId
     act(() => { rerenderFrame() })
-    expect(tracks(frame)).toEqual([280, 0])
+    expect(tracks(frame)).toEqual([280, 380])
 
-    act(() => { instance.actions.openDetails() })
+    // A blank (provisional) session collapses the track; the store stays open.
     selectedSession.current = 's-blank' as SessionId
     selectedSessionBlank.current = true
     act(() => { rerenderFrame() })
     expect(tracks(frame)).toEqual([280, 0])
-    expect(instance.getSnapshot().details).toBe(360)
+    expect(instance.getSnapshot().details).toBe(380)
 
     selectedSession.current = 's-next' as SessionId
     selectedSessionBlank.current = false
     act(() => { rerenderFrame() })
-    expect(tracks(frame)).toEqual([280, 360])
+    expect(tracks(frame)).toEqual([280, 380])
 
+    // No session collapses the track too; a returning session restores it.
     selectedSession.current = undefined
     act(() => { rerenderFrame() })
     expect(tracks(frame)).toEqual([280, 0])
     selectedSession.current = 's-test' as SessionId
     act(() => { rerenderFrame() })
-    expect(tracks(frame)).toEqual([280, 0])
+    expect(tracks(frame)).toEqual([280, 380])
   })
 
-  it('keeps details closed when the first Session materializes', () => {
+  it('arms the rail at entry; the track appears when the first Session materializes', () => {
     selectedSession.current = undefined
     const { frame, instance, rerenderFrame } = mountFrame()
     expect(tracks(frame)).toEqual([280, 0])
-    expect(instance.getSnapshot().details).toBe(0)
+    expect(instance.getSnapshot().details).toBe(380)
 
     selectedSession.current = 's-first' as SessionId
     act(() => { rerenderFrame() })
-    expect(tracks(frame)).toEqual([280, 0])
+    expect(tracks(frame)).toEqual([280, 380])
   })
 
   it('sidebar slot receives live concession output as owner props', () => {
     const { slotCalls } = mountFrame()
-    expect(slotCalls.find(c => c.key === 'sidebar')!.props).toEqual({ collapsed: false, width: 280, viewMode: 'conversation' })
+    expect(slotCalls.find(c => c.key === 'sidebar')!.props).toEqual({ collapsed: false, width: 280, viewMode: 'conversation', sessionView: 'entered' })
   })
 
-  it('keeps both center panes mounted and switches visibility by the store mode', () => {
+  it('keeps every center pane mounted and switches visibility by level and mode', () => {
     const { frame, instance, slotCalls, rerenderFrame } = mountFrame()
     const panes = frame.querySelectorAll('[class*="centerPane"]')
-    expect(panes).toHaveLength(2)
+    expect(panes).toHaveLength(3)
     expect(slotCalls.map(c => c.key)).toContain('workbench')
     expect(slotCalls.find(c => c.key === 'workbench')!.props).toEqual({ mode: 'conversation' })
-    expect(panes[0]!.className).not.toContain('Hidden')
-    expect(panes[1]!.className).toContain('Hidden')
-    act(() => { instance.actions.setViewMode('workbench') })
-    rerenderFrame()
+    // Entered level, conversation mode: feed and workbench hidden.
     expect(panes[0]!.className).toContain('Hidden')
     expect(panes[1]!.className).not.toContain('Hidden')
+    expect(panes[2]!.className).toContain('Hidden')
+    act(() => { instance.actions.setViewMode('workbench') })
+    rerenderFrame()
+    expect(panes[1]!.className).toContain('Hidden')
+    expect(panes[2]!.className).not.toContain('Hidden')
     expect(slotCalls.filter(c => c.key === 'workbench').at(-1)!.props).toEqual({ mode: 'workbench' })
   })
 
@@ -284,7 +294,7 @@ describe('AppFrame', () => {
     act(() => { instance.actions.openDetails() })
     const handles = frame.querySelectorAll('[class*="handle"]')
     drag(handles[1]!, 1560, 1500)
-    expect(tracks(frame)[1]).toBe(420)
+    expect(tracks(frame)[1]).toBe(440)
   })
 
   it('drag base is the rendered (concession-clamped) width, not the preference', () => {
@@ -298,7 +308,8 @@ describe('AppFrame', () => {
   })
 
   it('details column stays mounted at zero width', () => {
-    const { frame, getByTestId } = mountFrame()
+    const { frame, instance, getByTestId } = mountFrame()
+    act(() => { instance.actions.closeDetails() })
     expect(tracks(frame)).toEqual([280, 0])
     expect(getByTestId('details-content')).toBeTruthy()
     expect(frame.hasAttribute('data-details-collapsed')).toBe(true)
@@ -307,11 +318,11 @@ describe('AppFrame', () => {
   it('closed sidebar keeps its compact rail with mounted slot content and collapsed owner props', () => {
     const { frame, instance, slotCalls, getByTestId } = mountFrame()
     act(() => { instance.actions.toggleSidebar() })
-    expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
+    expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 380])
     expect(getByTestId('sidebar-content')).toBeTruthy()
     expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
     const lastSidebarCall = slotCalls.filter(c => c.key === 'sidebar').at(-1)!
-    expect(lastSidebarCall.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED, viewMode: 'conversation' })
+    expect(lastSidebarCall.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED, viewMode: 'conversation', sessionView: 'entered' })
   })
 
   it('viewport shrink triggers the concession chain via ResizeObserver', () => {
@@ -322,13 +333,12 @@ describe('AppFrame', () => {
     expect(tracks(frame)).toEqual([280, 330])
     frameWidth = 1920
     act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
-    expect(tracks(frame)).toEqual([280, 360])
+    expect(tracks(frame)).toEqual([280, 380])
   })
 
   it('drag handles disappear for collapsed columns', () => {
     const { frame, instance } = mountFrame()
-    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
-    act(() => { instance.actions.openDetails() })
+    // Entry opened the rail: both handles render.
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(2)
     act(() => { instance.actions.closeDetails() })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
@@ -343,7 +353,7 @@ describe('AppFrame — narrow-viewport auto-collapse', () => {
     const { frame, slotCalls } = mountFrame()
     expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
     expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
-    expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED, viewMode: 'conversation' })
+    expect(slotCalls.filter(c => c.key === 'sidebar').at(-1)!.props).toEqual({ collapsed: true, width: SIDEBAR_COLLAPSED, viewMode: 'conversation', sessionView: 'entered' })
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
   })
 
@@ -377,7 +387,69 @@ describe('AppFrame — narrow-viewport auto-collapse', () => {
     expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
     frameWidth = 1920
     act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
-    expect(tracks(frame)).toEqual([400, 0])
+    // Re-widening restores the drag width and the open rail.
+    expect(tracks(frame)).toEqual([400, 380])
+  })
+})
+
+describe('AppFrame — feed level (the outermost surface)', () => {
+  it('boots on the feed: the feed pane shows, the sidebar force-collapses to its rail, the conversation stays mounted but hidden', () => {
+    const { frame, instance, slotCalls, getByTestId } = mountFrame({ entered: false })
+    expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
+    expect(frame.hasAttribute('data-sidebar-collapsed')).toBe(true)
+    expect(instance.getSnapshot().sessionView).toBe('feed')
+    expect(getByTestId('feed-content')).toBeTruthy()
+    expect(slotCalls.find(c => c.key === 'shell.feed')).toBeDefined()
+    // The entered panes stay mounted behind the gate (no conversation remount on enter).
+    expect(getByTestId('center-content')).toBeTruthy()
+    const panes = frame.querySelectorAll('[class*="centerPane"]')
+    expect(panes[0]!.className).not.toContain('Hidden')
+    expect(panes[1]!.className).toContain('Hidden')
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+  })
+
+  it('enterSession swaps to the conversation pane, restores the sidebar, and renders the feed back bar', () => {
+    const { frame, instance, getByTestId } = mountFrame({ entered: false })
+    act(() => { instance.actions.enterSession() })
+    // Entry restores the sidebar and opens the workbench rail.
+    expect(tracks(frame)).toEqual([280, 380])
+    const panes = frame.querySelectorAll('[class*="centerPane"]')
+    expect(panes[0]!.className).toContain('Hidden')
+    expect(panes[1]!.className).not.toContain('Hidden')
+    const backBar = frame.querySelector('[class*="backBar"]')
+    expect(backBar).not.toBeNull()
+    expect(getByTestId('center-content')).toBeTruthy()
+  })
+
+  it('the back bar exits to the feed', () => {
+    const { frame, instance } = mountFrame({ entered: false })
+    act(() => { instance.actions.enterSession() })
+    const backButton = frame.querySelector('[class*="backButton"]') as HTMLButtonElement
+    expect(backButton).not.toBeNull()
+    act(() => { backButton.click() })
+    expect(instance.getSnapshot().sessionView).toBe('feed')
+    expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
+    // The conversation pane stays mounted behind the gate (hidden, not unmounted).
+    const panes = frame.querySelectorAll('[class*="centerPane"]')
+    expect(panes[0]!.className).not.toContain('Hidden')
+    expect(panes[1]!.className).toContain('Hidden')
+  })
+
+  it('the feed-level sidebar toggle flips the feed expansion override, not the width preference', () => {
+    const { frame, instance } = mountFrame({ entered: false })
+    act(() => { instance.actions.toggleSidebar() })
+    expect(tracks(frame)).toEqual([280, 0])
+    expect(instance.getSnapshot().sidebar).toBe(SIDEBAR_DEFAULT) // preference untouched
+    act(() => { instance.actions.toggleSidebar() })
+    expect(tracks(frame)).toEqual([SIDEBAR_COLLAPSED, 0])
+  })
+
+  it('enterSession drops the feed expansion override', () => {
+    const { instance } = mountFrame({ entered: false })
+    act(() => { instance.actions.toggleSidebar() })
+    expect(instance.getSnapshot().feedExpanded).toBe(true)
+    act(() => { instance.actions.enterSession() })
+    expect(instance.getSnapshot()).toMatchObject({ sessionView: 'entered', feedExpanded: false })
   })
 })
 
@@ -427,7 +499,7 @@ describe('AppFrame — guard branches', () => {
     frameWidth = 0
     act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
     // Track template still reflects the last non-zero viewport.
-    expect(tracks(frame)).toEqual([280, 0])
+    expect(tracks(frame)).toEqual([280, 380])
   })
 })
 

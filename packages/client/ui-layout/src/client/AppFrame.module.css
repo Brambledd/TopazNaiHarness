@@ -5,6 +5,9 @@
   height: 100%;
   overflow: hidden;
   background: var(--dsw-alias-bg-base);
+  /* ZZZ skin: the diagonal hatch rides the app base like the zenless
+   * menu/backdrop texture. */
+  background-image: var(--dsw-zzz-pattern-stripes);
   /* Collapse/expand animates the tracks on the deepsuite sider curve
      (--ds-ease-in-out / --ds-transition-duration-slow, ui-theme base.css). */
   transition: grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);
@@ -26,7 +29,7 @@
   min-width: 0;
   overflow: hidden;
   background: var(--dsw-specific-sidebar-fill);
-  border-right: 1px solid var(--dsw-alias-border-l1);
+  border-right: 1px solid var(--dsw-alias-border-l3);
 }
 
 .centerCol {
@@ -52,6 +55,61 @@
   display: none;
 }
 
+/* The conversation pane's InterKnot post-header: back to the feed plus the
+ * current session title. Sits above the conversation body only on the
+ * entered level. */
+.backBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l3);
+  background: var(--dsw-specific-menu);
+}
+
+.backButton {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 8px;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.backButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.backTitle {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The conversation body under the back bar: the constraints its pane
+ * previously gave the conversation root directly. */
+.paneBody {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .detailsCol {
   min-width: 0;
   overflow: hidden;
@@ -73,7 +131,8 @@
   bottom: 0;
   width: 8px;
   margin-left: -4px;
-  cursor: col-resize;
+  /* ZZZ skin: the game's horizontal-resize cursor (InterKnot cursor set). */
+  cursor: var(--dsw-zzz-cursor-col-resize) !important;
   z-index: 2;
   touch-action: none;
   /* Rides the same curve as the tracks so the pill stays on the moving

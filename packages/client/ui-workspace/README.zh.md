@@ -43,11 +43,19 @@ Session 行内的 Rename 操作打开一个以该行显示标题预填的对话�
 
 Session 行渲染运行时的实时 `pendingInteraction` 分类：审批显示**等待审批**，计划审阅显示**计划待审**，普通问题显示**等待回答**。每个待处理交互都使用一枚琥珀色警告点，优先级高于运行指示器。
 
+### 会话封面卡
+
+分组与平铺 Session 行渲染为 InterKnot 风格的封面卡：3px 状态色外框（悬停为 lime、选中为 yellow）包裹一张 1.576 比例的封面图，元信息行含标题、状态点、Schedule 标识与更新时间，运行中标签钉在封面下缘。封面展示该会话最新一次 NovelAI 生成结果：`novelai/latestImage` 投影给出附件 id，客户端经 `readSessionAttachment` 解析（一次经会话日志授权的读取——只有会话事件引用过的附件才会解析成功），由有界 cover cache 把字节转为 object URL，并对失败读取做负缓存。没有生成记录的会话——包括投影重算前的所有 cold session——显示内置默认封面。封面最终一致：数值在会话投影重算时更新，而非生成时刻。
+
 ### 活动 Schedule 标识
 
 分组与平铺 Session 行以及搜索结果会在 `SessionSummary.projectionValues.schedule` 为非空数组时显示一枚轮廓闹钟。标识位于标题之后；普通行的更新时间仍位于标识之后，搜索结果则没有更新时间。它不是按钮，没有独立 pointer 行为或 Tab stop，点击所在区域仍会打开整行。本地化 tooltip 与同义读屏标签均为**有活动定时任务**。
 
 对于 cold Session，该值有意采用尽力而为语义。身份匹配且可用的 projection-cache 行可以在不打开 Session 的情况下预热闹钟；cache 缺失或陈旧可能造成短暂漏显或残留。标识只表示当前列表值包含尚未 dispatch 或 delete 的 Schedule 记录，不表示 Schedule runtime 当前 live 或能够唤醒该 Session。
+
+### Feed 墙
+
+本包还占据 frame 的 `shell.feed` 槽位——进入任何 Session 之前显示的最外层界面。这面墙复用平铺浏览派生（最新在前，过滤已归档与 subagent 来源行，隐藏空白临时行），以瀑布流渲染同样的封面卡片：卡片放入当前最矮的列（行优先，最新的在左上），几何参数沿用 VirtualMasonry（约 240px 列宽、16px 间距、2–6 列），实测卡高驱动重排。卡片标题以品牌蓝为锚点，空白临时行保持灰色。激活卡片委托给共享的 Session open 动作，其 apply 侧闭包同时进入会话级别。这面墙自身不持有任何 Workspace 分组、排序或搜索状态：它们属于侧边栏浏览器，feed 只是一个只读启动器。
 
 -----
 
@@ -57,7 +65,7 @@ Session 行渲染运行时的实时 `pendingInteraction` 分类：审批显示**
 <details>
 <summary>实现细节——点击展开</summary>
 
-本包是一条组合：两个目标 slot 都由其他插件声明，因此 `apply` 使用 `slots.inject()` 在各自的声明生命周期内完成注册，并在目标 slot 的声明恢复后重新注册。
+本包是一条组合：每个目标 slot——两个侧边栏空洞、hero 选择器以及 frame 的 `shell.feed`——都由其他插件声明，因此 `apply` 使用 `slots.inject()` 在各自的声明生命周期内完成注册，并在目标 slot 的声明恢复后重新注册。同一个 apply 闭包还持有 Session 激活：它的 `open`/`startSession` 委托先选中 Session 再调用 `layout.enterSession()`，`forkSession` 在子会话打开后同样两步，因此卡片与行的激活无论在哪里渲染都落在已进入级别。
 
 ### 目录流子 slot
 

@@ -66,6 +66,13 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
       role="group"
     >
       <button
+        aria-pressed="false"
+        class="iconButton"
+        type="button"
+      >
+        F
+      </button>
+      <button
         aria-pressed="true"
         class="iconButton"
         type="button"
@@ -216,6 +223,13 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
       role="group"
     >
       <button
+        aria-pressed="false"
+        class="iconButton"
+        type="button"
+      >
+        Feed
+      </button>
+      <button
         aria-pressed="true"
         class="iconButton"
         type="button"
@@ -365,6 +379,13 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
       class="newSession"
       role="group"
     >
+      <button
+        aria-pressed="false"
+        class="iconButton"
+        type="button"
+      >
+        列表
+      </button>
       <button
         aria-pressed="true"
         class="iconButton"

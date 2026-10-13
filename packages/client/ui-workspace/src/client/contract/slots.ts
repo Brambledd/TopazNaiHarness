@@ -31,6 +31,7 @@ import type { SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-contr
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { CoverCache } from '../cover-cache.ts'
 import type { createWorkspaceViewStore } from '../stores.ts'
 
 /**
@@ -119,6 +120,13 @@ export type WorkspaceBrowserInjected = {
   renameSession: (sessionId: SessionId, title: string) => Promise<void>
   /** Fork a Session at its last completed turn and open the child. */
   forkSession: (sessionId: SessionId) => void
+  /**
+   * Session-card cover cache over the list-level Host attachment read: the
+   * Host authorizes each read against the session's log, so only genuinely
+   * referenced attachments resolve. Cards acquire on mount and release on
+   * unmount; the cache dedupes, bounds, and revokes the object URLs.
+   */
+  coverCache: CoverCache
   /** Rename a Host Workspace (rejects on name conflict; resolves on durability). */
   renameWorkspace: (workspaceId: WorkspaceId, title: string) => Promise<void>
   /** Delete only a Host Workspace registration; directory and Session logs remain. */

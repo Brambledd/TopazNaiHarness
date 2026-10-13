@@ -43,9 +43,18 @@ export function apply(ctx: ClientContext): void {
   const injectProps = (): SidebarRootInjected => ({
     // The shell's New Session button rides the Workspace UI's shared action
     // (current Session Workspace, then recent Workspace).
-    startSession: (workspaceId) => { workspaceNavigation.startSession(workspaceId) },
+    startSession: (workspaceId) => {
+      workspaceNavigation.startSession(workspaceId)
+      // A started session is the user's explicit destination: land on the
+      // conversation surface and enter the session level (the store opens the
+      // workbench rail with it).
+      ctx.layout.setViewMode('conversation')
+      ctx.layout.enterSession()
+    },
     toggleSidebar: () => { ctx.layout.toggleSidebar() },
     setViewMode: (mode) => { ctx.layout.setViewMode(mode) },
+    exitToFeed: () => { ctx.layout.exitToFeed() },
+    enterSession: () => { ctx.layout.enterSession() },
   })
   ctx.effect(
     () => ctx.slots.register({

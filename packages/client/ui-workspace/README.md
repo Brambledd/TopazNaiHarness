@@ -43,11 +43,19 @@ The Session row's Rename action opens a dialog prefilled with the row's display 
 
 Session rows render the runtime's live `pendingInteraction` classification: approvals report **Waiting for approval**, plan reviews report **Plan awaiting review**, and ordinary questions report **Waiting for answer**. Every pending interaction uses an amber warning dot that takes precedence over the running indicator.
 
+### Session cover cards
+
+Grouped and flat Session rows render as InterKnot-style cover cards: a 3px state-colored frame (lime on hover, yellow while selected) around a 1.576 cover image, a meta line with title, status dot, schedule marker, and update time, and a running chip pinned to the cover's lower edge. The cover serves the session's latest NovelAI generation: the `novelai/latestImage` projection reports the attachment id, the client resolves it through `readSessionAttachment` (a session-log-authorized read — only attachments referenced by the session's events resolve), and a bounded cover cache turns the bytes into object URLs with negative caching for failed reads. Sessions without a generation — including every cold session before its projections recompute — show the bundled default art. Covers are eventually consistent: the value updates when the session's projections recompute, not at generation time.
+
 ### Active Schedule markers
 
 Grouped and flat Session rows, plus search results, show an outline alarm when `SessionSummary.projectionValues.schedule` is a non-empty array. The marker sits after the title; an ordinary row keeps its update time after the marker, while a search result has no update time. It is not a button, has no independent pointer action or tab stop, and clicking its area still opens the row. The localized tooltip and matching screen-reader label say **Has active scheduled task**.
 
 The value is intentionally best effort for cold Sessions. An identity-matching usable projection-cache row can prewarm the alarm without opening the Session; a missing or stale cache may briefly omit or retain it. The marker means only that the current list value contains an undispatched or undeleted Schedule record. It does not report whether a Schedule runtime is live or able to wake the Session.
+
+### Feed wall
+
+The package also occupies the frame's `shell.feed` slot — the outermost surface shown before any Session is entered. The wall reuses the flat browsing derivation (newest first, blank provisional rows hidden, archived and subagent-origin rows filtered) and renders the same cover cards in a masonry: cards place into the currently shortest column (row-major, newest top-left) over VirtualMasonry's geometry (~240px columns, 16px gap, 2–6 columns), measured card heights driving re-placement. Card titles carry the brand-blue anchor; blank provisional rows stay gray. Activating a card delegates to the shared Session-open action, whose apply-site closure also enters the session level. The wall carries no Workspace grouping, ordering, or search state of its own: those live on the sidebar browser, and the feed is a read-only launcher.
 
 -----
 
@@ -57,7 +65,7 @@ The value is intentionally best effort for cold Sessions. An identity-matching u
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The package is one composition: both target slots are declared by other plugins, so `apply` uses `slots.inject()` to register for each declaration lifetime and re-register after a declaring slot is restored.
+The package is one composition: every target slot — the two sidebar holes, the hero picker, and the frame's `shell.feed` — is declared by other plugins, so `apply` uses `slots.inject()` to register for each declaration lifetime and re-register after a declaring slot is restored. The same apply closure owns Session activation: its `open`/`startSession` delegates select the Session and then call `layout.enterSession()`, and `forkSession` does both once the child opens, so card and row activation land on the entered level wherever they render.
 
 ### The directory-flow hole
 

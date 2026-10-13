@@ -9,6 +9,69 @@
   padding: 16px;
 }
 
+/* Rail cut (the conversation's right seat): the stage lives in the
+   conversation's own image cards, so the control column takes the width.
+   The rail rides the InterKnot point-tile console backdrop. */
+.railWrap {
+  height: 100%;
+  min-height: 0;
+}
+
+.railWrap::-webkit-scrollbar {
+  width: 4px;
+}
+
+.railWrap::-webkit-scrollbar-thumb {
+  background: var(--dsw-zzz-electric);
+  border-radius: 2px;
+}
+
+.stageLayout[data-variant='rail'] {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 10px;
+  /* The texture var carries `url() repeat` — a shorthand value, so it rides
+     the background shorthand with the ink color. */
+  background: var(--dsw-zzz-ink) var(--dsw-zzz-panel-texture);
+}
+
+/* Rail field rhythm: two columns per row (fewer, wider fields — the model
+   and sampler selects stop truncating). Full width applies to the parameter
+   grid and standalone labeled fields only — inline row widgets (the seed
+   value, the dice) keep their intrinsic widths so their segments never
+   collapse into a column. */
+.stageLayout[data-variant='rail'] .paramGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 10px;
+}
+
+.stageLayout[data-variant='rail'] .paramGrid select,
+.stageLayout[data-variant='rail'] .paramGrid input,
+.stageLayout[data-variant='rail'] .field > select,
+.stageLayout[data-variant='rail'] .field > input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* The rail's control column breathes: roomier section gaps and a roomier
+   reverse-tab drop zone instead of the squeezed center-pane rhythm. */
+.stageLayout[data-variant='rail'] .root {
+  gap: 16px;
+  padding: 2px 2px 18px;
+}
+
+.stageLayout[data-variant='rail'] .reverseDrop {
+  padding: 22px 14px;
+  gap: 12px;
+}
+
+.stageLayout[data-variant='rail'] .reverseThumb {
+  max-height: 200px;
+}
+
+.stageLayout[data-variant='rail'] .stageColumn {
+  display: none;
+}
+
 .stageColumn {
   display: flex;
   flex-direction: column;
@@ -25,8 +88,13 @@
   align-items: center;
   justify-content: center;
   background: var(--dsw-alias-bg-layer-1);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
+  /* ZZZ skin: ink-edged stage well with the rhombus hatch in the floor. */
+  border: 1px solid var(--dsw-zzz-panel-edge);
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px var(--dsw-zzz-panel-ring);
+  background-image: var(--dsw-zzz-pattern-rhombus);
+  background-size: 8px 14px;
+  background-position: var(--dsw-zzz-pattern-rhombus-position);
   overflow: hidden;
 }
 
@@ -37,10 +105,50 @@
   cursor: zoom-in;
 }
 
+/* ZZZ skin: the empty stage carries InterKnot's banner artwork under a
+   scrim, with Bangboo bobbing above the caption (the load-more mascot from
+   the feed). */
 .stageEmpty {
-  color: var(--dsw-alias-text-secondary);
+  position: relative;
+  width: 100%;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--dsw-alias-label-primary);
   padding: 24px;
   text-align: center;
+  background:
+    linear-gradient(180deg, rgba(8, 8, 10, 0.78), rgba(8, 8, 10, 0.88)),
+    url('interknot/images/banner.png') center / cover no-repeat;
+}
+
+.stageEmpty::before {
+  content: '';
+  flex: none;
+  width: 96px;
+  height: 96px;
+  background: url('interknot/images/Bangboo.gif') center / contain no-repeat;
+  animation: zzz-bangboo-bob 2.4s ease-in-out infinite;
+}
+
+@keyframes zzz-bangboo-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stageEmpty::before {
+    animation: none;
+  }
 }
 
 .stageRunning {
@@ -49,8 +157,30 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Bangboo rides above; the caption sits below the mascot. */
+  padding-top: 72px;
   background: var(--dsw-alias-bg-overlay);
+  background-image: var(--dsw-zzz-pattern-stripes);
+  backdrop-filter: var(--dsw-mask-blur);
   font-weight: 600;
+}
+
+/* The generating overlay rides the Bangboo mascot over the striped blur. */
+.stageRunning::before {
+  content: '';
+  position: absolute;
+  top: calc(50% - 88px);
+  left: calc(50% - 48px);
+  width: 96px;
+  height: 96px;
+  background: url('interknot/images/Bangboo.gif') center / contain no-repeat;
+  animation: zzz-bangboo-bob 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stageRunning::before {
+    animation: none;
+  }
 }
 
 .stageMeta {
@@ -110,6 +240,29 @@
   background: var(--dsw-alias-bg-layer-1);
 }
 
+/* The reverse section's own rhythm: even vertical breathing between the
+   drop zone, the two selector rows, the hint, and the run button. */
+.reverseSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reverseSection .seedRow {
+  gap: 6px;
+}
+
+/* Every selector row spreads its segments evenly across the full width —
+   three mode segments and four scope segments both read as balanced bars. */
+.reverseSection .seedSegment {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .reverseThumb {
   max-width: 100%;
   max-height: 140px;
@@ -130,8 +283,8 @@
 }
 
 .filmThumbActive {
-  border-color: var(--dsw-alias-border-l4);
-  box-shadow: 0 0 0 2px var(--dsw-alias-border-l4);
+  border-color: var(--dsw-zzz-electric);
+  box-shadow: 0 0 0 2px var(--dsw-zzz-electric);
 }
 
 /* Narrow windows stack: stage on top, controls scroll below. */
@@ -167,9 +320,13 @@
 
 .promptArea {
   width: 100%;
-  min-height: 64px;
+  /* Auto-grow with content: three lines minimum, scroll inside past 45vh —
+     text is never clipped by a fixed box again. */
+  field-sizing: content;
+  min-height: 66px;
+  max-height: 45vh;
   resize: none;
-  overflow-y: hidden;
+  overflow-y: auto;
   box-sizing: border-box;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
@@ -178,13 +335,39 @@
   padding: 8px 10px;
   font: inherit;
   box-sizing: border-box;
+  transition: border-color var(--ds-transition-duration-fast) var(--ds-ease-in-out),
+    box-shadow var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+
+.promptArea:focus,
+.negativeArea:focus,
+.charArea:focus,
+.charNeg:focus {
+  outline: none;
+  border-color: var(--dsw-zzz-electric);
+  box-shadow: var(--dsw-zzz-focus-ring);
+}
+
+/* ZZZ console cut: the prompt box shears its top-right corner. */
+.promptArea:focus {
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
 }
 
 .fieldLabel {
   display: block;
   font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   color: var(--dsw-alias-label-secondary);
   margin-bottom: 4px;
+  /* Mechanical ZZZ section marker: electric bar + // prefix. */
+  border-left: 3px solid var(--dsw-zzz-electric);
+  padding-left: 6px;
+}
+
+.fieldLabel::before {
+  content: '// ';
+  color: var(--dsw-zzz-electric);
 }
 
 .foldHeader {
@@ -211,9 +394,11 @@
 
 .negativeArea {
   width: 100%;
+  field-sizing: content;
   min-height: 48px;
+  max-height: 30vh;
   resize: none;
-  overflow-y: hidden;
+  overflow-y: auto;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   background: var(--dsw-alias-bg-layer-1);
@@ -279,10 +464,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Inline row widgets never crush each other: the switch keeps its labels
+     on one line, and an overflowing input wraps below instead. */
+  flex-wrap: wrap;
 }
 
 .seedSwitch {
   display: inline-flex;
+  flex: none;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   overflow: hidden;
@@ -294,12 +483,16 @@
   color: var(--dsw-alias-label-secondary);
   padding: 5px 12px;
   font-size: 12px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .seedSegmentActive {
-  background: var(--dsw-alias-button-ghost-active-fill);
-  color: var(--dsw-alias-label-primary);
+  /* ZZZ keypad cue: the pressed segment inverts to lime-on-ink — the label
+     stays visible in every theme and surface. */
+  background: var(--dsw-zzz-lime);
+  color: var(--dsw-zzz-ink);
+  font-weight: 700;
 }
 
 .seedValue {
@@ -344,28 +537,64 @@
   font-weight: 600;
 }
 
+/* Generate: the ZZZ action button — bright yellow fill, ink text, ink edge,
+ * chessboard hatch; the yellow→green pulse runs while the request is in
+ * flight is surfaced by :active/:hover per the zenless highlight treatment. */
 .generateButton {
   margin-left: auto;
   flex: none;
   white-space: nowrap;
-  border: 1px solid var(--dsw-alias-button-primary-fill);
-  border-radius: 8px;
-  background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-foreground);
-  padding: 7px 22px;
+  /* ZZZ keypad: a sheared parallelogram, ink body with lime lettering. */
+  clip-path: polygon(5% 0, 100% 0, 95% 100%, 0 100%);
+  border: none;
+  border-radius: 0;
+  background-color: var(--dsw-zzz-ink);
+  color: var(--dsw-zzz-lime);
+  box-shadow: inset 0 0 0 1px var(--dsw-zzz-lime);
+  padding: 9px 26px;
   font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   cursor: pointer;
+}
+
+.generateButton:hover:not(:disabled) {
+  background-color: var(--dsw-zzz-lime);
+  color: var(--dsw-zzz-ink);
+  box-shadow: inset 0 0 0 1px var(--dsw-zzz-ink);
+}
+
+.generateButton:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .generateButton:disabled {
   opacity: 0.5;
   cursor: default;
+  animation: none;
 }
 
 .errorText {
   color: var(--dsw-alias-state-error-primary);
   font-size: 12px;
   margin: 0;
+}
+
+/* Low-interval batch warning: the ZZZ caution yellow, loud on purpose. */
+.warnText {
+  color: var(--dsw-zzz-yellow);
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Remaining Anlas: the account's currency gauge beside the estimate. */
+.anlasBalance {
+  flex: none;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
 }
 
 .doneText {
@@ -391,9 +620,11 @@
   background: var(--dsw-alias-bg-layer-2);
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
-  border: 1px solid var(--dsw-alias-border-l3);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-zzz-panel-edge);
+  border-radius: 10px;
+  box-shadow:
+    var(--dsw-shadow-lv3),
+    0 0 0 1px var(--dsw-zzz-panel-ring);
   max-height: 264px;
   overflow-y: auto;
 }
@@ -474,6 +705,7 @@
 .capsuleTabActive {
   background: var(--dsw-alias-button-ghost-active-fill);
   color: var(--dsw-alias-label-primary);
+  box-shadow: inset 0 0 0 1px var(--dsw-zzz-electric);
 }
 
 .capsuleSubgroup {

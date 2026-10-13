@@ -75,7 +75,7 @@ export function TurnImages({ matched, t, loadImage }: TurnImagesProps) {
       if (event.key === 'Escape') setZoomed(null)
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () =>{  window.removeEventListener('keydown', onKey) }
   }, [zoomed])
 
   const current = zoomed === null ? undefined : matched[zoomed]

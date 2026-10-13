@@ -116,12 +116,21 @@ export const RESOLUTION_RATIOS = [
   '1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9', '1:2', '2:1', '1:3', '3:1', '21:9', '9:21',
 ] as const
 
-/** Area cap of one tier; the 0.4 MP tier uses the official 640² canvas. */
+/**
+ * Area cap of one tier; the 0.4 MP tier uses the official 640² canvas.
+ * @param tier - one of {@link RESOLUTION_TIERS}.
+ * @returns the tier's pixel cap.
+ */
 export function tierPixelCap(tier: (typeof RESOLUTION_TIERS)[number]): number {
   return tier === 0.4 ? 409_600 : Math.round(tier * 1024 * 1024)
 }
 
-/** Snap one side onto the 64px lattice and clamp it to the legal range. */
+/**
+ * Snap one side onto the 64px lattice and clamp it to the legal range.
+ * @param value - raw side length, possibly not a finite number.
+ * @param fallback - value used when `value` is not finite.
+ * @returns the snapped, clamped side length.
+ */
 export function snapDimension(value: number, fallback = 1024): number {
   const source = Number.isFinite(value) ? value : fallback
   return Math.min(
@@ -130,7 +139,11 @@ export function snapDimension(value: number, fallback = 1024): number {
   )
 }
 
-/** Largest legal partner side for the given paired dimension. */
+/**
+ * Largest legal partner side for the given paired dimension.
+ * @param paired - the already-committed other side.
+ * @returns the largest 64px-lattice partner that keeps the pair under the area cap.
+ */
 export function maxDimensionFor(paired: number): number {
   const snapped = snapDimension(paired, NAI_MIN_DIMENSION)
   return Math.max(
@@ -142,12 +155,21 @@ export function maxDimensionFor(paired: number): number {
 /**
  * Commit one completed dimension field under the area cap. Callers invoke this
  * on blur or Enter, never per keystroke (desktop parity).
+ * @param value - raw side length, possibly not a finite number.
+ * @param paired - the already-committed other side.
+ * @param fallback - value used when `value` is not finite.
+ * @returns the snapped side clamped to both the legal range and the area cap.
  */
 export function snapDimensionWithinArea(value: number, paired: number, fallback = 1024): number {
   return Math.min(snapDimension(value, fallback), maxDimensionFor(paired))
 }
 
-/** Best (width, height) on the 64px lattice for one tier and aspect ratio. */
+/**
+ * Best (width, height) on the 64px lattice for one tier and aspect ratio.
+ * @param tier - pixel-tier selector.
+ * @param ratio - aspect ratio from {@link RESOLUTION_RATIOS}.
+ * @returns the width/height pair closest to the ratio that uses the tier's area.
+ */
 export function resolutionForTier(
   tier: (typeof RESOLUTION_TIERS)[number],
   ratio: (typeof RESOLUTION_RATIOS)[number],
@@ -181,7 +203,12 @@ export function resolutionForTier(
   return best
 }
 
-/** Nearest tier whose 80–100% area band contains the pair, or null for custom. */
+/**
+ * Nearest tier whose 80–100% area band contains the pair, or null for custom.
+ * @param width - committed image width.
+ * @param height - committed image height.
+ * @returns the matching tier, or null when no tier band contains the pair.
+ */
 export function nearestTier(width: number, height: number): (typeof RESOLUTION_TIERS)[number] | null {
   const pixels = width * height
   return RESOLUTION_TIERS.find((t) => {
@@ -190,7 +217,12 @@ export function nearestTier(width: number, height: number): (typeof RESOLUTION_T
   }) ?? null
 }
 
-/** The exact ratio of the pair when it sits within log tolerance, or null. */
+/**
+ * The exact ratio of the pair when it sits within log tolerance, or null.
+ * @param width - committed image width.
+ * @param height - committed image height.
+ * @returns the matching picker ratio, or null when the pair is custom.
+ */
 export function nearestRatio(width: number, height: number): (typeof RESOLUTION_RATIOS)[number] | null {
   return RESOLUTION_RATIOS.find((r) => {
     const [w = 0, h = 0] = r.split(':').map(Number)

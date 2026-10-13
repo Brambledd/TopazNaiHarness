@@ -9,7 +9,7 @@ function event(type: string, data: Record<string, unknown>, seq: number) {
 
 const ref: ImageAttachmentRef = {
   attachmentId: 'sha256:abc' as ImageAttachmentRef['attachmentId'],
-  mediaType: 'image/webp' as ImageAttachmentRef['mediaType'],
+  mediaType: 'image/webp',
   bytes: 1000,
   width: 832,
   height: 1216,

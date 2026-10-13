@@ -7,7 +7,7 @@ import type {
   NovelaiGenerateRequest,
   NovelaiGenerationValue,
 } from '@deepseek-ai/dsh-api-novelai-controller/types'
-import type { WorkbenchBackfillRequest } from './bridge.ts'
+import type { WorkbenchBackfillRequest, WorkbenchPatchRequest } from './bridge.ts'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   RESOLUTION_RATIOS,
@@ -55,8 +55,10 @@ const TIER_LABEL_KEYS: Record<Tier, 'param.tier.0_4' | 'param.tier.1' | 'param.t
 
 /** Workbench center surface: the stage column (latest image, filmstrip) and the control column (prompt, parameters, generation). */
 export function WorkbenchRoot({
+  variant = 'center',
   catalog,
   estimate,
+  anlasBalance,
   generate,
   enhance,
   reverse,
@@ -67,10 +69,15 @@ export function WorkbenchRoot({
   splitCharacters,
   seedDraft,
   onBackfillRequest,
+  onPatchApply,
+  commitWorkbenchState,
   setViewMode,
   useSessions,
   t,
-}: PropsRuntime<'workbench'> & WorkbenchInjected & PropsLocale<'novelai-workbench'>) {
+}: { variant?: 'center' | 'rail' } & Omit<PropsRuntime<'workbench'>, 'mode'> & WorkbenchInjected & PropsLocale<'novelai-workbench'>) {
+  // The `mode` owner share of the center seat is dropped from the accepted
+  // props: the component never reads it, and the rail seat has no center-mode
+  // owner share to pass.
   const [catalogValue, setCatalogValue] = useState<NovelaiCatalogValue | undefined>(undefined)
   const [prompt, setPrompt] = useState('')
   const [negativePrompt, setNegativePrompt] = useState('')
@@ -92,6 +99,12 @@ export function WorkbenchRoot({
   const [seedMode, setSeedMode] = useState<'random' | 'fixed'>('random')
   const [seed, setSeed] = useState(0)
   const [lastSeed, setLastSeed] = useState<number | undefined>(undefined)
+  // Batch options (the desktop tool's contract): N sequential requests with a
+  // per-image interval; count 1 leaves the interval inert. The safe default is
+  // five seconds; anything under two risks the API's rate hygiene.
+  const [batchCount, setBatchCount] = useState(1)
+  const [batchIntervalSec, setBatchIntervalSec] = useState(5)
+  const [batchProgress, setBatchProgress] = useState<string | undefined>(undefined)
   /** Enhance panel: open state, magnitude 1–10, and the output scale. */
   const [enhanceOpen, setEnhanceOpen] = useState(false)
   const [magnitude, setMagnitude] = useState(3)
@@ -165,6 +178,30 @@ export function WorkbenchRoot({
     urlCache.current.clear()
   }, [])
 
+  // Commit the panel state to the host (debounced): the session's committed
+  // state is the prompt source the novelai_generate tool binds to. A commit
+  // failure is silent — the next panel change re-commits.
+  useEffect(() => {
+    if (currentSessionId === undefined) return
+    const state = {
+      prompt,
+      negativePrompt,
+      model,
+      width,
+      height,
+      steps,
+      cfgScale,
+      sampler,
+      noiseSchedule,
+      ...(seedMode === 'fixed' ? { seed } : {}),
+    }
+    const timer = setTimeout(() => { void commitWorkbenchState(currentSessionId, state).catch(() => {}) }, 400)
+    return () => { clearTimeout(timer) }
+  }, [
+    commitWorkbenchState, currentSessionId, prompt, negativePrompt, model,
+    width, height, steps, cfgScale, sampler, noiseSchedule, seedMode, seed,
+  ])
+
   const tier = useMemo(() => nearestTier(width, height), [width, height])
   const ratio = useMemo(() => nearestRatio(width, height), [width, height])
 
@@ -179,16 +216,51 @@ export function WorkbenchRoot({
     history().then((page) => { setEntries(page.entries) }).catch(() => { /* keep the current page */ })
   }
 
+  // Remaining Anlas: fetched on mount and after every completed batch — the
+  // balance is advisory, so an unreachable read just keeps the last value.
+  const [anlasLeft, setAnlasLeft] = useState<number | undefined>(undefined)
+  const refreshAnlas = (): void => {
+    void anlasBalance().then((value) => { if (value !== undefined) setAnlasLeft(value) }).catch(() => {})
+  }
+  useEffect(() => { refreshAnlas() }, [anlasBalance])
+
   const submit = (request: NovelaiGenerateRequest): void => {
     setBusy(true)
     setError(undefined)
-    generate(request).then((value) => {
-      setDone(value.file)
-      if (value.seed !== undefined) setLastSeed(value.seed)
-      // Follow the newest entry again: the fresh result lands on the stage.
-      setSelectedId(undefined)
-      refreshHistory()
-    }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) }).finally(() => { setBusy(false) })
+    setBatchProgress(undefined)
+    // Batch run (the desktop tool's contract): N sequential requests with the
+    // configured interval between them; a fixed seed walks +1 per image so a
+    // batch is not N near-identical frames. Random mode draws fresh per image.
+    const count = Math.max(1, Math.min(8, batchCount))
+    const intervalMs = Math.max(0, Math.min(60, batchIntervalSec)) * 1000
+    const baseSeed = request.seed
+    const run = async (): Promise<void> => {
+      for (let index = 0; index < count; index++) {
+        if (count > 1) setBatchProgress(t('batch.progress', { done: index, total: count }))
+        const request_: NovelaiGenerateRequest = baseSeed === undefined
+          ? request
+          : { ...request, seed: baseSeed + index }
+        try {
+          const value = await generate(request_)
+          setDone(value.file)
+          if (value.seed !== undefined) setLastSeed(value.seed)
+          // Follow the newest entry again: the fresh result lands on the stage.
+          setSelectedId(undefined)
+          refreshHistory()
+          refreshAnlas()
+        } catch (e: unknown) {
+          setError(e instanceof Error ? e.message : String(e))
+          return
+        }
+        if (index + 1 < count && intervalMs > 0) {
+          await new Promise((resolve) => { setTimeout(resolve, intervalMs) })
+        }
+      }
+    }
+    void run().finally(() => {
+      setBusy(false)
+      setBatchProgress(undefined)
+    })
   }
 
   /** Append one English tag to the positive prompt, comma-separated. */
@@ -208,6 +280,15 @@ export function WorkbenchRoot({
   }
 
   const submitCurrent = (): void => {
+    // The rail generates through the conversation: seed the request into the
+    // composer, so the model's novelai_generate call — bound to this
+    // committed state — lands the image in the chat beside the rail.
+    if (variant === 'rail') {
+      if (currentSessionId === undefined || prompt.trim() === '') return
+      if (seedDraft(currentSessionId, t('rail.generateDraft'))) setDone(t('rail.generateSent'))
+      else setError(t('senddraft.noInput'))
+      return
+    }
     const request: NovelaiGenerateRequest = {
       prompt,
       model,
@@ -380,6 +461,54 @@ export function WorkbenchRoot({
   // Conversation-side backfill deliveries apply while the panel stays mounted.
   useEffect(() => onBackfillRequest(applyBackfillRequest), [onBackfillRequest])
 
+  /**
+   * Apply one conversation-side prompt patch (the `novelai_prompt_patch`
+   * card): tag operations rewrite the comma-split prompt of the target slot,
+   * settings operations set the matching panel field. The view never
+   * switches — the rail is already beside the conversation. Tag updates ride
+   * functional setState so the subscription's stable callback always reads
+   * the live prompt.
+   */
+  const applyPatchRequest = (request: WorkbenchPatchRequest): void => {
+    if (request.slot === 'settings') {
+      for (const operation of request.operations) {
+        const value = operation.value?.trim() ?? ''
+        if (value === '') continue
+        if (operation.field === 'model') setModel(value)
+        if (operation.field === 'sampler') setSampler(value)
+        if (operation.field === 'noiseSchedule') setNoiseSchedule(value)
+        if (operation.field === 'width') setWidth(Number(value) || 0)
+        if (operation.field === 'height') setHeight(Number(value) || 0)
+        if (operation.field === 'steps') setSteps(Number(value) || 0)
+        if (operation.field === 'cfgScale') setCfgScale(Number(value) || 0)
+        if (operation.field === 'seed') {
+          setSeedMode('fixed')
+          setSeed(Number(value) || 0)
+        }
+      }
+      return
+    }
+    const applyTagOps = (base: string): string => {
+      let tags = base.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
+      for (const operation of request.operations) {
+        const tag = operation.tag?.trim() ?? ''
+        if (tag === '') continue
+        if (operation.op === 'add') {
+          if (!tags.includes(tag)) tags.push(tag)
+        } else if (operation.op === 'remove') {
+          tags = tags.filter(existing => existing !== tag)
+        } else {
+          const replacement = operation.value?.trim() ?? tag
+          tags = tags.map(existing => existing === tag ? replacement : existing)
+        }
+      }
+      return tags.join(', ')
+    }
+    if (request.slot === 'positive') setPrompt(applyTagOps)
+    else setNegativePrompt(applyTagOps)
+  }
+  useEffect(() => onPatchApply(applyPatchRequest), [onPatchApply])
+
   /** Mint (or reuse) the object URL of one entry's PNG. */
   const entryUrl = (entry: NovelaiGenerationValue): string | undefined => {
     const cached = urlCache.current.get(entry.id)
@@ -513,7 +642,7 @@ export function WorkbenchRoot({
       if (value.height !== undefined) setHeight(value.height)
       if (value.steps !== undefined) setSteps(value.steps)
       if (value.cfgScale !== undefined) setCfgScale(value.cfgScale)
-      if (value.sampler !== undefined && catalogValue?.samplers.includes(value.sampler as never) === true) setSampler(value.sampler)
+      if (value.sampler !== undefined && catalogValue?.samplers.includes(value.sampler) === true) setSampler(value.sampler)
       if (value.seed !== undefined) {
         setSeedMode('fixed')
         setSeed(value.seed)
@@ -573,7 +702,7 @@ export function WorkbenchRoot({
   }
 
   return (
-    <div className={css.stageLayout}>
+    <div className={css.stageLayout} data-variant={variant}>
       <div className={css.stageColumn}>
         <div className={css.stage} role="region" aria-label={t('stage.label')}>
           {workbenchTab === 'reverse' && reverseSource !== undefined
@@ -668,7 +797,7 @@ export function WorkbenchRoot({
                 title={t('enhance.maxHint')}
                 onClick={() => { setEnhanceScale('max') }}
               >
-                MAX
+                {t('enhance.max')}
               </button>
             </div>
             {enhanceTarget !== undefined && (
@@ -1036,6 +1165,30 @@ export function WorkbenchRoot({
                 onChange={(e) => { setCfgScale(Math.max(0, Math.min(10, Number(e.target.value)))) }}
               />
             </label>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('param.batchCount')}</span>
+              <input
+                type="number"
+                className={css.number}
+                value={batchCount}
+                min={1}
+                max={8}
+                title={t('param.batchCountHint')}
+                onChange={(e) => { setBatchCount(Math.max(1, Math.min(8, Math.round(Number(e.target.value) || 1)))) }}
+              />
+            </label>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('param.batchInterval')}</span>
+              <input
+                type="number"
+                className={css.number}
+                value={batchIntervalSec}
+                min={0}
+                max={60}
+                title={t('param.batchIntervalHint')}
+                onChange={(e) => { setBatchIntervalSec(Math.max(0, Math.min(60, Number(e.target.value) || 0))) }}
+              />
+            </label>
           </div>
           <div className={css.seedRow}>
             <span className={css.fieldLabel}>{t('seed.mode')}</span>
@@ -1083,18 +1236,26 @@ export function WorkbenchRoot({
             )}
           </div>
           <div className={css.footer}>
+            <span className={css.anlasBalance} title={t('anlas.balanceHint')}>
+              ☾ {anlasLeft === undefined ? '…' : String(anlasLeft)}
+            </span>
             <span className={css.estimate}>
-              {t('estimate')}: <span className={css.estimateValue}>{anlas === undefined ? '…' : anlas === 0 ? t('estimate.free') : String(anlas)}</span>
+              {t('estimate')}: <span className={css.estimateValue}>{anlas === undefined ? '…' : anlas === 0 ? t('estimate.free') : String(anlas * Math.max(1, Math.min(8, batchCount)))}</span>
+              {batchCount > 1 && <span className={css.sizeHint}> ×{Math.min(8, batchCount)}</span>}
             </span>
             {error !== undefined && <p className={css.errorText} role="alert">{t('error')}: {error}</p>}
+            {batchCount > 1 && batchIntervalSec > 0 && batchIntervalSec < 2 && (
+              <p className={css.warnText} role="alert">{t('batch.intervalWarning')}</p>
+            )}
             {done !== undefined && <p className={css.doneText}>{done}</p>}
+            {batchProgress !== undefined && <p className={css.doneText} role="status">{batchProgress}</p>}
             <button type="button" className={css.generateButton} disabled={busy || prompt.trim() === ''} onClick={submitCurrent}>
-              {busy ? t('generating') : t('generate')}
+              {busy ? (batchProgress ?? t('generating')) : (batchCount > 1 ? t('batch.run', { count: Math.min(8, batchCount) }) : t('generate'))}
             </button>
           </div>
         </>)}
         {workbenchTab === 'reverse' && (
-          <div className={css.section}>
+          <div className={`${css.section} ${css.reverseSection}`}>
             <div
               className={css.reverseDrop}
               onDragOver={(event) => { event.preventDefault() }}
@@ -1256,6 +1417,23 @@ export function WorkbenchRoot({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * The conversation's right-rail workbench: the same surface in its rail cut
+ * (control column only — the stage lives in the conversation's own image
+ * cards). Registered under `conversation.details.workbench`.
+ * @param props - composed slot props (rail runtime share + workbench inject face).
+ * @returns the rail-wrapped workbench element tree.
+ */
+export function WorkbenchRail(
+  props: PropsRuntime<'conversation.details.workbench'> & WorkbenchInjected & PropsLocale<'novelai-workbench'>,
+) {
+  return (
+    <div className={`${css.railWrap} dsw-zzz-console`}>
+      <WorkbenchRoot {...props} variant="rail" />
     </div>
   )
 }

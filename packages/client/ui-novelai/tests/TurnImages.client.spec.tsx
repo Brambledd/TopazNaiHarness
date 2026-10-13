@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TurnImages } from '../src/client/TurnImages.tsx'
 import type { TurnImage } from '../src/client/turn-images.ts'
-import { AttachmentId, type ImageMediaType } from '@deepseek-ai/dsh-attachment'
+import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 
 type TurnImagesProps = Parameters<typeof TurnImages>[0]
 
@@ -14,7 +14,7 @@ const t = ((key: string): string => key) as TurnImagesProps['t']
 function ref(attachmentId: string, name?: string): TurnImage['attachment'] {
   return {
     attachmentId: AttachmentId(attachmentId),
-    mediaType: 'image/webp' as ImageMediaType,
+    mediaType: 'image/webp',
     bytes: 99_932,
     width: 832,
     height: 1216,
@@ -37,7 +37,7 @@ describe('TurnImages', () => {
   it('loads and shows one thumbnail per produced image', async () => {
     const loadImage = vi.fn().mockResolvedValue('blob:url')
     render(<TurnImages {...props([imageA], loadImage)} />)
-    await waitFor(() => expect(screen.getByRole('img')).toBeTruthy())
+    await waitFor(() =>{  expect(screen.getByRole('img')).toBeTruthy() })
     expect(loadImage).toHaveBeenCalledWith(imageA.attachment)
     expect(screen.getByRole('img').getAttribute('src')).toBe('blob:url')
   })
@@ -45,13 +45,13 @@ describe('TurnImages', () => {
   it('renders several produced images as a strip', async () => {
     const loadImage = vi.fn().mockResolvedValue('blob:url')
     render(<TurnImages {...props([imageA, imageB], loadImage)} />)
-    await waitFor(() => expect(screen.getAllByRole('img').length).toBe(2))
+    await waitFor(() =>{  expect(screen.getAllByRole('img').length).toBe(2) })
   })
 
   it('opens the zoom lightbox from a thumbnail and closes on click', async () => {
     const loadImage = vi.fn().mockResolvedValue('blob:url')
     render(<TurnImages {...props([imageA], loadImage)} />)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'row.preview' })).toBeTruthy())
+    await waitFor(() =>{  expect(screen.getByRole('button', { name: 'row.preview' })).toBeTruthy() })
     fireEvent.click(screen.getByRole('button', { name: 'row.preview' }))
     expect(screen.getByRole('dialog')).toBeTruthy()
     fireEvent.click(screen.getByRole('dialog'))
@@ -65,7 +65,7 @@ describe('TurnImages', () => {
     render(<TurnImages {...props([imageA], loadImage)} />)
     const retry = await screen.findByText('row.loadFailed')
     fireEvent.click(retry)
-    await waitFor(() => expect(screen.getByRole('img').getAttribute('src')).toBe('blob:fixed'))
+    await waitFor(() =>{  expect(screen.getByRole('img').getAttribute('src')).toBe('blob:fixed') })
     expect(loadImage).toHaveBeenCalledTimes(2)
   })
 
@@ -74,9 +74,9 @@ describe('TurnImages', () => {
       .mockResolvedValueOnce('blob:broken')
       .mockResolvedValue('blob:fixed')
     render(<TurnImages {...props([imageA], loadImage)} />)
-    await waitFor(() => expect(screen.getByRole('img').getAttribute('src')).toBe('blob:broken'))
+    await waitFor(() =>{  expect(screen.getByRole('img').getAttribute('src')).toBe('blob:broken') })
     fireEvent.error(screen.getByRole('img'))
-    await waitFor(() => expect(screen.getByRole('img').getAttribute('src')).toBe('blob:fixed'))
+    await waitFor(() =>{  expect(screen.getByRole('img').getAttribute('src')).toBe('blob:fixed') })
     expect(loadImage).toHaveBeenCalledTimes(2)
   })
 })

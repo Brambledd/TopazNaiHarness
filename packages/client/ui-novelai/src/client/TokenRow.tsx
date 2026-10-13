@@ -74,12 +74,12 @@ export function TokenRow(props: TokenRowProps): ReactNode {
                 autoComplete="off"
                 value={draft}
                 placeholder={t('token.placeholder')}
-                onChange={event => setDraft(event.target.value)}
+                onChange={(event) =>{  setDraft(event.target.value) }}
               />
               <Button
                 variant="primary"
                 disabled={!canWrite || draft.trim() === ''}
-                onClick={() => { void controller.save(draft).then(() => setDraft('')) }}
+                onClick={() => { void controller.save(draft).then(() =>{  setDraft('') }) }}
               >
                 {t('token.save')}
               </Button>

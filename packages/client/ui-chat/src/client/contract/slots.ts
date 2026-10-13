@@ -90,6 +90,9 @@ export interface DetailsToolOwnerProps {
   cwd?: string | undefined
 }
 
+/** Workbench rail owner share: empty — the seat is session-scoped, the panel is self-contained. */
+export interface DetailsWorkbenchOwnerProps {}
+
 /** Command-row owner share. */
 export interface CommandRowOwnerProps {
   node: CommandNode
@@ -146,7 +149,7 @@ export interface DetailsInjected {
 /** Full details-panel props. */
 export type DetailsSlotProps =
   PropsRuntime<'details'>
-  & PropsRenderSlots<'conversation.details.tool'>
+  & PropsRenderSlots<'conversation.details.tool' | 'conversation.details.workbench'>
   & PropsStore<ChatStore>
   & InjectFace<DetailsInjected>
   & PropsLocale<'chat'>
@@ -206,5 +209,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * replaces the shipped Tool details renderer; absence uses the raw fallback.
      */
     'conversation.details.tool': { kind: 'single'; scope: 'session'; owner: DetailsToolOwnerProps }
+    /**
+     * Persistent right-rail seat beside the conversation: the NovelAI workbench
+     * occupies it, replacing the tool-details body while present. Absence keeps
+     * the shipped tool-details panel.
+     */
+    'conversation.details.workbench': { kind: 'single'; scope: 'session'; owner: DetailsWorkbenchOwnerProps }
   }
 }

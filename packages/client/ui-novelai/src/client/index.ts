@@ -12,11 +12,15 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 // forwarded `credentials/reference-updated` event face into this program.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { WorkbenchPatchRequest } from '@deepseek-ai/dsh-client-ui-novelai-workbench/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the settings-shell SlotMap merge ('settings.general.item').
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { NovelaiRow } from './NovelaiRow.tsx'
+import { PatchRow } from './PatchRow.tsx'
+import { PatchTail } from './PatchTail.tsx'
+import { selectTurnPatches, turnPatchesDefinition } from './patch-tail.ts'
 import { TurnImages } from './TurnImages.tsx'
 import { selectTurnImages, turnImagesDefinition } from './turn-images.ts'
 import { TokenRow, type TokenRowInjected } from './TokenRow.tsx'
@@ -44,6 +48,18 @@ export const inject = ['slots', 'uiConversation', 'novelaiWorkbench', 'locale', 
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-novelai: dictionaries')
   ctx.uiConversation.events.register(turnImagesDefinition)
+  ctx.uiConversation.events.register(turnPatchesDefinition)
+  // The turn-tail patch cards: the closing assistant message renders the
+  // turn's prompt proposals outside the collapsed tool-process fold, so the
+  // apply affordance is visible without expanding anything.
+  ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
+    name: 'conversation.chat.turnTail',
+    select: selectTurnPatches,
+    locale: NS,
+    inject: (_sessionId: SessionId) => ({
+      requestPatchApply: (request: WorkbenchPatchRequest) => ctx.novelaiWorkbench.requestPatchApply(request),
+    }),
+  }, PatchTail))
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
     name: 'tool.call.toolview',
     key: 'novelai_generate',
@@ -52,6 +68,16 @@ export function apply(ctx: ClientContext): void {
       requestBackfill: request => ctx.novelaiWorkbench.requestBackfill(request),
     }),
   }, NovelaiRow))
+  // The patch card: one `novelai_prompt_patch` call renders as an apply card;
+  // the checked operations flow into the mounted workbench panel.
+  ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
+    name: 'tool.call.toolview',
+    key: 'novelai_prompt_patch',
+    locale: NS,
+    inject: () => ({
+      requestPatchApply: request => ctx.novelaiWorkbench.requestPatchApply(request),
+    }),
+  }, PatchRow))
   // The image itself renders under the closing assistant message, in the
   // turn-tail chain — the answer body, not the tool process fold.
   ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({

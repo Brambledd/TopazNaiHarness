@@ -46,7 +46,12 @@ const SessionProviderStub: SessionProviderComponent = ({ children }) => children
 
 /** Observe the owner currency without importing the Tool details renderer. */
 function renderToolDetailsProbe(owners?: DetailsToolOwnerProps[]): DetailsSlotProps['renderSlot'] {
-  return (_key, owner) => {
+  return (key, owner, options) => {
+    // The workbench seat is unoccupied in these probes: mirror the framework
+    // renderer and fall through to the provided fallback (the tool body).
+    if (key === 'conversation.details.workbench') {
+      return (options)?.fallback ?? null
+    }
     owners?.push(owner as unknown as DetailsToolOwnerProps)
     return <div data-testid="tool-details-seat" />
   }

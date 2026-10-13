@@ -19,6 +19,14 @@ export const en = {
   'param.height': 'Height',
   'param.steps': 'Steps',
   'param.cfgScale': 'CFG scale',
+  'param.batchCount': 'Batch count',
+  'param.batchCountHint': 'Fire 1-8 images in one sequential run',
+  'param.batchInterval': 'Interval (s)',
+  'param.batchIntervalHint': 'Seconds between images; 0 for none; inert at count 1',
+  'batch.progress': 'Batch {done}/{total}…',
+  'anlas.balanceHint': 'Remaining account Anlas (refreshes after generation)',
+  'batch.intervalWarning': '⚠ API generation interval too low — this can be risky (≥2s recommended)',
+  'batch.run': 'Generate {count}',
   'param.tier.0_4': 'Small · 0.4 MP',
   'param.tier.1': 'Normal · 1 MP',
   'param.tier.1_5': 'Large · 1.5 MP',
@@ -34,6 +42,7 @@ export const en = {
   'enhance.scale': 'Output scale',
   'enhance.scale1': '1× keep resolution',
   'enhance.scale2': '2× upscale',
+  'enhance.max': 'MAX',
   'enhance.maxHint': 'Max: the official V5 server-side upscaled enhance on V5 checkpoints, a 2× adaptive fit elsewhere',
   'enhance.upscaled': 'official server-side upscale',
   'enhance.limit': 'The doubled target exceeds NovelAI pixel ceiling; use 1× or a smaller source.',
@@ -89,6 +98,8 @@ export const en = {
   'senddraft.noSession': 'No active conversation',
   'senddraft.noInput': 'The conversation input is unavailable right now',
   'senddraft.header': 'Continue from this workbench draft (you may call novelai_generate to render it):',
+  'rail.generateDraft': "Generate with the workbench rail's current prompt: call novelai_generate now (it reads the committed workbench state).",
+  'rail.generateSent': 'Generation request placed in the conversation input — press send.',
   'senddraft.positive': 'Positive prompt',
   'senddraft.negative': 'Negative prompt',
   'senddraft.params': 'Parameters',
@@ -118,6 +129,7 @@ export const en = {
   'error': 'Generation failed',
 } as const
 
+/** Chinese dictionary; keys mirror `en` exactly. */
 export const zh = {
   'tab.label': '工作台模式',
   'tab.generate': '生成',
@@ -137,6 +149,14 @@ export const zh = {
   'param.height': '高度',
   'param.steps': '步数',
   'param.cfgScale': 'CFG',
+  'param.batchCount': '批量张数',
+  'param.batchCountHint': '一次连发 1–8 张（顺序请求）',
+  'param.batchInterval': '间隔（秒）',
+  'param.batchIntervalHint': '每张之间的等待秒数；0 表示无间隔；张数为 1 时不生效',
+  'batch.progress': '批量生成中 {done}/{total}…',
+  'anlas.balanceHint': '账户剩余 Anlas（生成后自动刷新）',
+  'batch.intervalWarning': '⚠ API 生成间隔过低可能有风险（建议 ≥2 秒）',
+  'batch.run': '生成 {count} 张',
   'param.tier.0_4': '小图 · 0.4 MP',
   'param.tier.1': '普通 · 1 MP',
   'param.tier.1_5': '大图 · 1.5 MP',
@@ -152,6 +172,7 @@ export const zh = {
   'enhance.scale': '输出倍率',
   'enhance.scale1': '1× 保持分辨率',
   'enhance.scale2': '2× 同时放大',
+  'enhance.max': 'MAX',
   'enhance.maxHint': 'MAX：V5 检查点走官方服务端放大增强，其余为 2× 自适应放大',
   'enhance.upscaled': '官方服务端放大',
   'enhance.limit': '放大后的目标尺寸超过 NovelAI 像素上限；请选择 1× 或换用更小的原图。',
@@ -207,6 +228,8 @@ export const zh = {
   'senddraft.noSession': '当前没有活动对话',
   'senddraft.noInput': '对话输入栏当前不可用',
   'senddraft.header': '请基于这份创作台草稿继续（可直接调用 novelai_generate 出图）：',
+  'rail.generateDraft': '请用右侧创作台的当前提示词调用 novelai_generate 生图（工具会读取创作台已提交的状态）。',
+  'rail.generateSent': '生图请求已放入对话输入栏，点击发送即可。',
   'senddraft.positive': '正向提示词',
   'senddraft.negative': '负面提示词',
   'senddraft.params': '参数',
@@ -236,4 +259,5 @@ export const zh = {
   'error': '生成失败',
 } as const
 
+/** Dictionary key union of the workbench locale tables. */
 export type WorkbenchKey = keyof typeof en

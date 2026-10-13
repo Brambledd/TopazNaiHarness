@@ -37,6 +37,14 @@ const zh = {
   'param.height': '高度',
   'param.steps': '步数',
   'param.cfgScale': 'CFG',
+  'param.batchCount': '批量张数',
+  'param.batchCountHint': '一次连发 1–8 张（顺序请求）',
+  'param.batchInterval': '间隔（秒）',
+  'param.batchIntervalHint': '每张之间的等待秒数；0 表示无间隔；张数为 1 时不生效',
+  'batch.progress': '批量生成中 {done}/{total}…',
+  'anlas.balanceHint': '账户剩余 Anlas（生成后自动刷新）',
+  'batch.intervalWarning': '⚠ API 生成间隔过低可能有风险（建议 ≥2 秒）',
+  'batch.run': '生成 {count} 张',
   'param.tier.0_4': '小图 · 0.4 MP',
   'param.tier.1': '普通 · 1 MP',
   'param.tier.1_5': '大图 · 1.5 MP',
@@ -52,6 +60,7 @@ const zh = {
   'enhance.scale': '输出倍率',
   'enhance.scale1': '1× 保持分辨率',
   'enhance.scale2': '2× 同时放大',
+  'enhance.max': 'MAX',
   'enhance.maxHint': 'MAX：V5 检查点走官方服务端放大增强，其余为 2× 自适应放大',
   'enhance.upscaled': '官方服务端放大',
   'enhance.limit': '放大后的目标尺寸超过 NovelAI 像素上限；请选择 1× 或换用更小的原图。',
@@ -108,6 +117,8 @@ const zh = {
   'senddraft.noSession': '当前没有活动对话',
   'senddraft.noInput': '对话输入栏当前不可用',
   'senddraft.header': '请基于这份创作台草稿继续（可直接调用 novelai_generate 出图）：',
+  'rail.generateDraft': '请用右侧创作台的当前提示词调用 novelai_generate 生图。',
+  'rail.generateSent': '生图请求已放入对话输入栏。',
   'senddraft.positive': '正向提示词',
   'senddraft.negative': '负面提示词',
   'senddraft.params': '参数',
@@ -195,10 +206,20 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     ],
   }))
   const seedDraft = vi.fn((_sessionId: string, _text: string) => true)
+  const commitWorkbenchState = vi.fn(async (_sessionId: string, _state: Record<string, unknown>) => {})
   let backfillSink: ((request: Record<string, unknown>) => void) | undefined
   const onBackfillRequest = vi.fn((callback: (request: Record<string, unknown>) => void) => {
     backfillSink = callback
     return () => { backfillSink = undefined }
+  })
+  type PatchRequest = {
+    slot: 'positive' | 'negative' | 'settings'
+    operations: Array<{ op: 'add' | 'remove' | 'modify'; tag?: string; field?: string; value?: string }>
+  }
+  let patchSink: ((request: PatchRequest) => void) | undefined
+  const onPatchApply = vi.fn((callback: (request: PatchRequest) => void) => {
+    patchSink = callback
+    return () => { patchSink = undefined }
   })
   const suggestions: NovelaiTagSuggestion[] = [
     { tag: '1girl', count: 19_000_000, category: 0, description: '一个女孩' },
@@ -212,22 +233,30 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     reverse,
     inspect,
     history: vi.fn(async () => ({ entries: historyEntries, total: historyEntries.length })),
+    anlasBalance: vi.fn(async () => 5000),
     suggestTags: vi.fn(async () => ({ tags: suggestions })),
     readEntry: vi.fn(async () => ({ data: '', mime: 'image/png' as const })),
     splitCharacters,
-    seedDraft,    onBackfillRequest,
+    seedDraft,    onBackfillRequest,    onPatchApply,    commitWorkbenchState,
     setViewMode: vi.fn(),
     useSessions: ((selector: (state: { current: string }) => unknown) => selector({ current: 'session-1' })) as never,
     useWorkspaces: (() => { throw new Error('workbench must not read global hooks') }) as never,
     t: (key: keyof typeof zh) => zh[key],
   }
-  return { props, generate, splitCharacters, seedDraft, deliverBackfill: (request: Record<string, unknown>) => backfillSink?.(request) }
+  return {
+    props,
+    generate,
+    splitCharacters,
+    seedDraft,
+    deliverBackfill: (request: Record<string, unknown>) => backfillSink?.(request),
+    deliverPatch: (request: Parameters<NonNullable<typeof patchSink>>[0]) => patchSink?.(request),
+  }
 }
 
 function mount() {
-  const { props, generate, splitCharacters, seedDraft, deliverBackfill } = makeProps()
+  const { props, generate, splitCharacters, seedDraft, deliverBackfill, deliverPatch } = makeProps()
   const view = render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
-  return { view, generate, splitCharacters, seedDraft, deliverBackfill, setViewMode: props.setViewMode }
+  return { view, generate, splitCharacters, seedDraft, deliverBackfill, deliverPatch, setViewMode: props.setViewMode }
 }
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
@@ -290,7 +319,7 @@ describe('workbench panel', () => {
     fireEvent.click(screen.getByRole('button', { name: '增强' }))
     fireEvent.click(screen.getByRole('button', { name: '增强图像' }))
     await waitFor(() => { expect(enhance).toHaveBeenCalledOnce() })
-    const request = enhance.mock.calls[0]![0] as Record<string, unknown>
+    const request = enhance.mock.calls[0]![0]
     // 832×1216 snapped at 1× stays 832×1216; strength maps magnitude 3 conservatively.
     expect(request.width).toBe(832)
     expect(request.height).toBe(1216)
@@ -342,7 +371,7 @@ describe('workbench panel', () => {
     expect(preview.getAttribute('src')).toBe('blob:reverse-preview')
     fireEvent.click(screen.getByRole('button', { name: 'AI 反推提示词' }))
     await waitFor(() => { expect(reverse).toHaveBeenCalledOnce() })
-    const request = reverse.mock.calls[0]![0] as Record<string, unknown>
+    const request = reverse.mock.calls[0]![0]
     expect(request.image).toBe('cmV2ZXJzZQ==')
     expect(request.mode).toBe('tags')
     expect(request.scope).toBe('full')
@@ -354,7 +383,7 @@ describe('workbench panel', () => {
     expect(screen.getByText('特征版')).toBeTruthy()
     // Reusing lands the prompt in the generate panel and switches back.
     fireEvent.click(reuseButtons[reuseButtons.length - 1]!)
-    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value)
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLInputElement).value)
       .toBe('1girl, solo, white background')
     expect(screen.getByRole('tab', { name: '生成' }).getAttribute('aria-selected')).toBe('true')
   })
@@ -379,15 +408,15 @@ describe('workbench panel', () => {
     await waitFor(() => { expect(inspect).toHaveBeenCalledOnce() })
     // Every found parameter landed in the generate panel and the tab switched back.
     await waitFor(() => {
-      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('restored prompt')
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLInputElement).value).toBe('restored prompt')
     })
-    expect((screen.getByPlaceholderText('lowres, bad anatomy…') as HTMLTextAreaElement).value).toBe('lowres')
+    expect((screen.getByPlaceholderText('lowres, bad anatomy…') as HTMLInputElement).value).toBe('lowres')
     expect((screen.getByLabelText('宽度') as HTMLInputElement).value).toBe('1024')
     expect((screen.getByLabelText('高度') as HTMLInputElement).value).toBe('1024')
     expect((screen.getByLabelText('步数') as HTMLInputElement).value).toBe('30')
     expect((screen.getByLabelText('种子值') as HTMLInputElement).value).toBe('42')
     // Restored character captions land in the (opened) character fold.
-    expect((screen.getByLabelText('角色 1') as HTMLTextAreaElement).value).toBe('1girl, blue hair')
+    expect((screen.getByLabelText('角色 1') as HTMLInputElement).value).toBe('1girl, blue hair')
     expect(screen.getByRole('tab', { name: '生成' }).getAttribute('aria-selected')).toBe('true')
   })
 
@@ -428,7 +457,7 @@ describe('workbench panel', () => {
   expect(screen.getByText(/官方服务端放大/)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: '增强图像' }))
   await waitFor(() => { expect(enhance).toHaveBeenCalledOnce() })
-  const request = enhance.mock.calls[0]![0] as Record<string, unknown>
+  const request = enhance.mock.calls[0]![0]
   expect(request.upscaledEnhance).toBe(true)
   // The submission stays at the fitted source size; the server upscales.
   expect(request.width).toBe(832)
@@ -658,12 +687,12 @@ describe('character prompts', () => {
     fireEvent.click(screen.getByRole('button', { name: 'AI 拆分角色' }))
     expect(splitCharacters).toHaveBeenCalledWith({ prompt: 'park, 2girls, blue hair, red hair' })
     await waitFor(() => {
-      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('park, masterpiece')
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLInputElement).value).toBe('park, masterpiece')
     })
     expect(screen.getByLabelText('角色 1')).toBeTruthy()
     expect(screen.getByLabelText('角色 2')).toBeTruthy()
-    expect((screen.getByLabelText('角色 1') as HTMLTextAreaElement).value).toBe('1girl, blue hair')
-    expect((screen.getByLabelText('角色 2 负面') as HTMLTextAreaElement).value).toBe('extra ears')
+    expect((screen.getByLabelText('角色 1') as HTMLInputElement).value).toBe('1girl, blue hair')
+    expect((screen.getByLabelText('角色 2 负面') as HTMLInputElement).value).toBe('extra ears')
   })
 
   it('toggles custom placement and edits coordinates as percentages', async () => {
@@ -695,7 +724,7 @@ describe('character prompts', () => {
     expect(screen.getByLabelText('角色 2')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '删除角色 1' }))
     expect(screen.queryByLabelText('角色 2')).toBeNull()
-    expect((screen.getByLabelText('角色 1') as HTMLTextAreaElement).value).toBe('')
+    expect((screen.getByLabelText('角色 1') as HTMLInputElement).value).toBe('')
   })
 
   it('restores recorded characters on backfill and variation', async () => {
@@ -720,7 +749,7 @@ describe('character prompts', () => {
     fireEvent.click(screen.getByTitle('查看大图'))
     fireEvent.click(screen.getByRole('button', { name: '回填参数' }))
     expect(screen.getByLabelText('角色 1')).toBeTruthy()
-    expect((screen.getByLabelText('角色 1') as HTMLTextAreaElement).value).toBe('1girl, blue hair')
+    expect((screen.getByLabelText('角色 1') as HTMLInputElement).value).toBe('1girl, blue hair')
     fireEvent.click(screen.getByTitle('查看大图'), { detail: 1 })
     fireEvent.click(await screen.findByRole('button', { name: '变体' }, { timeout: 3000 }))
     await waitFor(() => { expect(generate).toHaveBeenCalledOnce() })
@@ -757,7 +786,7 @@ describe('conversation interop', () => {
     expect(text).toContain('park, 2girls')
     expect(text).toContain('1girl, blue hair')
     // The workbench prompt survives the delivery; the user sends from the chat.
-    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('park, 2girls')
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLInputElement).value).toBe('park, 2girls')
     expect(setViewMode).toHaveBeenCalledWith('conversation')
   })
 
@@ -778,10 +807,80 @@ describe('conversation interop', () => {
     act(() => {
       deliverBackfill({ prompt: 'from the chat', negativePrompt: 'lowres', seed: 7, width: 1024, height: 1024 })
     })
-    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('from the chat')
-    expect((screen.getByPlaceholderText('lowres, bad anatomy…') as HTMLTextAreaElement).value).toBe('lowres')
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLInputElement).value).toBe('from the chat')
+    expect((screen.getByPlaceholderText('lowres, bad anatomy…') as HTMLInputElement).value).toBe('lowres')
     expect((screen.getByLabelText('种子值') as HTMLInputElement).value).toBe('7')
     expect((screen.getByLabelText('宽度') as HTMLInputElement).value).toBe('1024')
     expect(setViewMode).toHaveBeenCalledWith('workbench')
+  })
+
+  it('applies a prompt patch in place without switching views', async () => {
+    const { deliverPatch, setViewMode } = mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: '1girl, garden, old dress' } })
+    act(() => {
+      deliverPatch({
+        slot: 'positive',
+        operations: [
+          { op: 'add', tag: 'blue hair' },
+          { op: 'remove', tag: 'old dress' },
+          { op: 'modify', tag: 'garden', value: 'night city' },
+        ],
+      })
+    })
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLInputElement).value)
+      .toBe('1girl, night city, blue hair')
+    // The patch stays beside the conversation: no view switch.
+    expect(setViewMode).not.toHaveBeenCalled()
+  })
+
+  it('applies a settings patch onto the matching panel fields', async () => {
+    const { deliverPatch } = mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    act(() => {
+      deliverPatch({ slot: 'settings', operations: [{ op: 'modify', field: 'steps', value: '30' }, { op: 'modify', field: 'seed', value: '777' }] })
+    })
+    expect((screen.getByLabelText('步数') as HTMLInputElement).value).toBe('30')
+    expect((screen.getByLabelText('种子值') as HTMLInputElement).value).toBe('777')
+  })
+
+  it('commits the panel state for the current session (debounced)', async () => {
+    const { props } = makeProps()
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park' } })
+    await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 600) }) })
+    expect(props.commitWorkbenchState).toHaveBeenCalledWith('session-1', expect.objectContaining({ prompt: 'park' }))
+  })
+
+  it('the rail cut generates through the conversation, not the direct remote', async () => {
+    const { props } = makeProps()
+    render(<WorkbenchRoot {...({ ...(props as unknown as ComponentProps<typeof WorkbenchRoot>), variant: 'rail' as const })} />)
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park' } })
+    // Two controls read 生成 (the tab strip and the run button); the run button is the last.
+    fireEvent.click(screen.getAllByRole('button', { name: '生成' }).at(-1) as HTMLElement)
+    expect(props.seedDraft).toHaveBeenCalledWith('session-1', expect.stringContaining('novelai_generate'))
+    expect(props.generate).not.toHaveBeenCalled()
+  })
+
+  it('a batch run fires the configured count sequentially', async () => {
+    const { props } = makeProps()
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park' } })
+    fireEvent.change(screen.getByLabelText('批量张数'), { target: { value: '3' } })
+    // Zero the interval for the loop test (the safe default is five seconds);
+    // a sub-two-second setting first shows the loud risk warning.
+    fireEvent.change(screen.getByLabelText('间隔（秒）'), { target: { value: '1' } })
+    expect(screen.getByRole('alert').textContent).toContain('间隔过低')
+    fireEvent.change(screen.getByLabelText('间隔（秒）'), { target: { value: '0' } })
+    // The run button now announces the batch size (the t stub leaves {count} raw).
+    const run = screen.getAllByRole('button', { name: /生成 \{count\} 张/ }).at(-1) as HTMLElement
+    fireEvent.click(run)
+    await waitFor(() => { expect(props.generate).toHaveBeenCalledTimes(3) })
+    for (const call of props.generate.mock.calls) {
+      expect(call[0]).toMatchObject({ prompt: 'park' })
+    }
   })
 })

@@ -5,14 +5,17 @@
  * NovelAI Studio, MIT; independently authored, not derived from the GPL CSV).
  * @module @deepseek-ai/dsh-client-ui-novelai-workbench/capsule-data
  */
+/** One insertable tag with its chip label. */
 export interface CapsuleTag {
   en: string // Danbooru/NovelAI tag inserted into the prompt
   zh: string // Chinese label shown on the chip
 }
+/** One labeled tag group inside a category. */
 export interface CapsuleSubgroup {
   name: string // Chinese subgroup label (e.g. 对象)
   tags: CapsuleTag[]
 }
+/** One top-level capsule section (e.g. 人物) holding labeled tag groups. */
 export interface CapsuleCategory {
   name: string // Chinese category label (e.g. 人物)
   subgroups: CapsuleSubgroup[]
@@ -40,6 +43,9 @@ function cat(name: string, ...subgroups: CapsuleSubgroup[]): CapsuleCategory {
  * Merge a base (curated) taxonomy with an extra one by category + subgroup name.
  * Tags are de-duplicated by English value within each category so the curated
  * entries always win and nothing appears twice in the same category.
+ * @param base - curated taxonomy; its entries win every collision.
+ * @param extra - downloaded taxonomy merged in after the base.
+ * @returns the merged taxonomy; base categories keep their subgroup order.
  */
 export function mergeCapsules(base: CapsuleCategory[], extra: CapsuleCategory[]): CapsuleCategory[] {
   const out: CapsuleCategory[] = base.map(c => ({
@@ -49,7 +55,7 @@ export function mergeCapsules(base: CapsuleCategory[], extra: CapsuleCategory[])
   const seenByCat = new Map<string, Set<string>>()
   for (const c of out) {
     const seen = new Set<string>()
-    c.subgroups.forEach(s => s.tags.forEach(t => seen.add(t.en)))
+    c.subgroups.forEach((s) =>{  s.tags.forEach(t => seen.add(t.en)) })
     seenByCat.set(c.name, seen)
   }
   for (const ec of extra) {
@@ -77,6 +83,7 @@ export function mergeCapsules(base: CapsuleCategory[], extra: CapsuleCategory[])
   return out
 }
 
+/** Curated capsule sections served in addition to CAPSULE_BASE (merged by `mergeCapsules`). */
 export const CAPSULE_EXTRA: CapsuleCategory[] = [
   cat(
     '人物',
@@ -217,6 +224,7 @@ export const CAPSULE_EXTRA: CapsuleCategory[] = [
 ]
 
 // Second authored batch — fresh tags folded into the same categories/subgroups.
+/** Second curated capsule section pack, merged after CAPSULE_EXTRA. */
 export const CAPSULE_EXTRA2: CapsuleCategory[] = [
   cat(
     '人物',
@@ -328,6 +336,7 @@ export const CAPSULE_EXTRA2: CapsuleCategory[] = [
 ]
 
 // Third authored batch — additional fresh tags to round out each category.
+/** Third curated capsule section pack, merged after CAPSULE_EXTRA2. */
 export const CAPSULE_EXTRA3: CapsuleCategory[] = [
   cat(
     '人物',

@@ -14,16 +14,18 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
-import { WorkbenchRoot } from './components.tsx'
-import type { WorkbenchBackfillRequest } from './bridge.ts'
+import { WorkbenchRail, WorkbenchRoot } from './components.tsx'
+import type { WorkbenchBackfillRequest, WorkbenchPatchRequest } from './bridge.ts'
 import type { WorkbenchInjected } from './injected.ts'
+import type { NovelaiWorkbenchState as WorkbenchStateMirror } from '@deepseek-ai/dsh-api-novelai-controller/types'
 import { en, zh, type WorkbenchKey } from './locales.ts'
 
-export type { NovelaiWorkbenchBridge, WorkbenchBackfillRequest } from './bridge.ts'
+export type { NovelaiWorkbenchBridge, WorkbenchBackfillRequest, WorkbenchPatchOperation, WorkbenchPatchRequest } from './bridge.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -42,9 +44,10 @@ export const inject = ['slots', 'layout', 'remote', 'remote.novelai', 'conversat
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
-  // Conversation → workbench backfill bridge: the mounted panel subscribes
-  // through its inject face; delivery without a panel reports false.
+  // Conversation → workbench bridges: the mounted panel subscribes through its
+  // inject face; delivery without a panel reports false.
   const backfillSubscribers = new Set<(request: WorkbenchBackfillRequest) => void>()
+  const patchSubscribers = new Set<(request: WorkbenchPatchRequest) => void>()
   ctx.effect(() => {
     ctx.provide('novelaiWorkbench', {
       requestBackfill: (request) => {
@@ -52,10 +55,104 @@ export function apply(ctx: ClientContext): void {
         for (const subscriber of backfillSubscribers) subscriber(request)
         return true
       },
+      requestPatchApply: (request) => {
+        if (patchSubscribers.size === 0) return false
+        for (const subscriber of patchSubscribers) subscriber(request)
+        return true
+      },
     })
-    return () => { backfillSubscribers.clear() }
+    return () => { backfillSubscribers.clear(); patchSubscribers.clear() }
   }, 'ui-novelai-workbench: backfill bridge')
   ctx.effect(() => ctx.locale.register('novelai-workbench', { zh, en }), 'ui-novelai-workbench: dictionaries')
+  // Host mirror resilience: the host keeps committed panel state in memory, so
+  // a server restart wipes it. Cache the last commit per session and re-push
+  // every cached state after a connection reset (the token row's pattern).
+  const lastStates = new Map<string, WorkbenchStateMirror>()
+  ctx.effect(() => {
+    const disposers = [
+      ctx.on('connection/reset', () => {
+        for (const [sessionId, state] of lastStates) {
+          void ctx.remote.novelai.commitWorkbenchState({ sessionId, state }).catch(() => {
+            // The next panel change re-commits; a lost re-push heals the same way.
+          })
+        }
+      }),
+    ]
+    return () => { for (const dispose of disposers) dispose() }
+  }, 'ui-novelai-workbench: state mirror re-push')
+  /** Shared inject face: both seats (center surface and conversation rail) expose the same verbs. */
+  const workbenchInject = (): WorkbenchInjected => ({
+    setViewMode: (mode) => { ctx.layout.setViewMode(mode) },
+    catalog: async () => {
+      const result = await ctx.remote.novelai.catalog()
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value
+    },
+    estimate: async (request) => {
+      const result = await ctx.remote.novelai.estimate(request)
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value
+    },
+    generate: async (request) => {
+      const result = await ctx.remote.novelai.generate(request)
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value
+    },
+    enhance: async (request) => {
+      const result = await ctx.remote.novelai.enhance(request)
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value
+    },
+    reverse: async (request) => {
+      const result = await ctx.remote.novelai.reversePrompt(request)
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value
+    },
+    inspect: async (request) => {
+      const result = await ctx.remote.novelai.inspectImage(request)
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value
+    },
+    history: async () => {
+      const result = await ctx.remote.novelai.history({ limit: 30 })
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value
+    },
+    anlasBalance: async () => {
+      const result = await ctx.remote.novelai.anlasBalance()
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value.anlas
+    },
+    suggestTags: async (request) => {
+      const result = await ctx.remote.novelai.suggestTags(request)
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value
+    },
+    readEntry: async (request) => {
+      const result = await ctx.remote.novelai.readEntry(request)
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value
+    },
+    splitCharacters: async (request) => {
+      const result = await ctx.remote.novelai.splitCharacters(request)
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value
+    },
+    seedDraft: (sessionId, text) => ctx.conversation.seedDraft(sessionId, text),
+    commitWorkbenchState: async (sessionId, state) => {
+      lastStates.set(sessionId, state)
+      const result = await ctx.remote.novelai.commitWorkbenchState({ sessionId: sessionId, state })
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+    },
+    onBackfillRequest: (callback) => {
+      backfillSubscribers.add(callback)
+      return () => { backfillSubscribers.delete(callback) }
+    },
+    onPatchApply: (callback) => {
+      patchSubscribers.add(callback)
+      return () => { patchSubscribers.delete(callback) }
+    },
+  })
   ctx.effect(() => {
     // The sidebar footer seat is list-kind: the slots API allows no inject
     // face there, so the mode switch lives in the workbench's own top bar for
@@ -64,65 +161,16 @@ export function apply(ctx: ClientContext): void {
       ctx.slots.register({
         name: 'workbench',
         locale: 'novelai-workbench',
-        inject: (): WorkbenchInjected => ({
-          setViewMode: (mode) => { ctx.layout.setViewMode(mode) },
-          catalog: async () => {
-            const result = await ctx.remote.novelai.catalog()
-            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
-            return result.value
-          },
-          estimate: async (request) => {
-            const result = await ctx.remote.novelai.estimate(request)
-            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
-            return result.value
-          },
-          generate: async (request) => {
-            const result = await ctx.remote.novelai.generate(request)
-            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
-            return result.value
-          },
-          enhance: async (request) => {
-            const result = await ctx.remote.novelai.enhance(request)
-            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
-            return result.value
-          },
-          reverse: async (request) => {
-            const result = await ctx.remote.novelai.reversePrompt(request)
-            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
-            return result.value
-          },
-          inspect: async (request) => {
-            const result = await ctx.remote.novelai.inspectImage(request)
-            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
-            return result.value
-          },
-          history: async () => {
-            const result = await ctx.remote.novelai.history({ limit: 30 })
-            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
-            return result.value
-          },
-          suggestTags: async (request) => {
-            const result = await ctx.remote.novelai.suggestTags(request)
-            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
-            return result.value
-          },
-          readEntry: async (request) => {
-            const result = await ctx.remote.novelai.readEntry(request)
-            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
-            return result.value
-          },
-          splitCharacters: async (request) => {
-            const result = await ctx.remote.novelai.splitCharacters(request)
-            if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
-            return result.value
-          },
-          seedDraft: (sessionId, text) => ctx.conversation.seedDraft(sessionId, text),
-          onBackfillRequest: (callback) => {
-            backfillSubscribers.add(callback)
-            return () => { backfillSubscribers.delete(callback) }
-          },
-        }),
+        inject: workbenchInject,
       }, WorkbenchRoot))
-    return () => { disposeWorkbench() }
+    // The conversation's right rail: the same surface in its rail cut,
+    // replacing the details panel's tool body while mounted.
+    const disposeRail = ctx.slots.inject('conversation.details.workbench', () =>
+      ctx.slots.register({
+        name: 'conversation.details.workbench',
+        locale: 'novelai-workbench',
+        inject: workbenchInject,
+      }, WorkbenchRail))
+    return () => { disposeWorkbench(); disposeRail() }
   }, 'ui-novelai-workbench: seats')
 }

@@ -1,6 +1,6 @@
 /** Injected callback faces handed to the workbench components. */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { WorkbenchBackfillRequest } from './bridge.ts'
+import type { WorkbenchBackfillRequest, WorkbenchPatchRequest } from './bridge.ts'
 import type {
   NovelaiCatalogValue,
   NovelaiEnhanceRequest,
@@ -19,6 +19,7 @@ import type {
   NovelaiSplitCharactersValue,
   NovelaiSuggestTagsRequest,
   NovelaiTagSuggestionsValue,
+  NovelaiWorkbenchState,
 } from '@deepseek-ai/dsh-api-novelai-controller/types'
 import type { ViewMode } from '@deepseek-ai/dsh-client-ui-layout/client'
 
@@ -38,6 +39,8 @@ export interface WorkbenchInjected extends ModeSwitchInjected {
   inspect: (request: NovelaiInspectRequest) => Promise<NovelaiInspectValue>
   /** Read the first library page (newest first). */
   history: () => Promise<NovelaiHistoryValue>
+  /** Read the account's remaining Anlas; undefined when unavailable. */
+  anlasBalance: () => Promise<number | undefined>
   /** Suggest Danbooru tags for one partial prompt word. */
   suggestTags: (request: NovelaiSuggestTagsRequest) => Promise<NovelaiTagSuggestionsValue>
   /** Read one library entry's PNG bytes. */
@@ -46,12 +49,21 @@ export interface WorkbenchInjected extends ModeSwitchInjected {
   splitCharacters: (request: NovelaiSplitCharactersRequest) => Promise<NovelaiSplitCharactersValue>
   /** Seed one composed draft text into the given conversation's composer input; the user sends it from there. */
   seedDraft: (sessionId: SessionId, text: string) => boolean
+  /** Commit the panel state for one session; the host-side mirror binds `novelai_generate` to it. */
+  commitWorkbenchState: (sessionId: SessionId, state: NovelaiWorkbenchState) => Promise<void>
   /**
    * Subscribe to conversation-side backfill deliveries while the panel is mounted.
    * @param callback - invoked with the delivered draft.
    * @returns the unsubscribe disposer.
    */
   onBackfillRequest: (callback: (request: WorkbenchBackfillRequest) => void) => () => void
+  /**
+   * Subscribe to conversation-side patch deliveries (the `novelai_prompt_patch`
+   * card's apply) while the panel is mounted.
+   * @param callback - invoked with the applied patch.
+   * @returns the unsubscribe disposer.
+   */
+  onPatchApply: (callback: (request: WorkbenchPatchRequest) => void) => () => void
 }
 
 /** Mode-switch callbacks. */

@@ -19,16 +19,17 @@
 
 .thumbnail {
   display: block;
-  max-width: 240px;
-  max-height: 240px;
-  width: auto;
-  height: auto;
+  /* The produced image is the turn's deliverable: big enough that a long
+     turn's closing tail cannot hide it. */
+  width: 280px;
+  height: 210px;
+  object-fit: cover;
 }
 
 .loading {
   display: block;
-  width: 160px;
-  height: 120px;
+  width: 280px;
+  height: 210px;
   background: var(--dsw-surface-raised, transparent);
 }
 

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/api/novelai-controller/README.md
-README.md: 6b590a8dac227831d4bd69233c93ac0b403ba859
-README.zh.md: c2c702c6b28aa6cd57abf4436b3aa6caa8269cbe
+README.md: 0545989d4c755b7d50d1bb7fcf122b4d4bed6dc1
+README.zh.md: 96795407849e81ee63a966d793eaecbd7637a179

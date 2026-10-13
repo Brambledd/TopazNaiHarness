@@ -2,16 +2,42 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { estimateAnlas } from '@deepseek-ai/dsh-novelai-core'
 import { NovelaiImageLibrary } from '../src/library.ts'
 import NovelaiController from '../src/index.ts'
+import type { WorkbenchStateStore } from '../src/workbench-state-store.ts'
+import type { NovelaiWorkbenchState } from '../src/types.ts'
+
+/** Delegating home-path mock: tests flip `resolveFails` to exercise the memory-only degradation. */
+const homeState = vi.hoisted(() => ({ resolveFails: false }))
+vi.mock('@deepseek-ai/dsh-home-paths', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@deepseek-ai/dsh-home-paths')>()
+  return {
+    ...actual,
+    resolveDshHome: (...args: Parameters<typeof actual.resolveDshHome>) => {
+      if (homeState.resolveFails) throw new Error('no resolvable home')
+      return actual.resolveDshHome(...args)
+    },
+  }
+})
 
 const roots: Context[] = []
 
+/** Sandbox home per test: the controller persists workbench states under it, never the operator's real home. */
+let sandboxHome = ''
+const previousHome = process.env['DSH_HOME']
+
+beforeEach(() => {
+  sandboxHome = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-novelai-home-')))
+  process.env['DSH_HOME'] = sandboxHome
+})
+
 afterEach(async () => {
   await Promise.all(roots.splice(0).map(ctx => ctx.fiber.dispose()))
+  if (previousHome !== undefined) process.env['DSH_HOME'] = previousHome
+  else delete process.env['DSH_HOME']
 })
 
 /**
@@ -369,5 +395,162 @@ describe('generation directory', () => {
       if (previous !== undefined) process.env['NOVELAI_TOKEN'] = previous
       else delete process.env['NOVELAI_TOKEN']
     }
+  })
+})
+
+/** Committed panel state fixture. */
+function workbenchState(prompt: string): NovelaiWorkbenchState {
+  return {
+    prompt,
+    negativePrompt: 'lowres',
+    model: 'nai-diffusion-4-full',
+    width: 832,
+    height: 1216,
+    steps: 28,
+    cfgScale: 5,
+    sampler: 'k_euler_ancestral',
+    noiseSchedule: 'karras',
+    seed: 42,
+  }
+}
+
+describe('workbench state persistence', () => {
+  it('round-trips a commit through the hot map and serves it back', async () => {
+    const { controller } = await harness()
+    await expect(controller.commitWorkbenchState({ sessionId: 'session-1', state: workbenchState('1girl, solo') }))
+      .resolves.toEqual({ ok: true })
+    await expect(controller.readWorkbenchState({ sessionId: 'session-1' }))
+      .resolves.toEqual({ state: workbenchState('1girl, solo') })
+  })
+
+  it('persists the commit under the harness home and restores it into a fresh controller', async () => {
+    // The sandbox home comes from beforeEach; both controllers resolve the same
+    // `<home>/novelai-workbench-states` directory.
+    const first = await harness()
+    await first.controller.commitWorkbenchState({ sessionId: 'session-9', state: workbenchState('committed prompt') })
+    // A second controller over the same home (empty hot map) reads the durable document.
+    const second = await harness()
+    await expect(second.controller.readWorkbenchState({ sessionId: 'session-9' }))
+      .resolves.toEqual({ state: workbenchState('committed prompt') })
+    // The restored document backfills the hot map, so later reads keep serving it.
+    await expect(second.controller.readWorkbenchState({ sessionId: 'session-9' }))
+      .resolves.toEqual({ state: workbenchState('committed prompt') })
+  })
+
+  it('answers absent for a session that never committed', async () => {
+    const { controller } = await harness()
+    await expect(controller.readWorkbenchState({ sessionId: 'session-1' })).resolves.toEqual({})
+  })
+
+  it('refuses to persist an unsafe session id with the persist-failed code', async () => {
+    const { controller } = await harness()
+    await expect(controller.commitWorkbenchState({ sessionId: '../escape', state: workbenchState('1girl') }))
+      .rejects.toMatchObject({ code: 'novelai/state-persist-failed', details: { message: expect.stringContaining('invalid workbench session id') } })
+  })
+
+  it('renders a non-Error persist failure into the same code', async () => {
+    const { controller } = await harness()
+    const store = (controller as unknown as { workbenchStore: WorkbenchStateStore }).workbenchStore
+    const write = vi.spyOn(store, 'write').mockRejectedValueOnce('disk gone')
+    try {
+      await expect(controller.commitWorkbenchState({ sessionId: 'session-1', state: workbenchState('1girl') }))
+        .rejects.toMatchObject({ code: 'novelai/state-persist-failed', details: { message: 'disk gone' } })
+    } finally {
+      write.mockRestore()
+    }
+  })
+
+  it('reads an unpersistable session id as absent instead of failing', async () => {
+    const { controller } = await harness()
+    await expect(controller.readWorkbenchState({ sessionId: 'subagent:nested:parent' })).resolves.toEqual({})
+  })
+
+  it('degrades to memory-only when the harness home cannot resolve', async () => {
+    homeState.resolveFails = true
+    try {
+      const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-novelai-controller-')))
+      const ctx = new Context()
+      roots.push(ctx)
+      ctx.provide('typert', {
+        lookups: { configure: () => (): void => {} },
+        contexts: { configureHost: () => (): void => {} },
+      } as never)
+      ctx.provide('llm', { stream: async function* () {} } as never)
+      ctx.provide('attachments', { saveImage: async () => ({ attachmentId: 'att-1', mediaType: 'image/png', bytes: 1, width: 64, height: 64 }) } as never)
+      ctx.provide('settings', settingsProvider())
+      const warnings: string[] = []
+      ctx.logger.warn = ((message: unknown) => { warnings.push(String(message)) }) as typeof ctx.logger.warn
+      const controller = new NovelaiController(ctx, {
+        outputDir: dir,
+        tagIndexPath: join(dir, 'tag-index.csv'),
+        splitProvider: 'mock',
+        splitModel: 'mock',
+        splitMaxTokens: 4096,
+        reverseProvider: 'mock',
+        reverseModel: 'mock',
+        reverseMaxTokens: 7000,
+      })
+      await ctx.plugin({ apply: () => {} })
+      // The composition kept booting; the degradation is announced.
+      expect(warnings.some(message => message.includes('degrade to host memory'))).toBe(true)
+      // The hot map still serves the generation tool's prompt source.
+      await expect(controller.commitWorkbenchState({ sessionId: 'session-1', state: workbenchState('1girl') }))
+        .resolves.toEqual({ ok: true })
+      await expect(controller.readWorkbenchState({ sessionId: 'session-1' }))
+        .resolves.toEqual({ state: workbenchState('1girl') })
+    } finally {
+      homeState.resolveFails = false
+    }
+  })
+})
+
+describe('artist chains', () => {
+  it('answers an empty library before anything is saved', async () => {
+    const { controller } = await harness()
+    await expect(controller.artistChains()).resolves.toEqual({ chains: [] })
+  })
+
+  it('saves named chains verbatim, in insertion order, with host-assigned ids', async () => {
+    const { controller } = await harness()
+    await controller.saveArtistChain({ name: '厚涂风', chain: '0.3:cola gotouryouta::, 0.5:yoneyama mai::, 0.9:re0n::, 1.8:kim hyung tae::' })
+    const saved = await controller.saveArtistChain({ name: 'watercolor', chain: '0.8:wlop::, 1.2:artgerm::' })
+    expect(saved.chains.map(chain => chain.name)).toEqual(['厚涂风', 'watercolor'])
+    expect(saved.chains[0]?.chain).toBe('0.3:cola gotouryouta::, 0.5:yoneyama mai::, 0.9:re0n::, 1.8:kim hyung tae::')
+    for (const chain of saved.chains) expect(chain.id).toMatch(/[0-9a-f-]{36}/)
+  })
+
+  it('re-saving an existing name replaces that chain in place', async () => {
+    const { controller } = await harness()
+    await controller.saveArtistChain({ name: '厚涂风', chain: '0.3:cola gotouryouta::' })
+    const saved = await controller.saveArtistChain({ name: '厚涂风', chain: '0.3:cola gotouryouta::, 0.9:re0n::, 1.8:kim hyung tae::' })
+    expect(saved.chains).toEqual([expect.objectContaining({ name: '厚涂风', chain: '0.3:cola gotouryouta::, 0.9:re0n::, 1.8:kim hyung tae::' })])
+  })
+
+  it('removes by id and refuses an unknown id with the missing code', async () => {
+    const { controller } = await harness()
+    const created = await controller.saveArtistChain({ name: '厚涂风', chain: '0.3:cola gotouryouta::' })
+    const target = created.chains[0]
+    if (target === undefined) throw new Error('fixture chain missing')
+    const after = await controller.removeArtistChain({ id: target.id })
+    expect(after.chains).toEqual([])
+    await expect(controller.removeArtistChain({ id: 'no-such-id' }))
+      .rejects.toMatchObject({ code: 'novelai/artist-chain-missing', details: { id: 'no-such-id' } })
+  })
+
+  it('refuses invalid names and chain texts with the invalid code and the reason', async () => {
+    const { controller } = await harness()
+    await expect(controller.saveArtistChain({ name: '   ', chain: '0.9:re0n::' }))
+      .rejects.toMatchObject({ code: 'novelai/artist-chain-invalid', details: { message: expect.stringContaining('name must not be empty') } })
+    await expect(controller.saveArtistChain({ name: 'ok', chain: '   ' }))
+      .rejects.toMatchObject({ code: 'novelai/artist-chain-invalid', details: { message: expect.stringContaining('chain text must not be empty') } })
+    await expect(controller.artistChains()).resolves.toEqual({ chains: [] })
+  })
+
+  it('persists the library across a fresh controller over the same harness home', async () => {
+    const first = await harness()
+    await first.controller.saveArtistChain({ name: '厚涂风', chain: '0.3:cola gotouryouta::, 0.9:re0n::' })
+    const second = await harness()
+    await expect(second.controller.artistChains())
+      .resolves.toEqual({ chains: [expect.objectContaining({ name: '厚涂风', chain: '0.3:cola gotouryouta::, 0.9:re0n::' })] })
   })
 })

@@ -8,6 +8,7 @@ import {
   type NovelaiGenerateInput,
   type NovelaiWirePayload,
 } from './types.ts'
+import { maxCharactersFor } from './types.ts'
 
 /**
  * Negative prompt used when the caller sends none. Mirrors the official V4+ "Heavy"
@@ -68,15 +69,35 @@ export function buildNovelaiPayload(input: NovelaiGenerateInput): NovelaiWirePay
     skip_cfg_above_sigma: null,
   }
   if (isV4Plus(input.model)) {
+    // Structured character captions, mirroring the core payload: the tool
+    // input carries no coordinates, so every caption keeps the (0.5, 0.5)
+    // AI-choice center sentinel; when any character carries a personal
+    // negative, every entry ships one (empty string included).
+    const cap = maxCharactersFor(input.model)
+    const characters = (input.characters ?? []).slice(0, cap)
+    const captions = characters.map(character => ({
+      char_caption: character.prompt,
+      centers: [{ x: 0.5, y: 0.5 }],
+    }))
+    const negativeCaptions = characters.some(character => (character.negativePrompt ?? '') !== '')
+      ? characters.map(character => ({
+        char_caption: character.negativePrompt ?? '',
+        centers: [{ x: 0.5, y: 0.5 }],
+      }))
+      : []
+    // The desktop reference writes the flag at the top level as well as inside
+    // both structured objects; the API reads the top-level one. The tool input
+    // carries no coordinates, so placement always stays AI-chosen.
+    parameters.use_coords = false
     // V4/V4.5/V5 require the structured prompt objects; a request without them
     // (or with empty top-level character lists) fails with HTTP 500.
     parameters.v4_prompt = {
-      caption: { base_caption: input.prompt, char_captions: [] },
+      caption: { base_caption: input.prompt, char_captions: captions },
       use_coords: false,
       use_order: true,
     }
     parameters.v4_negative_prompt = {
-      caption: { base_caption: input.negativePrompt, char_captions: [] },
+      caption: { base_caption: input.negativePrompt, char_captions: negativeCaptions },
       use_coords: false,
       use_order: false,
       legacy_uc: false,

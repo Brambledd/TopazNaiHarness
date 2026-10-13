@@ -19,6 +19,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'novelai/reverse-failed': { readonly message: string }
     /** The generation-directory settings write was refused (no provider, read-only storage, or a failed persist). */
     'novelai/settings-write-failed': { readonly message: string }
+    /** The committed workbench panel state could not be persisted under the harness home. */
+    'novelai/state-persist-failed': { readonly message: string }
+    /** An artist-chains mutation carried an empty or over-long name or chain text. */
+    'novelai/artist-chain-invalid': { readonly message: string }
+    /** An artist-chains removal targeted an id that is not stored. */
+    'novelai/artist-chain-missing': { readonly id: string }
   }
 }
 
@@ -357,6 +363,22 @@ export interface NovelaiCommitWorkbenchStateRequest {
 export interface NovelaiReadWorkbenchStateValue {
   /** The latest committed panel state for the session. */
   readonly state?: NovelaiWorkbenchState
+}
+
+/** One saved artist chain (画师串) in the workbench's named-chains library. */
+export interface NovelaiArtistChain {
+  /** Host-assigned opaque id. */
+  readonly id: string
+  /** The chain's display name; the naming handle the library is organized by. */
+  readonly name: string
+  /** The whole chain text, stored verbatim (a `weight:artist::` run joined by `', '`). */
+  readonly chain: string
+}
+
+/** The named artist-chains library, served by every chains verb so the client re-renders from one source. */
+export interface NovelaiArtistChainsValue {
+  /** All saved chains in insertion order. */
+  readonly chains: readonly NovelaiArtistChain[]
 }
 
 /** `generationDir()` answer: the effective output directory and who supplies it. */

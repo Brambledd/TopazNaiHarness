@@ -91,6 +91,66 @@ describe('buildNovelaiPayload', () => {
     })
     expect(payload.parameters['v4_prompt']).toBeUndefined()
   })
+
+  it('renders structured characters as char captions at the AI-choice center', () => {
+    const payload = buildNovelaiPayload({
+      prompt: 'park',
+      negativePrompt: 'lowres',
+      model: 'nai-diffusion-4-5-full',
+      width: 832,
+      height: 1216,
+      steps: 28,
+      cfgScale: 5,
+      sampler: 'k_euler',
+      noiseSchedule: 'native',
+      seed: 1,
+      characters: [
+        { prompt: '1girl, blue hair', negativePrompt: 'extra ears' },
+        { prompt: '1girl, red hair' },
+      ],
+    })
+    expect(payload.parameters['use_coords']).toBe(false)
+    expect(payload.parameters['v4_prompt']).toEqual({
+      caption: {
+        base_caption: 'park',
+        char_captions: [
+          { char_caption: '1girl, blue hair', centers: [{ x: 0.5, y: 0.5 }] },
+          { char_caption: '1girl, red hair', centers: [{ x: 0.5, y: 0.5 }] },
+        ],
+      },
+      use_coords: false,
+      use_order: true,
+    })
+    // Any personal negative makes every entry ship one, empties included.
+    expect(payload.parameters['v4_negative_prompt']).toEqual({
+      caption: {
+        base_caption: 'lowres',
+        char_captions: [
+          { char_caption: 'extra ears', centers: [{ x: 0.5, y: 0.5 }] },
+          { char_caption: '', centers: [{ x: 0.5, y: 0.5 }] },
+        ],
+      },
+      use_coords: false,
+      use_order: false,
+      legacy_uc: false,
+    })
+  })
+
+  it('keeps empty char captions when no characters ride along', () => {
+    const payload = buildNovelaiPayload({
+      prompt: 'park',
+      negativePrompt: 'lowres',
+      model: 'nai-diffusion-5-full',
+      width: 832,
+      height: 1216,
+      steps: 28,
+      cfgScale: 5,
+      sampler: 'k_euler',
+      noiseSchedule: 'native',
+      seed: 1,
+    })
+    expect((payload.parameters['v4_prompt'] as { caption: { char_captions: unknown[] } }).caption.char_captions).toEqual([])
+  })
 })
 
 describe('estimateAnlas', () => {

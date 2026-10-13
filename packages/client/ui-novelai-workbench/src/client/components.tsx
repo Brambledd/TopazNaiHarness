@@ -1,6 +1,7 @@
 /** Workbench presentation components (pure props; all data via inject). */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
+  NovelaiArtistChain,
   NovelaiCatalogValue,
   NovelaiCharacterPromptRequest,
   NovelaiCharacterPromptValue,
@@ -71,6 +72,10 @@ export function WorkbenchRoot({
   onBackfillRequest,
   onPatchApply,
   commitWorkbenchState,
+  readWorkbenchState,
+  artistChains,
+  saveArtistChain,
+  removeArtistChain,
   setViewMode,
   useSessions,
   t,
@@ -84,6 +89,15 @@ export function WorkbenchRoot({
   const [negativeOpen, setNegativeOpen] = useState(false)
   const [capsuleOpen, setCapsuleOpen] = useState(false)
   const [stylesOpen, setStylesOpen] = useState(false)
+  // Artist chains (画师串): the named library loads lazily on first open. Each
+  // saved chain is ONE whole-string entry (a pasted `weight:artist::` run,
+  // stored verbatim — never parsed); 插入 appends the chain text to the prompt.
+  // (State named savedChains: the filmstrip owns `entries`.)
+  const [artistOpen, setArtistOpen] = useState(false)
+  const [savedChains, setSavedChains] = useState<readonly NovelaiArtistChain[]>([])
+  const [chainName, setChainName] = useState('')
+  const [chainText, setChainText] = useState('')
+  const artistLoadedRef = useRef(false)
   const [characters, setCharacters] = useState<CharacterDraft[]>([])
   const [charactersOpen, setCharactersOpen] = useState(false)
   const [splitting, setSplitting] = useState(false)
@@ -133,9 +147,12 @@ export function WorkbenchRoot({
   const urlCache = useRef(new Map<string, string>())
 
   // One-time catalog load seeds every dropdown and the workbench defaults.
+  // The seeding promise is retained so the session-state restore (which must
+  // win over these defaults) follows it deterministically.
+  const catalogSeeded = useRef<Promise<void>>(Promise.resolve())
   useEffect(() => {
     let cancelled = false
-    catalog().then((value) => {
+    const seeded = catalog().then((value) => {
       if (cancelled) return
       setCatalogValue(value)
       setSampler(current => current || value.defaults.sampler)
@@ -147,7 +164,9 @@ export function WorkbenchRoot({
       // The default checkpoint is the catalog's newest entry (the list is
       // newest-first), not the host's pricing-friendly default.
       setModel(current => current || (value.models[0] ?? value.defaults.model))
-    }).catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) })
+    })
+    catalogSeeded.current = seeded
+    seeded.catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) })
     return () => { cancelled = true }
   }, [catalog])
 
@@ -202,8 +221,77 @@ export function WorkbenchRoot({
     width, height, steps, cfgScale, sampler, noiseSchedule, seedMode, seed,
   ])
 
+  // Restore-on-session: every session-id change re-runs the restore, so
+  // switching back to a previous conversation lands its committed state again
+  // (the panel never clears fields on a switch, and the commit loop
+  // republishes the panel, so a re-restore is idempotent). The read applies
+  // after the catalog seeding so restored parameters win over the defaults.
+  // A response that resolves after the session changed again (or the surface
+  // unmounted) is dropped by the cancelled flag and never clobbers the panel
+  // the user is typing into.
+  const restoredSession = useRef<typeof currentSessionId>(undefined)
+  useEffect(() => {
+    if (restoredSession.current === currentSessionId) return
+    restoredSession.current = currentSessionId
+    if (currentSessionId === undefined) return
+    let cancelled = false
+    void catalogSeeded.current
+      .then(() => readWorkbenchState(currentSessionId))
+      .then((restored) => {
+        if (cancelled || restored === undefined) return
+        setPrompt(restored.prompt)
+        setNegativePrompt(restored.negativePrompt)
+        if (restored.negativePrompt.trim() !== '') setNegativeOpen(true)
+        setModel(restored.model)
+        setWidth(restored.width)
+        setHeight(restored.height)
+        setSteps(restored.steps)
+        setCfgScale(restored.cfgScale)
+        setSampler(restored.sampler)
+        setNoiseSchedule(restored.noiseSchedule)
+        if (restored.seed !== undefined) {
+          setSeedMode('fixed')
+          setSeed(restored.seed)
+        }
+      })
+      .catch(() => { /* the restore is advisory; the catalog defaults stay */ })
+    return () => { cancelled = true }
+  }, [readWorkbenchState, currentSessionId])
+
   const tier = useMemo(() => nearestTier(width, height), [width, height])
   const ratio = useMemo(() => nearestRatio(width, height), [width, height])
+
+  // Every chains mutation re-renders from the verb's returned full library —
+  // the host's one source — so no local order can drift from the stored truth.
+  const toggleArtistSection = (): void => {
+    const next = !artistOpen
+    setArtistOpen(next)
+    if (next && !artistLoadedRef.current) {
+      artistLoadedRef.current = true
+      void artistChains().then(setSavedChains).catch(() => { /* the empty library stands until a mutation refreshes */ })
+    }
+  }
+
+  /** Append one saved chain's whole text to the prompt (comma-joined; verbatim). */
+  const insertArtistChain = (chain: string): void => {
+    setPrompt(prompt === '' ? chain : `${prompt.replace(/\s+$/, '')}, ${chain}`)
+  }
+
+  const submitArtistChain = (): void => {
+    const name = chainName.trim()
+    const chain = chainText.trim()
+    /* v8 ignore next -- unreachable from the form: the save button is disabled under the same emptiness condition */
+    if (name === '' || chain === '') return
+    void saveArtistChain({ name, chain }).then((value) => {
+      setSavedChains(value)
+      setChainName('')
+      setChainText('')
+    }).catch(() => { /* the library keeps its last served state; the next action retries */ })
+  }
+
+  const removeSavedChain = (id: string): void => {
+    void removeArtistChain(id).then(setSavedChains).catch(() => { /* removal is re-addable; keep the served library */ })
+  }
 
   const applyTierRatio = (nextTier: Tier | null, nextRatio: string): void => {
     if (nextTier === null) return
@@ -409,6 +497,20 @@ export function WorkbenchRoot({
   /** Apply one conversation-side draft; absent fields keep their panel value. */
   const applyBackfillRequest = (request: WorkbenchBackfillRequest): void => {
     if (request.prompt !== undefined) setPrompt(request.prompt)
+    // The conversation carries already-structured characters (the model fills
+    // the tool input per character), so they land directly in the cards — no
+    // LLM split on the backfill path.
+    if (request.characters !== undefined) {
+      setCharacters(request.characters.map(character => ({
+        id: nextCharacterId(),
+        prompt: character.prompt,
+        negativePrompt: character.negativePrompt ?? '',
+        useCoords: false,
+        x: 0.5,
+        y: 0.5,
+      })))
+      if (request.characters.length > 0) setCharactersOpen(true)
+    }
     if (request.negativePrompt !== undefined) {
       setNegativePrompt(request.negativePrompt)
       if (request.negativePrompt.trim() !== '') setNegativeOpen(true)
@@ -424,7 +526,8 @@ export function WorkbenchRoot({
       setSeedMode('fixed')
       setSeed(request.seed)
     }
-    setCharacters([])
+    // Absent characters reset the cards; present ones already replaced them above.
+    if (request.characters === undefined) setCharacters([])
     setDone(undefined)
     setError(undefined)
     setViewMode('workbench')
@@ -921,6 +1024,58 @@ export function WorkbenchRoot({
                     {style.zh}
                   </button>
                 ))}
+              </div>
+            )}
+          </div>
+          <div className={css.section}>
+            <button
+              type="button"
+              className={css.foldHeader}
+              aria-expanded={artistOpen}
+              onClick={toggleArtistSection}
+            >
+              <span className={`${css.chevron} ${artistOpen ? css.chevronOpen : ''}`}>▾</span>
+              {t('artists.label')}
+            </button>
+            {artistOpen && (
+              <div className={css.artistList}>
+                {savedChains.length === 0 && <p className={css.artistPreview}>{t('artists.empty')}</p>}
+                {savedChains.map(item => (
+                  <div key={item.id} className={css.artistRow}>
+                    <span className={css.artistName}>{item.name}</span>
+                    <span className={css.artistPreview} title={item.chain}>{item.chain}</span>
+                    <button type="button" className={css.charAction} onClick={() => { insertArtistChain(item.chain) }}>
+                      {t('artists.insert')}
+                    </button>
+                    <button type="button" className={css.charAction} onClick={() => { removeSavedChain(item.id) }}>
+                      {t('artists.remove')}
+                    </button>
+                  </div>
+                ))}
+                <div className={css.artistForm}>
+                  <input
+                    className={css.artistInput}
+                    value={chainName}
+                    placeholder={t('artists.namePlaceholder')}
+                    aria-label={t('artists.nameLabel')}
+                    onChange={(event) => { setChainName(event.target.value) }}
+                  />
+                  <input
+                    className={css.artistChainInput}
+                    value={chainText}
+                    placeholder={t('artists.chainPlaceholder')}
+                    aria-label={t('artists.chainLabel')}
+                    onChange={(event) => { setChainText(event.target.value) }}
+                  />
+                  <button
+                    type="button"
+                    className={css.charAction}
+                    disabled={chainName.trim() === '' || chainText.trim() === ''}
+                    onClick={submitArtistChain}
+                  >
+                    {t('artists.add')}
+                  </button>
+                </div>
               </div>
             )}
           </div>

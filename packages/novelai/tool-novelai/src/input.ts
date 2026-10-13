@@ -5,14 +5,19 @@
  * @module @deepseek-ai/dsh-tool-novelai/input
  */
 import type { NovelaiWorkbenchState } from '@deepseek-ai/dsh-api-novelai-controller/types'
-import type { NovelaiGenerateInput, NovelaiModel, NovelaiNoiseSchedule, NovelaiSampler } from './types.ts'
-import { MAX_NOVELAI_SEED } from './types.ts'
+import type { NovelaiCharacterCaption, NovelaiGenerateInput, NovelaiModel, NovelaiNoiseSchedule, NovelaiSampler } from './types.ts'
+import { MAX_NOVELAI_SEED, maxCharactersFor } from './types.ts'
 import { DEFAULT_NEGATIVE_PROMPT } from './payload.ts'
 
 /** The session's committed workbench panel state, when the rail is live. */
 export type CommittedWorkbench = NovelaiWorkbenchState
 
-/** Model arguments after schema validation, before default resolution. */
+/**
+ * Model arguments after schema validation, before default resolution. The
+ * `characters` array is the one argument that binds even under a live
+ * workbench: the model authors the per-character structure at generation
+ * time, and the committed panel state carries no characters today.
+ */
 export interface NovelaiArgs {
   prompt?: string
   negativePrompt?: string
@@ -25,12 +30,38 @@ export interface NovelaiArgs {
   noiseSchedule?: string
   seed?: number
   filename?: string
+  characters?: NovelaiCharacterCaption[]
+}
+
+/**
+ * Normalize the call's characters the way the workbench resolution does:
+ * trim, drop blank prompts, trim personal negatives, and clamp to the
+ * checkpoint's capacity. Empty results stay absent.
+ * @param characters - the call's raw character captions.
+ * @param model - checkpoint that receives them.
+ * @returns the normalized captions, or `undefined` for none.
+ */
+function resolveCharacters(
+  characters: NovelaiArgs['characters'],
+  model: NovelaiModel,
+): NovelaiCharacterCaption[] | undefined {
+  const normalized = (characters ?? [])
+    .map(character => ({
+      prompt: character.prompt.trim(),
+      negativePrompt: (character.negativePrompt ?? '').trim(),
+    }))
+    .filter(character => character.prompt !== '')
+    .slice(0, maxCharactersFor(model))
+  return normalized.length === 0 ? undefined : normalized
 }
 
 /**
  * Resolve model arguments into the canonical request. A committed workbench
  * state is the binding prompt source (the call's own prompt/parameter
  * arguments are ignored); without one the call must carry its own prompt.
+ * The call's `characters` array passes through as-is — it is the model's
+ * generation-time structure and is the one argument the committed state does
+ * not shadow.
  * @param args - validated model arguments.
  * @param committed - the session's committed workbench state, when present.
  * @returns the canonical generation input with a resolved seed.
@@ -73,10 +104,12 @@ export function resolveInput(args: NovelaiArgs, committed: CommittedWorkbench | 
   if (!Number.isInteger(seed) || seed < 0 || seed > MAX_NOVELAI_SEED) {
     throw new Error(`invalid seed: ${seed} (must be an integer within 0–${MAX_NOVELAI_SEED})`)
   }
+  const model = (source.model ?? 'nai-diffusion-5-full') as NovelaiModel
+  const characters = resolveCharacters(args.characters, model)
   return {
     prompt: source.prompt.trim(),
     negativePrompt: source.negativePrompt?.trim() || DEFAULT_NEGATIVE_PROMPT,
-    model: (source.model ?? 'nai-diffusion-5-full') as NovelaiModel,
+    model,
     width,
     height,
     steps,
@@ -84,5 +117,6 @@ export function resolveInput(args: NovelaiArgs, committed: CommittedWorkbench | 
     sampler: (source.sampler ?? 'k_euler') as NovelaiSampler,
     noiseSchedule: (source.noiseSchedule ?? 'native') as NovelaiNoiseSchedule,
     seed,
+    ...(characters === undefined ? {} : { characters }),
   }
 }

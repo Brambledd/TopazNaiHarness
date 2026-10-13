@@ -2,7 +2,7 @@ import { useMemo, useState, type KeyboardEvent } from 'react'
 import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { WorkbenchBackfillRequest } from '@deepseek-ai/dsh-client-ui-novelai-workbench/client'
+import type { WorkbenchBackfillCharacter, WorkbenchBackfillRequest } from '@deepseek-ai/dsh-client-ui-novelai-workbench/client'
 import css from './NovelaiRow.module.css'
 
 /** Row lifecycle derived solely from the durable call slice. */
@@ -99,6 +99,20 @@ function backfillRequestFrom(block: ToolCallViewProps['block']): WorkbenchBackfi
   const cfgScale = num('cfgScale')
   const sampler = str('sampler')
   const noiseSchedule = str('noiseSchedule')
+  // Structured characters ride the call arguments verbatim: one entry per
+  // well-formed `{ prompt, negativePrompt? }`; anything else in the array is
+  // skipped, and an absent or empty array stays absent in the request.
+  const characters = Array.isArray(parsed['characters'])
+    ? (parsed['characters'] as unknown[]).flatMap((entry): WorkbenchBackfillCharacter[] => {
+      if (typeof entry !== 'object' || entry === null) return []
+      const record = entry as Record<string, unknown>
+      if (typeof record['prompt'] !== 'string' || record['prompt'].trim() === '') return []
+      return [{
+        prompt: record['prompt'],
+        ...(typeof record['negativePrompt'] === 'string' ? { negativePrompt: record['negativePrompt'] } : {}),
+      }]
+    })
+    : undefined
   const request: {
     prompt?: string
     negativePrompt?: string
@@ -110,6 +124,7 @@ function backfillRequestFrom(block: ToolCallViewProps['block']): WorkbenchBackfi
     sampler?: string
     noiseSchedule?: string
     seed?: number
+    characters?: WorkbenchBackfillCharacter[]
   } = {}
   if (prompt !== undefined) request.prompt = prompt
   if (negativePrompt !== undefined) request.negativePrompt = negativePrompt
@@ -121,6 +136,7 @@ function backfillRequestFrom(block: ToolCallViewProps['block']): WorkbenchBackfi
   if (sampler !== undefined) request.sampler = sampler
   if (noiseSchedule !== undefined) request.noiseSchedule = noiseSchedule
   if (seed !== undefined) request.seed = Number(seed)
+  if (characters !== undefined && characters.length > 0) request.characters = characters
   return request
 }
 

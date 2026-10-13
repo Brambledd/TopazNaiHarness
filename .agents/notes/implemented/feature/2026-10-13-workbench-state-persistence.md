@@ -1,0 +1,30 @@
+# Agent Note: Durable workbench panel state (session-scoped persistence, restore-on-switch)
+
+Status: implemented
+
+English | [中文](2026-10-13-workbench-state-persistence.zh.md)
+
+## Problem
+
+The workbench panel's committed state lived only in the controller's in-memory map plus the panel's React state, and the commit verb's contract said so: host memory for the server's lifetime. Leaving a conversation and coming back, reloading the page, or restarting the service reset the panel to catalog defaults — the operator's prompt, negative prompt, model, sizes, steps, sampler, and seed silently reverted, and the `novelai_generate` tool's prompt source (the committed state it binds to host-side) lost its configuration with the panel.
+
+## Decision
+
+Panel state becomes durable per session, and the panel restores it on entry:
+
+- **Session-scoped state documents under the harness home** — `WorkbenchStateStore` persists one JSON document per session at `<home>/novelai-workbench-states/<sessionId>.json`, resolved once at controller construction through `resolveDshHome()`. Reads tolerate a missing, unparseable, or wrong-shaped document as absent (the image library's index tolerance), writes are atomic (`.tmp` + rename), and a session-id guard (`1-64` of letters, digits, `_`, `-`) keeps every document name a single path segment. The hot map stays the read-through cache in front of the store.
+- **Loud commit, forgiving read** — a persist failure on commit surfaces as the new `novelai/state-persist-failed` RemoteError, so the caller learns its panel state is not durable; reads of a session id the store could never have written (subagent ids carry colons) return absent, keeping `tool-novelai`'s state binding working inside subagent sessions. A composition with no resolvable home degrades to host memory with a constructor warning — boot continues.
+- **Restore on every session switch in the panel** — each session-id change makes the panel read that session's committed state after the catalog seeding resolves so restored parameters win over the seeded defaults, and applies it unconditionally: prompt, negative prompt (auto-opening its fold), model, sizes, steps, CFG, sampler, noise schedule, and a seed that pins the fixed mode. Re-entering a previous session restores it again — the panel clears no fields on a switch and the commit loop republishes the panel, so the re-restore is idempotent. A response that resolves after the session changed again — or after the surface unmounted — is dropped by the per-change guard; no new user-visible copy enters the panel.
+- **Wire types stay frozen** — `NovelaiCommitWorkbenchStateRequest` and `NovelaiReadWorkbenchStateValue` are exactly as shipped; durability rides the same request/value pair, so no remotes-bundle rebuild is required.
+
+## Alternatives considered
+
+**Browser-local persistence (localStorage).** Rejected: the committed state is host-owned — `novelai_generate` binds to it host-side — so it must survive service restarts and follow the session regardless of which browser the operator reopens; localStorage is per-origin, per-browser, and rots silently.
+
+**Restore only when the panel is untouched.** Rejected: restoring on every session switch is the contract — switching conversations is the drift case it must undo — and the read lands within milliseconds of the switch, so there is no typing window to protect; what needs guarding is a late response from a session the panel has already left again, which the per-change guard drops.
+
+**Persisting per-character state too.** Deferred: the wire value carries no `characters` field and this change keeps wire types frozen, so the committed and restored state covers the shared fields only; character cards stay session-local until a wire extension is justified on its own.
+
+## Consequences
+
+`api-novelai-controller` gains `@deepseek-ai/dsh-home-paths` as a peer+dev dependency (plus the tsconfig project reference; resolved once at construction) and `novelai/state-persist-failed` in the namespace error vocabulary. State documents are operator data under the harness home and outlive package upgrades. The panel-state ownership rule ([client session ownership](../architecture/2026-08-20-client-session-conversation-ownership.md)) keeps interaction state in the UI package; durability lands host-side because the state's second consumer — the generation tool binding — lives there ([workbench surface](2026-10-08-novelai-workbench-surface.md)). Covering specs: `novelai-controller/tests/workbench-state-store.host.spec.ts` (round-trip, atomic replacement, tolerance, id refusals, degradation), `tests/novelai-controller.host.spec.ts` (both verbs, restart semantics, the unsafe-id and non-Error refusals, memory-only degradation), and `ui-novelai-workbench/tests/workbench-panel.client.spec.tsx` (restore, defaults, read failure, once per unchanged session id, session-change and switch-back restores, the late-response drop, no-session).

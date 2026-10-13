@@ -9,7 +9,7 @@ vi.mock('../src/client/enhance-image.ts', () => ({
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, act } from '@testing-library/react'
 import type { ComponentProps } from 'react'
-import type { NovelaiGenerateRequest, NovelaiTagSuggestion } from '@deepseek-ai/dsh-api-novelai-controller/types'
+import type { NovelaiArtistChain, NovelaiGenerateRequest, NovelaiTagSuggestion, NovelaiWorkbenchState } from '@deepseek-ai/dsh-api-novelai-controller/types'
 import { WorkbenchRoot } from '../src/client/components.tsx'
 import { wordAtCursor } from '../src/client/autocomplete.tsx'
 import { CapsuleBrowser, STYLE_PRESETS } from '../src/client/capsule-picker.tsx'
@@ -54,6 +54,15 @@ const zh = {
   'capsule.label': '快捷标签',
   'capsule.filter': '搜索标签（中英文均可）',
   'styles.label': '风格库',
+  'artists.label': '画师串',
+  'artists.empty': '还没有保存的画师串，在下方添加一条。',
+  'artists.insert': '插入',
+  'artists.remove': '删除',
+  'artists.add': '添加',
+  'artists.nameLabel': '画师串名称',
+  'artists.namePlaceholder': '如「厚涂风」',
+  'artists.chainLabel': '画师串内容',
+  'artists.chainPlaceholder': '0.3:cola gotouryouta::, 0.5:yoneyama mai::, …（权重:画师::，逗号分隔）',
   'enhance.action': '增强',
   'enhance.magnitude': '增强幅度',
   'enhance.explain': '增强会以当前正面与负面提示词对舞台图做二次扩散；默认保守强度以保留姿势和构图，提高幅度仍可能改变局部结构。',
@@ -207,6 +216,12 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
   }))
   const seedDraft = vi.fn((_sessionId: string, _text: string) => true)
   const commitWorkbenchState = vi.fn(async (_sessionId: string, _state: Record<string, unknown>) => {})
+  const readWorkbenchState = vi.fn(async (_sessionId: string) => undefined as NovelaiWorkbenchState | undefined)
+  const artistChains = vi.fn(async () => [] as readonly NovelaiArtistChain[])
+  const saveArtistChain = vi.fn(async (request: { name: string; chain: string }) => [
+    { id: 'chain-1', name: request.name, chain: request.chain },
+  ] as readonly NovelaiArtistChain[])
+  const removeArtistChain = vi.fn(async (_id: string) => [] as readonly NovelaiArtistChain[])
   let backfillSink: ((request: Record<string, unknown>) => void) | undefined
   const onBackfillRequest = vi.fn((callback: (request: Record<string, unknown>) => void) => {
     backfillSink = callback
@@ -237,20 +252,31 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     suggestTags: vi.fn(async () => ({ tags: suggestions })),
     readEntry: vi.fn(async () => ({ data: '', mime: 'image/png' as const })),
     splitCharacters,
-    seedDraft,    onBackfillRequest,    onPatchApply,    commitWorkbenchState,
+    seedDraft,    onBackfillRequest,    onPatchApply,    commitWorkbenchState,    readWorkbenchState,
+    artistChains, saveArtistChain, removeArtistChain,
     setViewMode: vi.fn(),
     useSessions: ((selector: (state: { current: string }) => unknown) => selector({ current: 'session-1' })) as never,
     useWorkspaces: (() => { throw new Error('workbench must not read global hooks') }) as never,
-    t: (key: keyof typeof zh) => zh[key],
+    t: (key: keyof typeof zh, params?: Record<string, string | number>): string =>
+      Object.entries(params ?? {}).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), zh[key]),
   }
   return {
     props,
     generate,
     splitCharacters,
     seedDraft,
+    readWorkbenchState,
+    artistChains,
+    saveArtistChain,
+    removeArtistChain,
     deliverBackfill: (request: Record<string, unknown>) => backfillSink?.(request),
     deliverPatch: (request: Parameters<NonNullable<typeof patchSink>>[0]) => patchSink?.(request),
   }
+}
+
+/** Render the panel with prop-record casting; the four shares are stubbed by hand. */
+function renderWith(props: Record<string, unknown>) {
+  return render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
 }
 
 function mount() {
@@ -802,16 +828,76 @@ describe('conversation interop', () => {
   })
 
   it('applies a conversation-side backfill request and switches to the workbench', async () => {
-    const { deliverBackfill, setViewMode } = mount()
+    const { deliverBackfill, setViewMode, splitCharacters } = mount()
     await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
     act(() => {
-      deliverBackfill({ prompt: 'from the chat', negativePrompt: 'lowres', seed: 7, width: 1024, height: 1024 })
+      deliverBackfill({
+        prompt: 'from the chat',
+        negativePrompt: 'lowres',
+        model: 'nai-diffusion-4-5-full',
+        seed: 7,
+        width: 1024,
+        height: 1024,
+        steps: 30,
+        cfgScale: 6,
+        sampler: 'k_euler_ancestral',
+        noiseSchedule: 'karras',
+      })
     })
     expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLInputElement).value).toBe('from the chat')
     expect((screen.getByPlaceholderText('lowres, bad anatomy…') as HTMLInputElement).value).toBe('lowres')
     expect((screen.getByLabelText('种子值') as HTMLInputElement).value).toBe('7')
     expect((screen.getByLabelText('宽度') as HTMLInputElement).value).toBe('1024')
+    expect((screen.getByLabelText('模型') as HTMLSelectElement).value).toBe('nai-diffusion-4-5-full')
+    expect((screen.getByLabelText('步数') as HTMLInputElement).value).toBe('30')
+    expect((screen.getByLabelText('CFG') as HTMLInputElement).value).toBe('6')
+    expect((screen.getByLabelText('采样器') as HTMLSelectElement).value).toBe('k_euler_ancestral')
+    expect((screen.getByLabelText('噪声调度') as HTMLSelectElement).value).toBe('karras')
     expect(setViewMode).toHaveBeenCalledWith('workbench')
+    // A characters-less backfill keeps today's behavior: no LLM split on the path.
+    expect(splitCharacters).not.toHaveBeenCalled()
+  })
+
+  it('lands a backfill\'s structured characters directly in the cards without a split', async () => {
+    const { deliverBackfill, splitCharacters } = mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    act(() => {
+      deliverBackfill({
+        prompt: 'park, sunset',
+        characters: [
+          { prompt: '1girl, blue hair', negativePrompt: 'extra ears' },
+          { prompt: '1girl, red hair' },
+        ],
+      })
+    })
+    // Direct fill: fresh ids, centered AI placement, no split call anywhere.
+    expect(splitCharacters).not.toHaveBeenCalled()
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLInputElement).value).toBe('park, sunset')
+    expect((screen.getByLabelText('角色 1') as HTMLInputElement).value).toBe('1girl, blue hair')
+    expect((screen.getByLabelText('角色 1 负面') as HTMLInputElement).value).toBe('extra ears')
+    expect((screen.getByLabelText('角色 2') as HTMLInputElement).value).toBe('1girl, red hair')
+    expect(screen.getByLabelText('角色 2 负面') as HTMLInputElement).toBeTruthy()
+    expect((screen.getByLabelText('角色 2 负面') as HTMLInputElement).value).toBe('')
+    // A present-but-empty array clears the cards without forcing the fold open.
+    act(() => { deliverBackfill({ characters: [] }) })
+    expect(screen.queryByLabelText('角色 1')).toBeNull()
+  })
+
+  it('applies a promptless or blank-prompt backfill without touching prompt or cards', async () => {
+    const { deliverBackfill, splitCharacters } = mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    act(() => { deliverBackfill({ seed: 7 }) })
+    await act(async () => {})
+    act(() => { deliverBackfill({ prompt: '   ' }) })
+    await act(async () => {})
+    // A blank negative rides along without opening its fold.
+    act(() => { deliverBackfill({ negativePrompt: '   ' }) })
+    await act(async () => {})
+    expect(splitCharacters).not.toHaveBeenCalled()
+    expect((screen.getByLabelText('种子值') as HTMLInputElement).value).toBe('7')
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLInputElement).value).toBe('   ')
+    // The fold stays closed, so the negative field is not rendered at all.
+    expect(screen.queryByPlaceholderText('lowres, bad anatomy…')).toBeNull()
   })
 
   it('applies a prompt patch in place without switching views', async () => {
@@ -875,12 +961,304 @@ describe('conversation interop', () => {
     fireEvent.change(screen.getByLabelText('间隔（秒）'), { target: { value: '1' } })
     expect(screen.getByRole('alert').textContent).toContain('间隔过低')
     fireEvent.change(screen.getByLabelText('间隔（秒）'), { target: { value: '0' } })
-    // The run button now announces the batch size (the t stub leaves {count} raw).
-    const run = screen.getAllByRole('button', { name: /生成 \{count\} 张/ }).at(-1) as HTMLElement
+    // The run button now announces the batch size through the t interpolation.
+    const run = screen.getAllByRole('button', { name: /生成 3 张/ }).at(-1) as HTMLElement
     fireEvent.click(run)
     await waitFor(() => { expect(props.generate).toHaveBeenCalledTimes(3) })
     for (const call of props.generate.mock.calls) {
       expect(call[0]).toMatchObject({ prompt: 'park' })
     }
+  })
+})
+
+describe('workbench state restore', () => {
+  /** A committed panel state as the host would return it. */
+  function stateFixture(overrides: Partial<NovelaiWorkbenchState> = {}): NovelaiWorkbenchState {
+    return {
+      prompt: 'restored prompt',
+      negativePrompt: '',
+      model: 'nai-diffusion-4-full',
+      width: 1024,
+      height: 768,
+      steps: 30,
+      cfgScale: 6,
+      sampler: 'k_euler',
+      noiseSchedule: 'exponential',
+      ...overrides,
+    }
+  }
+
+  /** Panel props bound to one session id (catalog mock identity is preserved). */
+  function withSession(base: Record<string, unknown>, sessionId: string | undefined): Record<string, unknown> {
+    return {
+      ...base,
+      useSessions: ((selector: (state: { current: string | undefined }) => unknown) => selector({ current: sessionId })) as never,
+    }
+  }
+
+  it('applies the committed state on entry after the catalog seeding wins over the defaults', async () => {
+    const { props, readWorkbenchState } = makeProps()
+    readWorkbenchState.mockResolvedValue(stateFixture({
+      negativePrompt: 'lowres, extra ears',
+      seed: 42,
+    }))
+    const view = renderWith(withSession(props, 'session-1'))
+    await waitFor(() => { expect(readWorkbenchState).toHaveBeenCalledWith('session-1') })
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('restored prompt')
+    })
+    // Restored parameters win over the catalog defaults (the newest catalog model).
+    expect((screen.getByLabelText('模型') as HTMLSelectElement).value).toBe('nai-diffusion-4-full')
+    expect((screen.getByLabelText('宽度') as HTMLInputElement).value).toBe('1024')
+    expect((screen.getByLabelText('高度') as HTMLInputElement).value).toBe('768')
+    expect((screen.getByLabelText('步数') as HTMLInputElement).value).toBe('30')
+    expect((screen.getByLabelText('采样器') as HTMLSelectElement).value).toBe('k_euler')
+    expect((screen.getByLabelText('噪声调度') as HTMLSelectElement).value).toBe('exponential')
+    // A restored seed switches the seed mode to fixed with the restored value.
+    expect((screen.getByLabelText('种子值') as HTMLInputElement).value).toBe('42')
+    // A non-empty restored negative prompt opens its fold.
+    expect((screen.getByPlaceholderText('lowres, bad anatomy…') as HTMLTextAreaElement).value).toBe('lowres, extra ears')
+    expect(view).toBeTruthy()
+  })
+
+  it('reads the session state once per entry and not again on re-renders', async () => {
+    const { props, readWorkbenchState } = makeProps()
+    const view = renderWith(withSession(props, 'session-1'))
+    await waitFor(() => { expect(readWorkbenchState).toHaveBeenCalledTimes(1) })
+    view.rerender(<WorkbenchRoot {...(withSession(props, 'session-1') as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await act(async () => {})
+    expect(readWorkbenchState).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips the read entirely when the surface has no session', async () => {
+    const { props, readWorkbenchState } = makeProps()
+    renderWith(withSession(props, undefined))
+    await act(async () => {})
+    expect(readWorkbenchState).not.toHaveBeenCalled()
+    // The catalog defaults still seed the panel.
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+  })
+
+  it('reads again when the session changes and applies the new session’s state', async () => {
+    const { props, readWorkbenchState } = makeProps()
+    readWorkbenchState.mockResolvedValueOnce(stateFixture({ prompt: 'session one' }))
+    const view = renderWith(withSession(props, 'session-1'))
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('session one')
+    })
+    readWorkbenchState.mockResolvedValueOnce(stateFixture({ prompt: 'session two', model: 'nai-diffusion-4-5-full' }))
+    view.rerender(<WorkbenchRoot {...(withSession(props, 'session-2') as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await waitFor(() => { expect(readWorkbenchState).toHaveBeenCalledWith('session-2') })
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('session two')
+    })
+    expect((screen.getByLabelText('模型') as HTMLSelectElement).value).toBe('nai-diffusion-4-5-full')
+  })
+
+  it('re-restores a previous session when the active session returns to it', async () => {
+    const { props, readWorkbenchState } = makeProps()
+    readWorkbenchState.mockImplementation(async (sessionId: string) =>
+      sessionId === 'session-1' ? stateFixture({ prompt: 'session one', model: 'nai-diffusion-4-full' }) : stateFixture({ prompt: 'session two', model: 'nai-diffusion-4-5-full' }))
+    const view = renderWith(withSession(props, 'session-1'))
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('session one')
+    })
+    view.rerender(<WorkbenchRoot {...(withSession(props, 'session-2') as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('session two')
+    })
+    // Back to session-1: the guard is per-id-change, not once per mount.
+    view.rerender(<WorkbenchRoot {...(withSession(props, 'session-1') as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('session one')
+    })
+    expect((screen.getByLabelText('模型') as HTMLSelectElement).value).toBe('nai-diffusion-4-full')
+    expect(readWorkbenchState).toHaveBeenCalledTimes(3)
+    // Leaving the conversation entirely reads nothing further.
+    view.rerender(<WorkbenchRoot {...(withSession(props, undefined) as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await act(async () => {})
+    expect(readWorkbenchState).toHaveBeenCalledTimes(3)
+  })
+
+  it('drops a late restore whose session changed before it resolved', async () => {
+    const { props, readWorkbenchState } = makeProps()
+    let resolveFirst: ((value: NovelaiWorkbenchState) => void) | undefined
+    readWorkbenchState.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+    const view = renderWith(withSession(props, 'session-1'))
+    await waitFor(() => { expect(readWorkbenchState).toHaveBeenCalledTimes(1) })
+    // The user switches sessions before the first read answers.
+    readWorkbenchState.mockResolvedValueOnce(stateFixture({ prompt: 'session two' }))
+    view.rerender(<WorkbenchRoot {...(withSession(props, 'session-2') as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('session two')
+    })
+    await act(async () => { resolveFirst?.(stateFixture({ prompt: 'late first session' })) })
+    // The stale answer never clobbers the panel the user is looking at.
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('session two')
+  })
+
+  it('keeps the catalog defaults when the session has no committed state', async () => {
+    const { props, readWorkbenchState } = makeProps()
+    readWorkbenchState.mockResolvedValue(undefined)
+    renderWith(withSession(props, 'session-1'))
+    await waitFor(() => { expect(readWorkbenchState).toHaveBeenCalledTimes(1) })
+    await waitFor(() => {
+      expect((screen.getByLabelText('模型') as HTMLSelectElement).value).toBe('nai-diffusion-5-full')
+    })
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('keeps the catalog defaults when the restore read fails', async () => {
+    const { props, readWorkbenchState } = makeProps()
+    readWorkbenchState.mockRejectedValueOnce(new Error('remote down'))
+    renderWith(withSession(props, 'session-1'))
+    await waitFor(() => { expect(readWorkbenchState).toHaveBeenCalledTimes(1) })
+    // The restore is advisory: the failure is silent and the defaults stand.
+    await waitFor(() => {
+      expect((screen.getByLabelText('模型') as HTMLSelectElement).value).toBe('nai-diffusion-5-full')
+    })
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe('')
+  })
+})
+
+describe('artist chains section', () => {
+  /** Chain fixture as the host serves it (insertion order). */
+  function savedChain(id: string, name: string, chain: string): NovelaiArtistChain {
+    return { id, name, chain }
+  }
+
+  const STANDARD = '0.3:cola gotouryouta::, 0.5:yoneyama mai::, 0.7:betabeet::, 0.9:re0n::, 1.8:kim hyung tae::'
+
+  it('loads the library on first open and renders each named chain with its whole text', async () => {
+    const { props, artistChains } = makeProps()
+    artistChains.mockResolvedValue([
+      savedChain('chain-1', '厚涂风', STANDARD),
+      savedChain('chain-2', 'watercolor', '0.8:wlop::, 1.2:artgerm::'),
+    ])
+    renderWith(props)
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    await waitFor(() => { expect(artistChains).toHaveBeenCalledTimes(1) })
+    // Each row shows the chain verbatim — no parsing, no recomposition.
+    expect(await screen.findByText(STANDARD)).toBeTruthy()
+    expect(screen.getByText('厚涂风')).toBeTruthy()
+    expect(screen.getByText('watercolor')).toBeTruthy()
+    expect(screen.getByText('0.8:wlop::, 1.2:artgerm::')).toBeTruthy()
+    // Re-collapsing hides the section body; the library is not re-read.
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    expect(screen.queryByText('watercolor')).toBeNull()
+    expect(artistChains).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the empty line before anything is saved', async () => {
+    const { props } = makeProps()
+    renderWith(props)
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    expect(await screen.findByText('还没有保存的画师串，在下方添加一条。')).toBeTruthy()
+  })
+
+  it('inserts a saved chain whole into an empty prompt', async () => {
+    const { props } = makeProps()
+    props.artistChains.mockResolvedValue([savedChain('chain-1', '厚涂风', STANDARD)])
+    renderWith(props)
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '插入' }))
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value).toBe(STANDARD)
+    })
+  })
+
+  it('appends a saved chain to a non-empty prompt after trimming its trailing whitespace', async () => {
+    const { props } = makeProps()
+    props.artistChains.mockResolvedValue([savedChain('chain-1', 'watercolor', '0.8:wlop::, 1.2:artgerm::')])
+    renderWith(props)
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: '1girl, park  ' } })
+    fireEvent.click(await screen.findByRole('button', { name: '插入' }))
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLTextAreaElement).value)
+        .toBe('1girl, park, 0.8:wlop::, 1.2:artgerm::')
+    })
+  })
+
+  it('saves a chain from the form with trimmed fields, then resets the inputs', async () => {
+    const { props, saveArtistChain } = makeProps()
+    renderWith(props)
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    fireEvent.change(screen.getByPlaceholderText('如「厚涂风」'), { target: { value: '  厚涂风 ' } })
+    fireEvent.change(screen.getByPlaceholderText(/0\.3:cola gotouryouta::/), { target: { value: ` ${STANDARD} ` } })
+    fireEvent.click(screen.getByRole('button', { name: '添加' }))
+    await waitFor(() => { expect(saveArtistChain).toHaveBeenCalledWith({ name: '厚涂风', chain: STANDARD }) })
+    // The inputs reset and the row renders from the returned library.
+    await waitFor(() => { expect(screen.getByText('厚涂风')).toBeTruthy() })
+    expect((screen.getByPlaceholderText('如「厚涂风」') as HTMLInputElement).value).toBe('')
+    expect((screen.getByPlaceholderText(/0\.3:cola gotouryouta::/) as HTMLInputElement).value).toBe('')
+  })
+
+  it('keeps the save button disabled until both the name and the chain text are non-empty', () => {
+    const { props } = makeProps()
+    renderWith(props)
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    const add = screen.getByRole('button', { name: '添加' }) as HTMLButtonElement
+    expect(add.disabled).toBe(true)
+    fireEvent.change(screen.getByPlaceholderText('如「厚涂风」'), { target: { value: '厚涂风' } })
+    expect((screen.getByRole('button', { name: '添加' }) as HTMLButtonElement).disabled).toBe(true)
+    // A blank chain text keeps blocking; a non-blank one enables the save.
+    fireEvent.change(screen.getByPlaceholderText(/0\.3:cola gotouryouta::/), { target: { value: '   ' } })
+    expect((screen.getByRole('button', { name: '添加' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.change(screen.getByPlaceholderText(/0\.3:cola gotouryouta::/), { target: { value: '0.9:re0n::' } })
+    expect((screen.getByRole('button', { name: '添加' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('removes a chain and re-renders from the returned library', async () => {
+    const { props, removeArtistChain } = makeProps()
+    props.artistChains.mockResolvedValue([savedChain('chain-1', 'watercolor', '0.8:wlop::')])
+    renderWith(props)
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '删除' }))
+    await waitFor(() => { expect(removeArtistChain).toHaveBeenCalledWith('chain-1') })
+    // The removal answer is the new full library; the empty line returns.
+    expect(await screen.findByText('还没有保存的画师串，在下方添加一条。')).toBeTruthy()
+  })
+
+  it('keeps the section usable when the lazy library read fails', async () => {
+    const { props } = makeProps()
+    props.artistChains.mockRejectedValueOnce(new Error('remote down'))
+    renderWith(props)
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    // The failure is silent: the empty line stands and the form still works.
+    expect(await screen.findByText('还没有保存的画师串，在下方添加一条。')).toBeTruthy()
+    fireEvent.change(screen.getByPlaceholderText('如「厚涂风」'), { target: { value: '厚涂风' } })
+    fireEvent.change(screen.getByPlaceholderText(/0\.3:cola gotouryouta::/), { target: { value: '0.9:re0n::' } })
+    fireEvent.click(screen.getByRole('button', { name: '添加' }))
+    expect(await screen.findByText('厚涂风')).toBeTruthy()
+  })
+
+  it('keeps the served library and the typed fields when a save fails', async () => {
+    const { props, saveArtistChain } = makeProps()
+    props.artistChains.mockResolvedValue([savedChain('chain-1', 'watercolor', '0.8:wlop::')])
+    saveArtistChain.mockRejectedValueOnce(new Error('persist failed'))
+    renderWith(props)
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    fireEvent.change(screen.getByPlaceholderText('如「厚涂风」'), { target: { value: '厚涂风' } })
+    fireEvent.change(screen.getByPlaceholderText(/0\.3:cola gotouryouta::/), { target: { value: '0.9:re0n::' } })
+    fireEvent.click(screen.getByRole('button', { name: '添加' }))
+    await waitFor(() => { expect(saveArtistChain).toHaveBeenCalled() })
+    // The failed save keeps the served library and the typed fields for a retry.
+    expect(screen.getByText('watercolor')).toBeTruthy()
+    expect(screen.queryByText('厚涂风')).toBeNull()
+    expect((screen.getByPlaceholderText('如「厚涂风」') as HTMLInputElement).value).toBe('厚涂风')
+    expect((screen.getByPlaceholderText(/0\.3:cola gotouryouta::/) as HTMLInputElement).value).toBe('0.9:re0n::')
+  })
+
+  it('keeps the row when a removal fails', async () => {
+    const { props, removeArtistChain } = makeProps()
+    props.artistChains.mockResolvedValue([savedChain('chain-1', 'watercolor', '0.8:wlop::')])
+    removeArtistChain.mockRejectedValueOnce(new Error('persist failed'))
+    renderWith(props)
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '删除' }))
+    await waitFor(() => { expect(removeArtistChain).toHaveBeenCalled() })
+    // The failed removal keeps the row (re-addable small data, no error surface).
+    expect(screen.getByText('watercolor')).toBeTruthy()
   })
 })

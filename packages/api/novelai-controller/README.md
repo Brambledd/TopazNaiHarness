@@ -36,6 +36,11 @@ Use this package when a browser surface must generate or browse NovelAI images w
 | `removeEntry({ id })` | Delete one entry and its PNG file |
 | `generationDir()` | The effective absolute output directory and whether the saved settings override supplies it |
 | `setGenerationDir({ dir })` | Persist the directory override (empty clears it); the next generation applies it without a restart |
+| `commitWorkbenchState({ sessionId, state })` | Store one session's latest panel state in the hot map and persist it under the harness home |
+| `readWorkbenchState({ sessionId })` | One session's committed panel state: the hot map first, the durable store otherwise |
+| `artistChains()` | The workbench's named artist-chains library, in insertion order |
+| `saveArtistChain({ name, chain })` | Save one named chain whole (a new name appends, an existing name replaces its text); the name ≤ 60 chars and the chain text ≤ 4000 chars, both non-empty after trim |
+| `removeArtistChain({ id })` | Remove one saved chain; an unknown id answers `novelai/artist-chain-missing` |
 
 ### Configuration
 
@@ -60,6 +65,8 @@ The effective generation directory resolves per call: the saved Settings → Gen
 - **Explicit defaulting.** `resolveGenerationRequest` is the single defaulting step: blank negative prompts fall back to the host default, omitted seeds are randomized, and the resolved input is what gets priced and submitted.
 - **Paid submissions never retry.** A failed POST may have charged for the image, so failures surface as `novelai/generation-failed` verbatim.
 - **The directory resolves live.** The library instance is cached per resolved directory, so a saved settings override moves the library (and the tool, which reads `effectiveOutputDir()`) without a restart.
+- **Panel state is durable.** A committed panel state lands atomically (`.tmp` + rename) at `<home>/novelai-workbench-states/<sessionId>.json` beside `settings.yaml`; missing, unparseable, or wrong-shaped documents read as absent, and a session id outside `1-64` letters/digits/`_`/`-` cannot name a document. A persist failure answers `novelai/state-persist-failed`; with no resolvable harness home the controller degrades to host memory and warns at boot.
+- **The artist chains are user data under the home.** The workbench's 画师串 library lives as one `{ chains }` JSON document at `<home>/novelai-artist-chains.json`, atomically rewritten per mutation and served in insertion order. Each chain is ONE named whole-string entry — a pasted `weight:artist::` run is stored verbatim, never parsed into per-artist rows. Re-saving a name replaces that chain's text in place; chain ids are host-assigned opaques. The name (≤ 60 chars) and chain text (≤ 4000 chars) must be non-empty after trim; refusals answer `novelai/artist-chain-invalid` / `novelai/artist-chain-missing`.
 
 ### Source map
 
@@ -68,6 +75,8 @@ The effective generation directory resolves per call: the saved Settings → Gen
 | [`src/index.ts`](src/index.ts) | `NovelaiController` service: Remote verbs, error vocabulary mapping, history paging |
 | [`src/types.ts`](src/types.ts) | Browser-safe request/result vocabulary and the namespace's `RemoteErrorDetailsMap` rows |
 | [`src/library.ts`](src/library.ts) | `NovelaiImageLibrary`: JSON index, directory scan merge, atomic index writes |
+| [`src/workbench-state-store.ts`](src/workbench-state-store.ts) | `WorkbenchStateStore`: atomic per-session panel-state JSON documents under the harness home, session-id guard, tolerant reads |
+| [`src/artist-chains.ts`](src/artist-chains.ts) | `ArtistChainsStore`: the 画师串 library as one atomically rewritten `{ chains }` document under the harness home, named whole-string chains kept verbatim, host-assigned ids, name/length validation refusals |
 | [`src/generation.ts`](src/generation.ts) | Request resolution, the workbench defaults, and the submission pipeline |
 | [`src/invariant.ts`](src/invariant.ts) | Empty invariant companion: the package owns no durable harness relation |
 

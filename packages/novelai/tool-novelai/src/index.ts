@@ -150,7 +150,19 @@ export function apply(ctx: Context, config: Config): void {
     name: 'novelai_generate',
     description: DESCRIPTION,
     parameters: {
-      prompt: { type: 'string', description: 'Positive prompt, Danbooru-tag style. Ignored when the session has a live workbench panel — the committed workbench prompt binds.' },
+      prompt: { type: 'string', description: 'Positive prompt, Danbooru-tag style. Ignored when the session has a live workbench panel — the committed workbench prompt binds. When you pass characters, keep the shared scene, composition, and setting here and put each character\'s personal tags only in their entry.' },
+      characters: {
+        type: 'array',
+        description: 'One entry per distinct character in the scene. Each entry\'s prompt carries that character\'s personal appearance and action tags (e.g. "1girl, blue hair, school uniform"); the shared scene/composition stays in the base prompt. Without characters the base prompt describes everyone, as today. Caps: 32 entries on V5 checkpoints, 6 on V4/V4.5, unsupported on V3 (entries beyond the cap are dropped).',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            prompt: { type: 'string', required: true, description: 'This character\'s personal appearance/action tags, Danbooru style.' },
+            negativePrompt: { type: 'string', description: 'This character\'s personal negative tags; omit to inherit only the shared negative prompt.' },
+          },
+        },
+      },
       negativePrompt: { type: 'string', description: 'Negative prompt; defaults to the official heavy undesired-content preset.' },
       model: { type: 'string', enum: [...NOVELAI_MODELS], description: 'Checkpoint; defaults to nai-diffusion-5-full.' },
       width: { type: 'integer', description: 'Width in pixels, multiple of 64; defaults to 832.' },
@@ -217,11 +229,16 @@ export function apply(ctx: Context, config: Config): void {
       // Identical-rerun guard: the same prompt+seed returns a near-identical
       // image, so a back-to-back repeat with an unchanged workbench is a paid
       // no-op. The model must change something (novelai_prompt_patch, a seed
-      // override, or wait for the user) before generating again.
+      // override, or wait for the user) before generating again. Character
+      // captions join the fingerprint (pipe-joined, like the workbench
+      // resolution) so a characters-only change stays a legitimate variation.
+      const fingerprint = input.characters === undefined
+        ? input.prompt
+        : [input.prompt, ...input.characters.map(character => character.prompt)].join(' | ')
       const lastKey = sessionId === undefined ? undefined : sessionId
       if (lastKey !== undefined) {
         const previous = lastGenerations.get(lastKey)
-        if (previous !== undefined && previous.prompt === input.prompt && previous.seed === input.seed) {
+        if (previous !== undefined && previous.prompt === fingerprint && previous.seed === input.seed) {
           throw new Error(
             'blocked identical rerun: the workbench prompt and seed are unchanged since the previous generation, '
             + 'so this call would return a near-identical image for the same Anlas. '
@@ -229,7 +246,7 @@ export function apply(ctx: Context, config: Config): void {
             + 'pass a different seed, or stop — one generation per request unless the user asks to iterate.',
           )
         }
-        lastGenerations.set(lastKey, { prompt: input.prompt, seed: input.seed })
+        lastGenerations.set(lastKey, { prompt: fingerprint, seed: input.seed })
       }
       const stem = args.filename ? safeFileStem(args.filename) : generationFileStem(input.seed)
       const payload = buildNovelaiPayload(input)

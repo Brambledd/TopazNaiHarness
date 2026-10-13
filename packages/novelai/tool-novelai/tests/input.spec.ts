@@ -47,4 +47,37 @@ describe('resolveInput (workbench binding)', () => {
     const input = resolveInput({}, { ...COMMITTED, negativePrompt: '' })
     expect(input.negativePrompt).not.toBe('')
   })
+
+  it('the call\'s characters pass through trimmed and capped, even under a live workbench', () => {
+    const input = resolveInput({
+      prompt: 'ignored',
+      characters: [
+        { prompt: ' 1girl, blue hair ', negativePrompt: ' extra ears ' },
+        { prompt: '1girl, red hair' },
+      ],
+    }, COMMITTED)
+    expect(input.characters).toEqual([
+      { prompt: '1girl, blue hair', negativePrompt: 'extra ears' },
+      { prompt: '1girl, red hair', negativePrompt: '' },
+    ])
+  })
+
+  it('blank character entries drop and the checkpoint cap clamps the rest', () => {
+    const seven = Array.from({ length: 7 }, (_, index) => ({ prompt: `char ${index}` }))
+    const input = resolveInput({
+      prompt: 'park',
+      characters: [{ prompt: '  ' }, { prompt: '' }, ...seven],
+    }, { ...COMMITTED, model: 'nai-diffusion-4-5-full' })
+    expect(input.characters).toHaveLength(6)
+    expect(input.characters![0]).toEqual({ prompt: 'char 0', negativePrompt: '' })
+    expect(input.characters![5]).toEqual({ prompt: 'char 5', negativePrompt: '' })
+  })
+
+  it('absent or fully blank characters stay absent in the resolved input', () => {
+    expect(resolveInput({ prompt: 'park' }, undefined).characters).toBeUndefined()
+    expect(resolveInput({ prompt: 'park', characters: [{ prompt: '  ' }] }, undefined).characters).toBeUndefined()
+    // V3 checkpoints accept no structured characters at all.
+    const v3 = resolveInput({ prompt: 'park', characters: [{ prompt: '1girl' }] }, { ...COMMITTED, model: 'nai-diffusion-3' })
+    expect(v3.characters).toBeUndefined()
+  })
 })

@@ -78,6 +78,41 @@ describe('NovelaiRow', () => {
     expect(requestBackfill).toHaveBeenCalledWith({ prompt: 'topaz, umbrella', seed: 4242 })
   })
 
+  it('rebuilds structured characters from the call arguments into the backfill request', () => {
+    const block = settledBlock('Saved image to x.png')
+    block.call = {
+      name: 'novelai_generate',
+      argsRaw: JSON.stringify({
+        prompt: 'park',
+        characters: [
+          { prompt: '1girl, blue hair', negativePrompt: 'extra ears' },
+          { prompt: '1girl, red hair' },
+          { prompt: '' },
+          'junk',
+        ],
+      }),
+    }
+    const requestBackfill = vi.fn()
+    render(<NovelaiRow {...({ ...props(block), requestBackfill })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'row.backfill' }))
+    expect(requestBackfill).toHaveBeenCalledWith({
+      prompt: 'park',
+      characters: [
+        { prompt: '1girl, blue hair', negativePrompt: 'extra ears' },
+        { prompt: '1girl, red hair' },
+      ],
+    })
+  })
+
+  it('keeps characters absent in the backfill request when the call has none or only blanks', () => {
+    const block = settledBlock('Saved image to x.png')
+    block.call = { name: 'novelai_generate', argsRaw: JSON.stringify({ prompt: 'park', characters: [{ prompt: '  ' }] }) }
+    const requestBackfill = vi.fn()
+    render(<NovelaiRow {...({ ...props(block), requestBackfill })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'row.backfill' }))
+    expect(requestBackfill).toHaveBeenCalledWith({ prompt: 'park' })
+  })
+
   it('offers no backfill for a failed call', () => {
     const block = { ...settledBlock('boom'), isError: true }
     render(<NovelaiRow {...props(block)} />)

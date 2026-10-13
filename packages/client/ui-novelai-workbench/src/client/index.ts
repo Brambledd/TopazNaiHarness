@@ -25,7 +25,7 @@ import type { WorkbenchInjected } from './injected.ts'
 import type { NovelaiWorkbenchState as WorkbenchStateMirror } from '@deepseek-ai/dsh-api-novelai-controller/types'
 import { en, zh, type WorkbenchKey } from './locales.ts'
 
-export type { NovelaiWorkbenchBridge, WorkbenchBackfillRequest, WorkbenchPatchOperation, WorkbenchPatchRequest } from './bridge.ts'
+export type { NovelaiWorkbenchBridge, WorkbenchBackfillCharacter, WorkbenchBackfillRequest, WorkbenchPatchOperation, WorkbenchPatchRequest } from './bridge.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -64,9 +64,10 @@ export function apply(ctx: ClientContext): void {
     return () => { backfillSubscribers.clear(); patchSubscribers.clear() }
   }, 'ui-novelai-workbench: backfill bridge')
   ctx.effect(() => ctx.locale.register('novelai-workbench', { zh, en }), 'ui-novelai-workbench: dictionaries')
-  // Host mirror resilience: the host keeps committed panel state in memory, so
-  // a server restart wipes it. Cache the last commit per session and re-push
-  // every cached state after a connection reset (the token row's pattern).
+  // Host mirror resilience: commits persist host-side across restarts, but a
+  // connection reset can still swallow an in-flight commit. Cache the last
+  // commit per session and re-push every cached state after the reset (the
+  // token row's pattern).
   const lastStates = new Map<string, WorkbenchStateMirror>()
   ctx.effect(() => {
     const disposers = [
@@ -143,6 +144,26 @@ export function apply(ctx: ClientContext): void {
       lastStates.set(sessionId, state)
       const result = await ctx.remote.novelai.commitWorkbenchState({ sessionId: sessionId, state })
       if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+    },
+    readWorkbenchState: async (sessionId) => {
+      const result = await ctx.remote.novelai.readWorkbenchState({ sessionId })
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value.state
+    },
+    artistChains: async () => {
+      const result = await ctx.remote.novelai.artistChains()
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value.chains
+    },
+    saveArtistChain: async (request) => {
+      const result = await ctx.remote.novelai.saveArtistChain(request)
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value.chains
+    },
+    removeArtistChain: async (id) => {
+      const result = await ctx.remote.novelai.removeArtistChain({ id })
+      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      return result.value.chains
     },
     onBackfillRequest: (callback) => {
       backfillSubscribers.add(callback)

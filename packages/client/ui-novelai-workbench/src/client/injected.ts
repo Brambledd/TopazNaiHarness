@@ -2,6 +2,7 @@
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkbenchBackfillRequest, WorkbenchPatchRequest } from './bridge.ts'
 import type {
+  NovelaiArtistChain,
   NovelaiCatalogValue,
   NovelaiEnhanceRequest,
   NovelaiEntryContentValue,
@@ -51,6 +52,8 @@ export interface WorkbenchInjected extends ModeSwitchInjected {
   seedDraft: (sessionId: SessionId, text: string) => boolean
   /** Commit the panel state for one session; the host-side mirror binds `novelai_generate` to it. */
   commitWorkbenchState: (sessionId: SessionId, state: NovelaiWorkbenchState) => Promise<void>
+  /** Read the session's committed panel state for restore-on-entry; undefined when the panel never committed. */
+  readWorkbenchState: (sessionId: SessionId) => Promise<NovelaiWorkbenchState | undefined>
   /**
    * Subscribe to conversation-side backfill deliveries while the panel is mounted.
    * @param callback - invoked with the delivered draft.
@@ -64,6 +67,12 @@ export interface WorkbenchInjected extends ModeSwitchInjected {
    * @returns the unsubscribe disposer.
    */
   onPatchApply: (callback: (request: WorkbenchPatchRequest) => void) => () => void
+  /** Read the workbench's named artist-chains library, in insertion order. */
+  artistChains: () => Promise<readonly NovelaiArtistChain[]>
+  /** Save one named chain (a new name appends, an existing name replaces its text); returns the full library. */
+  saveArtistChain: (request: { readonly name: string; readonly chain: string }) => Promise<readonly NovelaiArtistChain[]>
+  /** Remove one saved chain by id; returns the full library. */
+  removeArtistChain: (id: string) => Promise<readonly NovelaiArtistChain[]>
 }
 
 /** Mode-switch callbacks. */

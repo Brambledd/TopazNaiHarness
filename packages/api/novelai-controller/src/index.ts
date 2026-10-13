@@ -1,10 +1,11 @@
 /** Host NovelAI Remote owner: workbench generation and the shared output library. */
 
 import { readFile } from 'node:fs/promises'
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -21,6 +22,8 @@ import {
 } from '@deepseek-ai/dsh-novelai-core'
 import { requestAnlasBalance, requestTagSuggestions, resolveProxyUrl } from '@deepseek-ai/dsh-novelai-core/node'
 import { NovelaiImageLibrary } from './library.ts'
+import { WorkbenchStateStore, isValidWorkbenchSessionId, WORKBENCH_STATES_DIRECTORY } from './workbench-state-store.ts'
+import { ArtistChainsStore, ArtistChainsRefusalError, ARTIST_CHAINS_FILENAME } from './artist-chains.ts'
 import { NOVELAI_WORKBENCH_DEFAULTS, runEnhancement, runGeneration } from './generation.ts'
 import { buildReverseSystemPrompt, buildReverseUserText, parseReverseAnswer } from './reverse.ts'
 import { suggestTagsFromDictionary } from './tags.ts'
@@ -41,6 +44,7 @@ import type {
   NovelaiGenerationValue,
   NovelaiCommitWorkbenchStateRequest,
   NovelaiReadWorkbenchStateValue,
+  NovelaiArtistChainsValue,
   NovelaiSetGenerationDirRequest,
   NovelaiWorkbenchState,
   NovelaiHistoryRequest,
@@ -57,6 +61,8 @@ import type {
 
 export type * from './types.ts'
 export { NovelaiImageLibrary, LIBRARY_INDEX_FILE } from './library.ts'
+export { WorkbenchStateStore, isValidWorkbenchSessionId, WORKBENCH_STATES_DIRECTORY } from './workbench-state-store.ts'
+export { ArtistChainsStore, ArtistChainsRefusalError, ARTIST_CHAINS_FILENAME } from './artist-chains.ts'
 export { NOVELAI_WORKBENCH_DEFAULTS, resolveGenerationRequest, runGeneration } from './generation.ts'
 export { suggestTagsFromDictionary } from './tags.ts'
 export { TAG_DICTIONARY, type NovelaiDictEntry } from './tag-dictionary.ts'
@@ -126,7 +132,7 @@ export class NovelaiController extends TypertRemoteService {
     tagIndexPath: z.string().default('workspace/novelai/danbooru-cn.csv'),
     splitProvider: z.string().default('zai-coding-cn'),
     splitModel: z.string().default('glm-5.3-flash'),
-    splitMaxTokens: z.number().default(4096),
+    splitMaxTokens: z.number().default(16384),
     reverseProvider: z.string().default('zai-coding-cn'),
     reverseModel: z.string().default('glm-5.3-flash'),
     reverseMaxTokens: z.number().default(7000),
@@ -140,15 +146,37 @@ export class NovelaiController extends TypertRemoteService {
   private readonly tagIndex: TagIndexStore
   private tagIndexDownload: Promise<unknown> | undefined
   /** Latest committed workbench panel state per session; the generation tool's prompt source.
+   *  Hot cache over the durable {@link WorkbenchStateStore} documents.
    *  Plain property (not a #field): the Typert dispatch invokes Remotes through a
    *  proxy receiver, and a true private field would throw on the wrong `this`. */
   private readonly workbenchStates = new Map<string, NovelaiWorkbenchState>()
+  /** Durable store under the harness home; memory-only when no home resolves. */
+  private readonly workbenchStore: WorkbenchStateStore
+  /** Durable artist-chains library array under the harness home; memory-only when no home resolves. */
+  private readonly artistChainStore: ArtistChainStore
 
   /** @param ctx - Host context carrying the typert registry. @param config - deployment settings. */
   constructor(ctx: Context, config: NovelaiControllerConfig) {
     super(ctx, 'novelaiController', { namespace: 'novelai' })
     this.config = config
     this.tagIndex = new TagIndexStore(config.tagIndexPath, resolveProxyUrl('') ?? '')
+    // Resolved once: the panel-state directory and the artist-chains file under
+    // the harness home. os.homedir() failing leaves no home to persist into;
+    // both stores degrade to memory-only and warn at construction.
+    let home: string | undefined
+    try {
+      home = resolveDshHome()
+    } catch {
+      home = undefined
+    }
+    this.workbenchStore = new WorkbenchStateStore(
+      home === undefined ? undefined : join(home, WORKBENCH_STATES_DIRECTORY),
+      (message) => { this.ctx.logger.warn(message) },
+    )
+    this.artistChainStore = new ArtistChainStore(
+      home === undefined ? undefined : join(home, ARTIST_CHAINS_FILENAME),
+      (message) => { this.ctx.logger.warn(message) },
+    )
     // Optional settings consumer: compositions without a settings provider keep
     // the deployment `outputDir` (see resolveEffectiveOutputDir). The scope is
     // dropped with the settings service, mirroring the agent-presets registrant.
@@ -275,27 +303,92 @@ export class NovelaiController extends TypertRemoteService {
   }
 
   /**
-   * Commit one session's workbench panel state. The state lives in host memory
-   * for the server's lifetime: the panel re-commits on every change, so a
-   * client reload simply re-commits its fresh state.
+   * Commit one session's workbench panel state. The state lands in the hot map
+   * immediately and persists atomically under the harness home, so the panel's
+   * configuration survives a client reload and a service restart; the panel
+   * re-commits on every change either way.
    * @param request - the session and its latest panel state.
    * @returns an ack.
+   * @throws RemoteError `novelai/state-persist-failed` when the durable write
+   *   fails — the caller learns its panel state is not durable.
    */
   @Remote('commitWorkbenchState')
   async commitWorkbenchState(request: NovelaiCommitWorkbenchStateRequest): Promise<{ ok: true }> {
     this.workbenchStates.set(request.sessionId, request.state)
+    try {
+      await this.workbenchStore.write(request.sessionId, request.state)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new RemoteError('novelai/state-persist-failed', message, { message })
+    }
     return { ok: true }
   }
 
   /**
-   * Read one session's latest committed workbench panel state.
+   * Read one session's latest committed workbench panel state: the hot map
+   * first, the durable store otherwise (backfilling the map). A session id the
+   * store refuses is one that could never have been written, so its persisted
+   * state reads as absent.
    * @param request - the session id.
    * @returns the committed state, absent when the panel never committed.
    */
   @Remote('readWorkbenchState')
   async readWorkbenchState(request: { sessionId: string }): Promise<NovelaiReadWorkbenchStateValue> {
-    const state = this.workbenchStates.get(request.sessionId)
-    return state === undefined ? {} : { state }
+    const cached = this.workbenchStates.get(request.sessionId)
+    if (cached !== undefined) return { state: cached }
+    const state = isValidWorkbenchSessionId(request.sessionId)
+      ? await this.workbenchStore.read(request.sessionId)
+      : undefined
+    if (state === undefined) return {}
+    this.workbenchStates.set(request.sessionId, state)
+    return { state }
+  }
+
+  /**
+   * Read the workbench's named artist-chains library (画师串): whole-string
+   * `weight:artist::` runs, each under its own name, in insertion order.
+   * @returns all saved chains.
+   */
+  @Remote('artistChains')
+  async artistChains(): Promise<NovelaiArtistChainsValue> {
+    return { chains: await this.artistChainsStore.list() }
+  }
+
+  /**
+   * Save one named chain: a new name appends, an existing name replaces that
+   * chain's text in place. The text is stored verbatim — never parsed into
+   * per-artist rows.
+   * @param request - the chain's name and its whole `weight:artist::` text.
+   * @returns the full library after the write, in insertion order.
+   * @throws RemoteError `novelai/artist-chain-invalid` when the trimmed name
+   *   is empty or exceeds 60 characters, or the trimmed chain text is empty
+   *   or exceeds 4000 characters.
+   */
+  @Remote('saveArtistChain')
+  async saveArtistChain(request: { name: string; chain: string }): Promise<NovelaiArtistChainsValue> {
+    try {
+      return { chains: await this.artistChainsStore.save(request) }
+    } catch (error) {
+      if (error instanceof ArtistChainsRefusalError) throw artistChainsRemoteError(error)
+      throw await this.asRemoteError(error)
+    }
+  }
+
+  /**
+   * Remove one saved chain by id; small user data, so no confirmation round-trip.
+   * @param request - the chain to remove.
+   * @returns the full library after the write, in insertion order.
+   * @throws RemoteError `novelai/artist-chain-missing` when the id matches no
+   *   stored chain.
+   */
+  @Remote('removeArtistChain')
+  async removeArtistChain(request: { id: string }): Promise<NovelaiArtistChainsValue> {
+    try {
+      return { chains: await this.artistChainsStore.remove(request.id) }
+    } catch (error) {
+      if (error instanceof ArtistChainsRefusalError) throw artistChainsRemoteError(error)
+      throw await this.asRemoteError(error)
+    }
   }
 
   /**
@@ -621,7 +714,11 @@ export class NovelaiController extends TypertRemoteService {
       .join(' ')
       .trim()
     if (text === '') {
-      throw new Error(finishKind === undefined ? 'split model produced no text' : `split model finished with "${finishKind}" without text`)
+      // A reasoning model can spend the whole budget on thinking and emit no
+      // answer body at all; surface the budget as the actionable fix.
+      throw new Error(finishKind === 'max-tokens'
+        ? `拆分输出在 ${String(this.config.splitMaxTokens)} token 处被截断且没有正文（推理占用了预算）；请在 cordis.yml 调大 novelaiController 的 splitMaxTokens 后重试`
+        : finishKind === undefined ? 'split model produced no text' : `split model finished with "${finishKind}" without text`)
     }
     return { text, finishKind }
   }
@@ -731,6 +828,12 @@ function tryParseJson(candidate: string): unknown {
   } catch {
     return undefined
   }
+}
+
+/** Map one artist-chains store refusal to its namespace RemoteError code. */
+function artistChainsRemoteError(error: ArtistChainsRefusalError): RemoteError {
+  if (error.kind === 'invalid') return new RemoteError('novelai/artist-chain-invalid', error.message, { message: error.message })
+  return new RemoteError('novelai/artist-chain-missing', error.message, { id: error.id ?? '' })
 }
 
 /**

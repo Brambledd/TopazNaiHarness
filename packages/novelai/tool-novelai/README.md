@@ -45,7 +45,7 @@ The token is read from the `NOVELAI_TOKEN` environment variable; alternatively s
 
 ### What each call does
 
-The model sends a prompt plus optional overrides (model, dimensions, steps, CFG, sampler, noise schedule, seed, negative prompt, filename). The tool validates the constraints the schema cannot express — 64-multiple dimensions within 64–3072, integer steps within 1–50, CFG within 0–10, a filename without path separators — applies defaults (832×1216, 28 steps, CFG 5, `k_euler`, heavy negative preset, random seed), submits one `POST /ai/generate-image`, extracts the PNG from the ZIP response, and writes it under the output directory's local-time `<YYYY>/<MM>/<DD>` day folders (created on demand), the same layout the workbench library scans. A success returns the saved path, byte size, seed, and Anlas estimate.
+The model sends a prompt plus optional overrides (model, dimensions, steps, CFG, sampler, noise schedule, seed, negative prompt, filename, and a structured `characters` array). The tool validates the constraints the schema cannot express — 64-multiple dimensions within 64–3072, integer steps within 1–50, CFG within 0–10, a filename without path separators — applies defaults (832×1216, 28 steps, CFG 5, `k_euler`, heavy negative preset, random seed), normalizes the characters (trimmed, blank entries dropped, capped to the checkpoint's 32/6 capacity), submits one `POST /ai/generate-image` with per-character captions when present, extracts the PNG from the ZIP response, and writes it under the output directory's local-time `<YYYY>/<MM>/<DD>` day folders (created on demand), the same layout the workbench library scans. A success returns the saved path, byte size, seed, and Anlas estimate.
 
 ### Cost discipline
 
@@ -62,7 +62,7 @@ Every call is paid. The tool description tells the model to batch and iterate de
 ### Design philosophy
 
 - **One paid round trip per call.** The tool submits exactly one generation request; request assembly, Anlas estimation, and response extraction are pure functions tested without the network.
-- **Official-client wire parity.** Request normalizations are ported from the official frontend: V5 requests always submit `noise_schedule: "karras"`, CFG is clamped to 0–10, the seed to `0xffffffff`, and V4+ requests carry the (empty) character-prompt fields the API requires. The default negative prompt mirrors the V4+ "Heavy" undesired-content preset because the API receives only the merged text.
+- **Official-client wire parity.** Request normalizations are ported from the official frontend: V5 requests always submit `noise_schedule: "karras"`, CFG is clamped to 0–10, the seed to `0xffffffff`, and V4+ requests carry the structured character-caption fields the API requires (entries from the call's `characters` argument, each at the (0.5, 0.5) AI-choice center). The default negative prompt mirrors the V4+ "Heavy" undesired-content preset because the API receives only the merged text.
 - **No silent retries.** A paid POST may have produced and charged for an image even on a 5xx, so failures surface verbatim; only 429-style situations are left to the caller.
 - **The token resolves through the credential seam.** Per call the tool reads the plugin config `token` first, then the `NOVELAI_TOKEN` credential (the Settings → General row writes the store layer), then the bare environment; a changed token reaches the next call without a restart.
 - **The output directory follows the mounted controller.** When the NovelAI controller is mounted, the tool reads its live `effectiveOutputDir()` per call — honoring the Settings → General directory override — and falls back to the plugin config `outputDir` otherwise; the PNG saves under that directory's local-time day folders.
@@ -105,7 +105,7 @@ The request normalizations are ported from the official NovelAI frontend; wire-s
 
 #### What the model sees
 
-The generated [tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-tool-novelai) is the exhaustive source for the `novelai_generate` schema. The model sees one `novelai_generate` tool: a required `prompt` string plus optional `negativePrompt`, `model` (enum of the eight current checkpoints), `width`/`height` (64-multiple integers), `steps` (1–50), `cfgScale` (0–10), `sampler` (enum), `noiseSchedule` (enum), `seed` (0–4294967295), and `filename`. The description states that every call is paid and that the seed enables controlled variation.
+The generated [tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-tool-novelai) is the exhaustive source for the `novelai_generate` schema. The model sees one `novelai_generate` tool: a required `prompt` string plus optional `negativePrompt`, `model` (enum of the eight current checkpoints), `width`/`height` (64-multiple integers), `steps` (1–50), `cfgScale` (0–10), `sampler` (enum), `noiseSchedule` (enum), `seed` (0–4294967295), `filename`, and a `characters` array (one entry per distinct character; each entry carries that character's personal tags, capped to 32 on V5 and 6 on V4/V4.5). The description states that every call is paid and that the seed enables controlled variation.
 
 #### Token effect
 

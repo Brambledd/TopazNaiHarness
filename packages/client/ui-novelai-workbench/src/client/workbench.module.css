@@ -864,6 +864,75 @@
   align-items: center;
 }
 
+/* Artist chains (画师串): named chain rows + the save form */
+.artistList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.artistPreview {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.artistRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.artistName {
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: none;
+  max-width: 40%;
+  min-width: 0;
+}
+
+.artistForm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.artistInput {
+  flex: none;
+  width: 130px;
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.artistChainInput {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
 /* History grid */
 .historyGrid {
   display: grid;

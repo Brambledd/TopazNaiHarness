@@ -45,7 +45,7 @@ token 从 `NOVELAI_TOKEN` 环境变量读取；也可以在插件配置里设置
 
 ### 每次调用做什么
 
-模型发送提示词与可选覆盖项（模型、尺寸、步数、CFG、采样器、噪声调度、种子、负面提示词、文件名）。工具校验 schema 表达不了的约束——64 的倍数且在 64–3072 内的尺寸、1–50 的整数步数、0–10 的 CFG、不含路径分隔符的文件名——然后应用默认值（832×1216、28 步、CFG 5、`k_euler`、Heavy 负面预设、随机种子），提交一次 `POST /ai/generate-image`，从 ZIP 响应提取 PNG 并写入输出目录下按本地时间 `<YYYY>/<MM>/<DD>` 创建的日期子文件夹（按需创建），与创作台库扫描的布局一致。成功返回保存路径、字节大小、种子与 Anlas 估算。
+模型发送提示词与可选覆盖项（模型、尺寸、步数、CFG、采样器、噪声调度、种子、负面提示词、文件名，以及结构化 `characters` 数组）。工具校验 schema 表达不了的约束——64 的倍数且在 64–3072 内的尺寸、1–50 的整数步数、0–10 的 CFG、不含路径分隔符的文件名——然后应用默认值（832×1216、28 步、CFG 5、`k_euler`、Heavy 负面预设、随机种子），规范化角色（修剪空白、丢弃空条目、按 checkpoint 的 32/6 容量截断），存在角色时携带逐角色 caption 提交一次 `POST /ai/generate-image`，从 ZIP 响应提取 PNG 并写入输出目录下按本地时间 `<YYYY>/<MM>/<DD>` 创建的日期子文件夹（按需创建），与创作台库扫描的布局一致。成功返回保存路径、字节大小、种子与 Anlas 估算。
 
 ### 费用纪律
 
@@ -62,7 +62,7 @@ token 从 `NOVELAI_TOKEN` 环境变量读取；也可以在插件配置里设置
 ### 设计原则
 
 - **每次调用一次付费往返。** 工具只提交恰好一次生成请求；请求组装、Anlas 估算与响应提取都是纯函数，脱离网络测试。
-- **官方客户端线格式对齐。** 请求规范化自官方前端移植：V5 请求恒定提交 `noise_schedule: "karras"`，CFG 收敛到 0–10，种子收敛到 `0xffffffff`，V4+ 请求携带 API 要求的（空）角色提示词字段。默认负面提示词镜像 V4+ 的 "Heavy" 不良内容预设，因为 API 只接收合并后的文本。
+- **官方客户端线格式对齐。** 请求规范化自官方前端移植：V5 请求恒定提交 `noise_schedule: "karras"`，CFG 收敛到 0–10，种子收敛到 `0xffffffff`，V4+ 请求携带 API 要求的结构化角色 caption 字段（来自调用的 `characters` 参数，每个角色位于 (0.5, 0.5) 的 AI 择位中心）。默认负面提示词镜像 V4+ 的 "Heavy" 不良内容预设，因为 API 只接收合并后的文本。
 - **不静默重试。** 付费 POST 即使返回 5xx 也可能已产出并扣费，因此失败逐字上抛；只有 429 类情形交给调用方处置。
 - **令牌经 credential 缝解析。** 每次调用先读插件 config 的 `token`，再读 `NOVELAI_TOKEN` credential（Settings → General 行写入存储层），最后读裸环境变量；令牌变更无需重启即对下一次调用生效。
 - **输出目录跟随已挂载的控制器。** 挂载了 NovelAI 控制器时，工具每次调用读取其活动的 `effectiveOutputDir()`——即遵循 Settings → General 的目录覆盖——否则回退插件 config 的 `outputDir`；PNG 存入该目录下按本地时间的日期子文件夹。
@@ -105,7 +105,7 @@ token 从 `NOVELAI_TOKEN` 环境变量读取；也可以在插件配置里设置
 
 #### 模型看到什么
 
-生成的[工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-novelai)是 `novelai_generate` schema 的穷尽来源。模型看到一个 `novelai_generate` 工具：必填 `prompt` 字符串加可选项 `negativePrompt`、`model`（当前八个 checkpoint 的枚举）、`width`/`height`（64 的倍数整数）、`steps`（1–50）、`cfgScale`（0–10）、`sampler`（枚举）、`noiseSchedule`（枚举）、`seed`（0–4294967295）与 `filename`。描述写明每次调用都付费，种子用于受控变体。
+生成的[工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-novelai)是 `novelai_generate` schema 的穷尽来源。模型看到一个 `novelai_generate` 工具：必填 `prompt` 字符串加可选项 `negativePrompt`、`model`（当前八个 checkpoint 的枚举）、`width`/`height`（64 的倍数整数）、`steps`（1–50）、`cfgScale`（0–10）、`sampler`（枚举）、`noiseSchedule`（枚举）、`seed`（0–4294967295）、`filename`，以及 `characters` 数组（每个不同角色一条；每条携带该角色的个人标签，V5 上限 32 条、V4/V4.5 上限 6 条）。描述写明每次调用都付费，种子用于受控变体。
 
 #### Token effect
 

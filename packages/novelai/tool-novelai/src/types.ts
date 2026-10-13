@@ -40,6 +40,26 @@ export type NovelaiNoiseSchedule = (typeof NOVELAI_NOISE_SCHEDULES)[number]
 /** Inclusive upper bound of a NovelAI seed (the API rejects anything above `0xffffffff`). */
 export const MAX_NOVELAI_SEED = 0xffff_ffff
 
+/** One structured character caption submitted alongside a V4+ generation. */
+export interface NovelaiCharacterCaption {
+  /** The character's personal appearance/action tags. */
+  prompt: string
+  /** The character's personal negative tags; absent folds into the shared negative only. */
+  negativePrompt?: string
+}
+
+/**
+ * Report the per-request character-caption capacity of one checkpoint
+ * (mirrors `maxNovelaiCharacters` in the NovelAI core: 32 for V5, 6 for
+ * V4/V4.5, 0 for anything older).
+ * @param model - checkpoint id to test.
+ * @returns the maximum structured character count the checkpoint accepts.
+ */
+export function maxCharactersFor(model: string): number {
+  if (model.startsWith('nai-diffusion-5-')) return 32
+  return model.startsWith('nai-diffusion-4-') ? 6 : 0
+}
+
 /** Canonical text-to-image request after defaults are resolved. */
 export interface NovelaiGenerateInput {
   /** Positive prompt; Danbooru-style tags for anime checkpoints. */
@@ -62,6 +82,8 @@ export interface NovelaiGenerateInput {
   noiseSchedule: NovelaiNoiseSchedule
   /** Seed, 0–`MAX_NOVELAI_SEED` inclusive. */
   seed: number
+  /** Structured characters, capped to the checkpoint's capacity; absent means none. */
+  characters?: NovelaiCharacterCaption[]
 }
 
 /** Wire body of `POST /ai/generate-image` (text-to-image, `action: "generate"`). */

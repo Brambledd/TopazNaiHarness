@@ -5,6 +5,14 @@
  * `novelaiWorkbench` service.
  */
 
+/** One conversation-delivered character; personal appearance/action tags only. */
+export interface WorkbenchBackfillCharacter {
+  /** The character's personal appearance/action tags. */
+  readonly prompt: string
+  /** The character's personal negative tags; absent keeps the panel default (empty). */
+  readonly negativePrompt?: string
+}
+
 /** One conversation-side draft delivered into the workbench panel; absent fields keep their current panel value. */
 export interface WorkbenchBackfillRequest {
   /** Positive prompt text. */
@@ -27,6 +35,8 @@ export interface WorkbenchBackfillRequest {
   readonly noiseSchedule?: string
   /** Seed; a defined value switches the panel to fixed mode. */
   readonly seed?: number
+  /** Structured characters; present entries land directly in the panel's character cards. */
+  readonly characters?: ReadonlyArray<WorkbenchBackfillCharacter>
 }
 
 /** One tag/settings operation the conversation's patch card applies. */

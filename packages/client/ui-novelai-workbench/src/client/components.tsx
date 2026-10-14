@@ -22,6 +22,7 @@ import {
   snapDimensionWithinArea,
 } from './resolution.ts'
 import { PromptTextarea } from './autocomplete.tsx'
+import type { ViewMode } from '@deepseek-ai/dsh-client-ui-layout/client'
 import { CapsuleBrowser, STYLE_PRESETS } from './capsule-picker.tsx'
 import { prepareReverseImage, resizeUrlToBase64 } from './enhance-image.ts'
 import type { WorkbenchInjected } from './injected.ts'
@@ -78,11 +79,16 @@ export function WorkbenchRoot({
   removeArtistChain,
   setViewMode,
   useSessions,
+  mode,
   t,
-}: { variant?: 'center' | 'rail' } & Omit<PropsRuntime<'workbench'>, 'mode'> & WorkbenchInjected & PropsLocale<'novelai-workbench'>) {
-  // The `mode` owner share of the center seat is dropped from the accepted
-  // props: the component never reads it, and the rail seat has no center-mode
-  // owner share to pass.
+}: { variant?: 'center' | 'rail' } & Omit<PropsRuntime<'workbench'>, 'mode'> & { mode?: ViewMode } & WorkbenchInjected & PropsLocale<'novelai-workbench'>) {
+  // The `mode` owner share exists only on the center seat (the rail seat has
+  // no center-mode share to pass). The layout frame keeps the center surface
+  // mounted while the conversation view is active, so the center instance is
+  // dormant when its mode is not 'workbench': no network effects, no JSX —
+  // otherwise it doubles every network walk and render commit the visible
+  // rail panel makes. An absent share (tests, defensive) stays visible.
+  const visible = variant === 'rail' || mode !== 'conversation'
   const [catalogValue, setCatalogValue] = useState<NovelaiCatalogValue | undefined>(undefined)
   const [prompt, setPrompt] = useState('')
   const [negativePrompt, setNegativePrompt] = useState('')
@@ -180,20 +186,24 @@ export function WorkbenchRoot({
     return () => { cancelled = true }
   }, [catalog])
 
-  // Initial history page, refreshed after every generation.
+  // Initial history page, refreshed after every generation. A dormant center
+  // instance (the layout keeps it mounted behind the conversation view) does
+  // not fetch: the visible instance owns the panel's network walks.
   useEffect(() => {
+    if (!visible) return undefined
     let cancelled = false
     history().then((page) => {
       if (!cancelled) setEntries(page.entries)
     }).catch(() => { /* the grid stays empty; generation reports its own failures */ })
     return () => { cancelled = true }
-  }, [history])
+  }, [history, visible])
 
   // Live Anlas quote, debounced across width/height/steps edits. The quote
   // waits for the restore read to settle: quoting the pre-restore dimensions
   // would spend a slow routed round-trip on values the restore immediately
   // replaces, and the prompt must render before any advisory call.
   useEffect(() => {
+    if (!visible) return undefined
     if (!panelSettled || !catalogReady) return undefined
     if (width <= 0 || height <= 0) return undefined
     let cancelled = false
@@ -203,7 +213,7 @@ export function WorkbenchRoot({
       }).catch(() => { /* the quote is advisory; generation reports real failures */ })
     }, 350)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [panelSettled, catalogReady, width, height, steps, estimate])
+  }, [visible, panelSettled, catalogReady, width, height, steps, estimate])
 
   // Revoke every minted object URL when the surface unmounts.
   useEffect(() => () => {
@@ -218,6 +228,7 @@ export function WorkbenchRoot({
   // mid-switch would otherwise publish the bare unseeded panel (empty
   // checkpoint, zero size) over the stored state.
   useEffect(() => {
+    if (!visible) return
     if (currentSessionId === undefined || !panelSettled || !catalogReady) return
     const state = {
       prompt,
@@ -234,7 +245,7 @@ export function WorkbenchRoot({
     const timer = setTimeout(() => { void commitWorkbenchState(currentSessionId, state).catch(() => {}) }, 400)
     return () => { clearTimeout(timer) }
   }, [
-    commitWorkbenchState, currentSessionId, panelSettled, catalogReady, prompt, negativePrompt, model,
+    commitWorkbenchState, currentSessionId, panelSettled, catalogReady, visible, prompt, negativePrompt, model,
     width, height, steps, cfgScale, sampler, noiseSchedule, seedMode, seed,
   ])
 
@@ -253,6 +264,7 @@ export function WorkbenchRoot({
   // size — residue from the pre-gate writes) is treated as absent.
   const restoredSession = useRef<typeof currentSessionId>(undefined)
   useEffect(() => {
+    if (!visible) return
     if (restoredSession.current === currentSessionId) return
     // Every session change shuts the commit gate until this session's read
     // settles: the fields still carry the previous session's content, and a
@@ -288,7 +300,7 @@ export function WorkbenchRoot({
         if (!cancelled) { restoredSession.current = currentSessionId; setPanelSettled(true) }
       })
     return () => { cancelled = true }
-  }, [readWorkbenchState, currentSessionId])
+  }, [visible, readWorkbenchState, currentSessionId])
 
   const tier = useMemo(() => nearestTier(width, height), [width, height])
   const ratio = useMemo(() => nearestRatio(width, height), [width, height])
@@ -836,6 +848,13 @@ export function WorkbenchRoot({
     setWorkbenchTab('generate')
   }
 
+  // A dormant center instance renders nothing: the layout frame keeps it
+  // mounted behind the conversation view, and rendering the full panel tree
+  // into a hidden subtree costs a render commit on every conversation switch
+  // without ever being seen. Re-entering the workbench mode remounts the tree
+  // fresh; the catalog is connection-cached and the session state restores
+  // from the host, so the remount is cheap.
+  if (!visible) return null
   return (
     <div className={css.stageLayout} data-variant={variant}>
       <div className={css.stageColumn}>

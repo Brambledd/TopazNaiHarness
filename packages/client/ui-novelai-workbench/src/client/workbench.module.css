@@ -1,4 +1,4 @@
-/* Workbench panel styles. Semantic --dsw-alias-* tokens only (web-styling rule). */
+﻿/* Workbench panel styles. Semantic --dsw-alias-* tokens only (web-styling rule). */
 
 /* Two-pane studio: the stage column dominates, the control column scrolls. */
 .stageLayout {
@@ -519,8 +519,9 @@
   bottom: 0;
   z-index: 1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 4px 12px;
   margin-top: auto;
   padding: 8px 0;
   background: var(--dsw-alias-bg-layer-1);
@@ -574,15 +575,26 @@
   animation: none;
 }
 
+/* Status messages each take their own full footer line, capped with an inner
+   scroll: a long generation error (which now carries a response-body snippet)
+   must never stretch the footer and push the generate button out of view. */
 .errorText {
   color: var(--dsw-alias-state-error-primary);
   font-size: 12px;
   margin: 0;
+  flex: 1 1 100%;
+  max-height: 72px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
 }
 
 /* Low-interval batch warning: the ZZZ caution yellow, loud on purpose. */
 .warnText {
   color: var(--dsw-zzz-yellow);
+  flex: 1 1 100%;
+  max-height: 48px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
   font-size: 12px;
   font-weight: 700;
   margin: 0;
@@ -598,6 +610,10 @@
 }
 
 .doneText {
+  flex: 1 1 100%;
+  max-height: 48px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
   margin: 0;

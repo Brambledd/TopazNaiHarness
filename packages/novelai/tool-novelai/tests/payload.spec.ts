@@ -121,7 +121,9 @@ describe('buildNovelaiPayload', () => {
       use_coords: false,
       use_order: true,
     })
-    // Any personal negative makes every entry ship one, empties included.
+    // The negative structure mirrors the positive count one-for-one whenever
+    // characters exist — a populated positive list with an empty negative list
+    // is a server-side rejection risk.
     expect(payload.parameters['v4_negative_prompt']).toEqual({
       caption: {
         base_caption: 'lowres',

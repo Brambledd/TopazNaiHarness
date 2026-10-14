@@ -509,6 +509,7 @@ window.__ModuleLoader__={
     return exports.createClientModuleSystem(this,{id:registration.id,exports},options)
   }
 }
+console.log("[dsh] bundles:",${JSON.stringify(graph.batches.map(batch => batch.url))})
 })()`
   const bootstrap = graph.batches.filter(batch => batch.phase === 'bootstrap')
   const application = graph.batches.filter(batch => batch.phase === 'application')

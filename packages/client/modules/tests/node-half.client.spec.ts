@@ -134,7 +134,8 @@ function injectedFacade(graph: WebBootGraph): { html: string; target: ClientModu
   const source = /<head><script>([\s\S]*?)<\/script>/.exec(html)?.[1]
   if (source === undefined) throw new Error('missing injected ModuleLoader facade script')
   const window: { __ModuleLoader__?: ClientModuleLoaderTarget } = {}
-  runInNewContext(source, { window })
+  // The facade ends with a bundle-list console log; the sandbox stubs console.
+  runInNewContext(source, { window, console: { log() {} } })
   if (window.__ModuleLoader__ === undefined) throw new Error('facade script did not install __ModuleLoader__')
   return { html, target: window.__ModuleLoader__ }
 }

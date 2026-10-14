@@ -84,11 +84,16 @@ export async function serveStatic(
   }
   let body: string | Buffer
   let type: string
+  let headers: Record<string, string> = {}
   try {
     if (target === distRoot || target === distIndex) {
       if (!authorizeIndex()) return
       body = await renderIndex()
       type = HTML_MIME
+      // The index embeds the plugin boot graph (rev-carrying combo URLs), so a
+      // stale cached index pins the whole session to stale bundles. It must
+      // revalidate on every load; hashed dist assets keep their own names.
+      headers = { 'cache-control': 'no-cache' }
     } else {
       body = await readFile(target)
       type = MIME[extname(target)] ?? 'application/octet-stream'
@@ -101,7 +106,7 @@ export async function serveStatic(
     res.end()
     return
   }
-  res.writeHead(200, { 'content-type': type })
+  res.writeHead(200, { 'content-type': type, ...headers })
   res.end(body)
 }
 

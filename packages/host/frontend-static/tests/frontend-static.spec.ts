@@ -83,12 +83,17 @@ async function loadComposition(): Promise<Context> {
   return context
 }
 
-/** GET (by default) one path against the running server; returns status, content-type, and a body prefix. */
-async function request(port: number, path: string, init?: RequestInit): Promise<{ status: number; type: string | null; body: string }> {
+/** GET (by default) one path; returns status, content-type, cache policy, and a body prefix. */
+async function request(
+  port: number,
+  path: string,
+  init?: RequestInit,
+): Promise<{ status: number; type: string | null; cache: string | null; body: string }> {
   const response = await fetch(`http://127.0.0.1:${String(port)}${path}`, init)
   return {
     status: response.status,
     type: response.headers.get('content-type'),
+    cache: response.headers.get('cache-control'),
     // Window wide enough to keep index body markers visible behind the
     // served prelude (base anchor + injection rows + boot-readiness tail).
     body: (await response.text()).slice(0, 200),
@@ -124,7 +129,8 @@ describe('real Loader composition', () => {
     })
 
     // Real assets with their MIME types; a live rebuild is served on the next read.
-    expect(await request(port, '/app.js')).toMatchObject({ status: 200, type: 'text/javascript; charset=utf-8', body: 'export {}' })
+    // Assets carry no freshness metadata: hashed names own their caching.
+    expect(await request(port, '/app.js')).toMatchObject({ status: 200, type: 'text/javascript; charset=utf-8', cache: null, body: 'export {}' })
     expect(await request(port, '/manifest.webmanifest')).toMatchObject({
       status: 200,
       type: 'application/manifest+json',
@@ -133,6 +139,7 @@ describe('real Loader composition', () => {
     expect(await request(port, '/app.js', { method: 'HEAD' })).toEqual({
       status: 200,
       type: 'text/javascript; charset=utf-8',
+      cache: null,
       body: '',
     })
     await writeFile(join(root!, 'dist', 'app.js'), 'export const rebuilt = true')
@@ -142,17 +149,21 @@ describe('real Loader composition', () => {
     expect(await request(port, '/blob.bin')).toMatchObject({ status: 200, type: 'application/octet-stream', body: 'BLOB' })
 
     // Only the root and index path render index.html through registered taps.
+    // The index must revalidate on every load: it embeds the plugin boot graph,
+    // whose rev-carrying combo URLs are the whole freshness story.
     const untap = server.tapIndex(html => html.replace('<head>', '<head><script>window.__T__=1</script>'))
     for (const path of ['/', '/index.html', '/?fixture']) {
       const got = await request(port, path, authenticated())
       expect(got.status).toBe(200)
       expect(got.type).toBe('text/html; charset=utf-8')
+      expect(got.cache).toBe('no-cache')
       expect(got.body).toContain('__T__')
       expect(got.body).toContain('shell')
     }
     expect(await request(port, '/', authenticated({ method: 'HEAD' }))).toEqual({
       status: 200,
       type: 'text/html; charset=utf-8',
+      cache: 'no-cache',
       body: '',
     })
     untap()
@@ -164,8 +175,9 @@ describe('real Loader composition', () => {
     for (const path of ['/', '/index.html']) {
       const get = await request(port, path, authenticated())
       const head = await request(port, path, authenticated({ method: 'HEAD' }))
-      expect(get).toEqual({ status: 404, type: null, body: '' })
-      expect(head).toEqual(get)
+      const miss = { status: 404, type: null, cache: null, body: '' }
+      expect(get).toEqual(miss)
+      expect(head).toEqual(miss)
     }
 
     // Ordinary unknown paths and static-resource misses are empty 404s for
@@ -182,12 +194,14 @@ describe('real Loader composition', () => {
     for (const path of [...ordinaryMisses, ...assetMisses]) {
       const get = await request(port, path)
       const head = await request(port, path, { method: 'HEAD' })
-      expect(get).toEqual({ status: 404, type: null, body: '' })
-      expect(head).toEqual(get)
+      const miss = { status: 404, type: null, cache: null, body: '' }
+      expect(get).toEqual(miss)
+      expect(head).toEqual(miss)
     }
     expect(await request(port, '/api/no/such/route', authenticated())).toEqual({
       status: 404,
       type: 'text/plain;charset=UTF-8',
+      cache: null,
       body: 'not found',
     })
 

@@ -23,6 +23,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'novelai/state-persist-failed': { readonly message: string }
     /** The committed workbench panel state is the bare unseeded shape, refused so it cannot overwrite stored state. */
     'novelai/state-bare-commit': { readonly message: string }
+    /** The committed workbench panel state carries no checkpoint, refused so the stored state stays generable. */
+    'novelai/state-model-required': { readonly message: string }
     /** An artist-chains mutation carried an empty or over-long name or tags text. */
     'novelai/artist-chain-invalid': { readonly message: string }
     /** An artist-chains save or removal targeted an id that is not stored. */

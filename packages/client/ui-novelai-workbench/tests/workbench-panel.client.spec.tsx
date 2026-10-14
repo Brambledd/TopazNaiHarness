@@ -316,6 +316,16 @@ describe('workbench panel', () => {
     expect(screen.getByPlaceholderText('lowres, bad anatomy…')).toBeTruthy()
   })
 
+  it('keeps the characters fold mounted even before the checkpoint seeds', async () => {
+    // An empty model must not read as a missing feature: the fold header is
+    // always present, and only the add button's disabled arm tracks capacity.
+    mount()
+    const fold = screen.getByRole('button', { name: /角色提示词/ })
+    expect(fold.getAttribute('aria-expanded')).toBe('false')
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    expect(screen.getByRole('button', { name: /角色提示词/ })).toBeTruthy()
+  })
+
   it('folds the style presets until expanded and prepends on pick', async () => {
     mount()
     await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })

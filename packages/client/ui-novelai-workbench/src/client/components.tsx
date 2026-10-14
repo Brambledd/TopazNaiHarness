@@ -282,7 +282,9 @@ export function WorkbenchRoot({
         setPrompt(restored.prompt)
         setNegativePrompt(restored.negativePrompt)
         if (restored.negativePrompt.trim() !== '') setNegativeOpen(true)
-        setModel(restored.model)
+        // An empty checkpoint never applies: it would hide the characters
+        // fold and kill generation. The seed's default keeps the panel valid.
+        if (restored.model !== '') setModel(restored.model)
         setWidth(restored.width)
         setHeight(restored.height)
         setSteps(restored.steps)
@@ -1163,117 +1165,118 @@ export function WorkbenchRoot({
               />
             )}
           </div>
-          {maxCharactersFor(model) > 0 && (
-            <div className={css.section}>
-              <button
-                type="button"
-                className={css.foldHeader}
-                aria-expanded={charactersOpen}
-                onClick={() => { setCharactersOpen(open => !open) }}
-              >
-                <span className={`${css.chevron} ${charactersOpen ? css.chevronOpen : ''}`}>▾</span>
-                {t('characters.label')}{characters.length > 0 ? ` · ${String(characters.length)}` : ''}
-              </button>
-              {charactersOpen && (
-                <div className={css.charList}>
-                  <div className={css.charActions}>
-                    <button
-                      type="button"
-                      className={css.charAction}
-                      disabled={characters.length >= maxCharactersFor(model)}
-                      onClick={addCharacter}
-                    >
-                      {t('characters.add')}
-                    </button>
-                    <button
-                      type="button"
-                      className={css.charAction}
-                      disabled={characters.length === 0}
-                      onClick={() => { setCharacters([]) }}
-                    >
-                      {t('characters.clear')}
-                    </button>
-                  </div>
-                  {characters.map((draft, index) => (
-                    <div key={draft.id} className={css.charRow}>
-                      <div className={css.charHead}>
-                        <strong className={css.charTitle}>{t('characters.role')} {String(index + 1)}</strong>
-                        <label className={css.charCheck}>
-                          <input
-                            type="checkbox"
-                            checked={draft.useCoords}
-                            aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.position.custom')}`}
-                            onChange={(e) => { updateCharacter(draft.id, { useCoords: e.target.checked }) }}
-                          />
-                          {t('characters.position.custom')}
-                        </label>
-                        <button
-                          type="button"
-                          className={css.charAction}
-                          aria-label={`${t('characters.remove')} ${String(index + 1)}`}
-                          onClick={() => { removeCharacter(draft.id) }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      <PromptTextarea
-                        value={draft.prompt}
-                        onChange={(next) => { updateCharacter(draft.id, { prompt: next }) }}
-                        suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
-                        placeholder={t('characters.placeholder')}
-                        ariaLabel={`${t('characters.role')} ${String(index + 1)}`}
-                        className={css.charArea}
-                      />
-                      <PromptTextarea
-                        value={draft.negativePrompt}
-                        onChange={(next) => { updateCharacter(draft.id, { negativePrompt: next }) }}
-                        suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
-                        placeholder={t('characters.negativePlaceholder')}
-                        ariaLabel={`${t('characters.role')} ${String(index + 1)} ${t('characters.negative')}`}
-                        className={css.charNeg}
-                      />
-                      {draft.useCoords && (
-                        <div className={css.charCoords}>
-                          <label className={css.field}>
-                            <span className={css.fieldLabel}>{t('characters.x')}</span>
-                            <span className={css.charPercent}>
-                              <input
-                                type="number"
-                                className={css.select}
-                                min={0}
-                                max={100}
-                                step={5}
-                                value={Math.round(draft.x * 100)}
-                                aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.x')}`}
-                                onChange={(e) => { updateCharacter(draft.id, { x: Number(e.target.value) / 100 }) }}
-                              />
-                              <span aria-hidden="true">%</span>
-                            </span>
-                          </label>
-                          <label className={css.field}>
-                            <span className={css.fieldLabel}>{t('characters.y')}</span>
-                            <span className={css.charPercent}>
-                              <input
-                                type="number"
-                                className={css.select}
-                                min={0}
-                                max={100}
-                                step={5}
-                                value={Math.round(draft.y * 100)}
-                                aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.y')}`}
-                                onChange={(e) => { updateCharacter(draft.id, { y: Number(e.target.value) / 100 }) }}
-                              />
-                              <span aria-hidden="true">%</span>
-                            </span>
-                          </label>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+          {/* The fold stays mounted even while the model is empty (the seed's
+             brief pre-catalog window): a vanished fold reads as a missing
+             feature. The add button's own disabled arm covers capacity 0. */}
+          <div className={css.section}>
+            <button
+              type="button"
+              className={css.foldHeader}
+              aria-expanded={charactersOpen}
+              onClick={() => { setCharactersOpen(open => !open) }}
+            >
+              <span className={`${css.chevron} ${charactersOpen ? css.chevronOpen : ''}`}>▾</span>
+              {t('characters.label')}{characters.length > 0 ? ` · ${String(characters.length)}` : ''}
+            </button>
+            {charactersOpen && (
+              <div className={css.charList}>
+                <div className={css.charActions}>
+                  <button
+                    type="button"
+                    className={css.charAction}
+                    disabled={characters.length >= maxCharactersFor(model)}
+                    onClick={addCharacter}
+                  >
+                    {t('characters.add')}
+                  </button>
+                  <button
+                    type="button"
+                    className={css.charAction}
+                    disabled={characters.length === 0}
+                    onClick={() => { setCharacters([]) }}
+                  >
+                    {t('characters.clear')}
+                  </button>
                 </div>
-              )}
-            </div>
-          )}
+                {characters.map((draft, index) => (
+                  <div key={draft.id} className={css.charRow}>
+                    <div className={css.charHead}>
+                      <strong className={css.charTitle}>{t('characters.role')} {String(index + 1)}</strong>
+                      <label className={css.charCheck}>
+                        <input
+                          type="checkbox"
+                          checked={draft.useCoords}
+                          aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.position.custom')}`}
+                          onChange={(e) => { updateCharacter(draft.id, { useCoords: e.target.checked }) }}
+                        />
+                        {t('characters.position.custom')}
+                      </label>
+                      <button
+                        type="button"
+                        className={css.charAction}
+                        aria-label={`${t('characters.remove')} ${String(index + 1)}`}
+                        onClick={() => { removeCharacter(draft.id) }}
+                      >
+                          ✕
+                      </button>
+                    </div>
+                    <PromptTextarea
+                      value={draft.prompt}
+                      onChange={(next) => { updateCharacter(draft.id, { prompt: next }) }}
+                      suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
+                      placeholder={t('characters.placeholder')}
+                      ariaLabel={`${t('characters.role')} ${String(index + 1)}`}
+                      className={css.charArea}
+                    />
+                    <PromptTextarea
+                      value={draft.negativePrompt}
+                      onChange={(next) => { updateCharacter(draft.id, { negativePrompt: next }) }}
+                      suggest={word => suggestTags({ prompt: word, model }).then(value => value.tags)}
+                      placeholder={t('characters.negativePlaceholder')}
+                      ariaLabel={`${t('characters.role')} ${String(index + 1)} ${t('characters.negative')}`}
+                      className={css.charNeg}
+                    />
+                    {draft.useCoords && (
+                      <div className={css.charCoords}>
+                        <label className={css.field}>
+                          <span className={css.fieldLabel}>{t('characters.x')}</span>
+                          <span className={css.charPercent}>
+                            <input
+                              type="number"
+                              className={css.select}
+                              min={0}
+                              max={100}
+                              step={5}
+                              value={Math.round(draft.x * 100)}
+                              aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.x')}`}
+                              onChange={(e) => { updateCharacter(draft.id, { x: Number(e.target.value) / 100 }) }}
+                            />
+                            <span aria-hidden="true">%</span>
+                          </span>
+                        </label>
+                        <label className={css.field}>
+                          <span className={css.fieldLabel}>{t('characters.y')}</span>
+                          <span className={css.charPercent}>
+                            <input
+                              type="number"
+                              className={css.select}
+                              min={0}
+                              max={100}
+                              step={5}
+                              value={Math.round(draft.y * 100)}
+                              aria-label={`${t('characters.role')} ${String(index + 1)} ${t('characters.y')}`}
+                              onChange={(e) => { updateCharacter(draft.id, { y: Number(e.target.value) / 100 }) }}
+                            />
+                            <span aria-hidden="true">%</span>
+                          </span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div className={css.paramGrid}>
             <label className={css.field}>
               <span className={css.fieldLabel}>{t('param.model')}</span>

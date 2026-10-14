@@ -321,6 +321,13 @@ export class NovelaiController extends TypertRemoteService {
     if (request.state.model === '' && request.state.width === 0) {
       throw new RemoteError('novelai/state-bare-commit', 'the panel state carries no seeded checkpoint or size', { message: 'the panel state carries no seeded checkpoint or size' })
     }
+    // A state with a size but an empty checkpoint is the other half-race: the
+    // panel cannot generate from it, and restoring it hides the characters
+    // fold. The seed's default is always available client-side, so an empty
+    // checkpoint is never a state worth storing.
+    if (request.state.model === '') {
+      throw new RemoteError('novelai/state-model-required', 'the panel state carries no checkpoint', { message: 'the panel state carries no checkpoint' })
+    }
     this.workbenchStates.set(request.sessionId, request.state)
     try {
       await this.workbenchStore.write(request.sessionId, request.state)

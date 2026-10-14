@@ -434,6 +434,16 @@ describe('workbench state persistence', () => {
       .resolves.toEqual({ state: workbenchState('real prompt') })
   })
 
+  it('refuses a sized state with an empty checkpoint so the stored state stays generable', async () => {
+    const { controller } = await harness()
+    await controller.commitWorkbenchState({ sessionId: 'session-1', state: workbenchState('real prompt') })
+    const checkpointless = { ...workbenchState('kept prompt'), model: '' }
+    await expect(controller.commitWorkbenchState({ sessionId: 'session-1', state: checkpointless }))
+      .rejects.toMatchObject({ code: 'novelai/state-model-required' })
+    await expect(controller.readWorkbenchState({ sessionId: 'session-1' }))
+      .resolves.toEqual({ state: workbenchState('real prompt') })
+  })
+
   it('persists the commit under the harness home and restores it into a fresh controller', async () => {
     // The sandbox home comes from beforeEach; both controllers resolve the same
     // `<home>/novelai-workbench-states` directory.

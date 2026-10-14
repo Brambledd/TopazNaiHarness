@@ -283,9 +283,10 @@ function renderWith(props: Record<string, unknown>) {
   return render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
 }
 
-function mount() {
+async function mount() {
   const { props, generate, splitCharacters, seedDraft, deliverBackfill, deliverPatch } = makeProps()
   const view = render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+  await act(async () => {}) // drain the restore-read chain so the commit gate opens
   return { view, generate, splitCharacters, seedDraft, deliverBackfill, deliverPatch, setViewMode: props.setViewMode }
 }
 
@@ -495,7 +496,7 @@ describe('workbench panel', () => {
   })
 
   it('omits the seed in random mode and sends it in fixed mode', async () => {
-    const { generate } = mount()
+    const { generate } = await mount()
     await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
     fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'a cat' } })
     fireEvent.click(screen.getByRole('button', { name: '生成' }))
@@ -685,7 +686,7 @@ async function openCharacters(): Promise<void> {
 
 describe('character prompts', () => {
   it('adds a character card and submits it with the generation', async () => {
-    const { generate } = mount()
+    const { generate } = await mount()
     await openCharacters()
     fireEvent.click(screen.getByRole('button', { name: '添加角色' }))
     const area = screen.getByLabelText('角色 1') as HTMLTextAreaElement
@@ -700,7 +701,7 @@ describe('character prompts', () => {
   })
 
   it('omits characters when the panel stays empty', async () => {
-    const { generate } = mount()
+    const { generate } = await mount()
     await openCharacters()
     fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'a cat' } })
     fireEvent.click(screen.getByRole('button', { name: '生成' }))
@@ -709,7 +710,7 @@ describe('character prompts', () => {
   })
 
   it('splits the merged prompt into base and character cards with one LLM call', async () => {
-    const { splitCharacters } = mount()
+    const { splitCharacters } = await mount()
     await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
     // The split button lives beside the prompt, outside the character fold.
     expect(screen.getByRole('button', { name: 'AI 拆分角色' })).toBeTruthy()
@@ -726,7 +727,7 @@ describe('character prompts', () => {
   })
 
   it('toggles custom placement and edits coordinates as percentages', async () => {
-    const { generate } = mount()
+    const { generate } = await mount()
     await openCharacters()
     fireEvent.click(screen.getByRole('button', { name: '添加角色' }))
     expect(screen.queryByLabelText('角色 1 X')).toBeNull()
@@ -804,7 +805,7 @@ describe('character prompts', () => {
 
 describe('conversation interop', () => {
   it('seeds the composed draft into the conversation input without clearing the panel', async () => {
-    const { seedDraft, setViewMode } = mount()
+    const { seedDraft, setViewMode } = await mount()
     await openCharacters()
     fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park, 2girls' } })
     fireEvent.click(screen.getByRole('button', { name: '添加角色' }))
@@ -832,7 +833,7 @@ describe('conversation interop', () => {
   })
 
   it('applies a conversation-side backfill request and switches to the workbench', async () => {
-    const { deliverBackfill, setViewMode, splitCharacters } = mount()
+    const { deliverBackfill, setViewMode, splitCharacters } = await mount()
     await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
     act(() => {
       deliverBackfill({
@@ -863,7 +864,7 @@ describe('conversation interop', () => {
   })
 
   it('lands a backfill\'s structured characters directly in the cards without a split', async () => {
-    const { deliverBackfill, splitCharacters } = mount()
+    const { deliverBackfill, splitCharacters } = await mount()
     await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
     act(() => {
       deliverBackfill({
@@ -888,7 +889,7 @@ describe('conversation interop', () => {
   })
 
   it('applies a promptless or blank-prompt backfill without touching prompt or cards', async () => {
-    const { deliverBackfill, splitCharacters } = mount()
+    const { deliverBackfill, splitCharacters } = await mount()
     await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
     act(() => { deliverBackfill({ seed: 7 }) })
     await act(async () => {})
@@ -905,7 +906,7 @@ describe('conversation interop', () => {
   })
 
   it('applies a prompt patch in place without switching views', async () => {
-    const { deliverPatch, setViewMode } = mount()
+    const { deliverPatch, setViewMode } = await mount()
     await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
     fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: '1girl, garden, old dress' } })
     act(() => {
@@ -925,7 +926,7 @@ describe('conversation interop', () => {
   })
 
   it('applies a settings patch onto the matching panel fields', async () => {
-    const { deliverPatch } = mount()
+    const { deliverPatch } = await mount()
     await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
     act(() => {
       deliverPatch({ slot: 'settings', operations: [{ op: 'modify', field: 'steps', value: '30' }, { op: 'modify', field: 'seed', value: '777' }] })
@@ -941,6 +942,27 @@ describe('conversation interop', () => {
     fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park' } })
     await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 600) }) })
     expect(props.commitWorkbenchState).toHaveBeenCalledWith('session-1', expect.objectContaining({ prompt: 'park' }))
+  })
+
+  it('holds the commit until the session restore read settles, so a remount cannot publish the bare panel', async () => {
+    const { props, readWorkbenchState } = makeProps()
+    let releaseRead: (() => void) | undefined
+    readWorkbenchState.mockImplementation(async () => await new Promise<undefined>((resolve) => {
+      releaseRead = () => { resolve(undefined) }
+    }))
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    // The seeding defaults landed, but the restore read is still pending: a
+    // switch-induced remount here would previously commit the bare panel and
+    // overwrite the stored state of the session being entered.
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'typed mid-read' } })
+    await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 600) }) })
+    expect(props.commitWorkbenchState).not.toHaveBeenCalled()
+    releaseRead?.()
+    await act(async () => {})
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'typed after read' } })
+    await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 600) }) })
+    expect(props.commitWorkbenchState).toHaveBeenCalledWith('session-1', expect.objectContaining({ prompt: 'typed after read' }))
   })
 
   it('the rail cut generates through the conversation, not the direct remote', async () => {

@@ -101,6 +101,9 @@ export function WorkbenchRoot({
   const [characters, setCharacters] = useState<CharacterDraft[]>([])
   const [charactersOpen, setCharactersOpen] = useState(false)
   const [splitting, setSplitting] = useState(false)
+  // The commit gate: false until the active session's restore read settles,
+  // so a remount's bare unseeded panel cannot overwrite the stored state.
+  const [panelSettled, setPanelSettled] = useState(false)
   const characterIdRef = useRef(0)
   const currentSessionId = useSessions(state => state.current)
   const [model, setModel] = useState('')
@@ -199,9 +202,11 @@ export function WorkbenchRoot({
 
   // Commit the panel state to the host (debounced): the session's committed
   // state is the prompt source the novelai_generate tool binds to. A commit
-  // failure is silent — the next panel change re-commits.
+  // failure is silent — the next panel change re-commits. The commit waits
+  // for the session's restore read to settle: a remount mid-switch would
+  // otherwise publish the bare unseeded panel over the stored state.
   useEffect(() => {
-    if (currentSessionId === undefined) return
+    if (currentSessionId === undefined || !panelSettled) return
     const state = {
       prompt,
       negativePrompt,
@@ -217,7 +222,7 @@ export function WorkbenchRoot({
     const timer = setTimeout(() => { void commitWorkbenchState(currentSessionId, state).catch(() => {}) }, 400)
     return () => { clearTimeout(timer) }
   }, [
-    commitWorkbenchState, currentSessionId, prompt, negativePrompt, model,
+    commitWorkbenchState, currentSessionId, panelSettled, prompt, negativePrompt, model,
     width, height, steps, cfgScale, sampler, noiseSchedule, seedMode, seed,
   ])
 
@@ -228,17 +233,22 @@ export function WorkbenchRoot({
   // after the catalog seeding so restored parameters win over the defaults.
   // A response that resolves after the session changed again (or the surface
   // unmounted) is dropped by the cancelled flag and never clobbers the panel
-  // the user is typing into.
+  // the user is typing into. The guard commits only after a settled read —
+  // a read cancelled mid-flight must not mark the session as restored.
+  // panelSettled gates the commit effect until this read lands, so a
+  // remount's bare unseeded panel cannot overwrite the stored state.
   const restoredSession = useRef<typeof currentSessionId>(undefined)
   useEffect(() => {
     if (restoredSession.current === currentSessionId) return
-    restoredSession.current = currentSessionId
-    if (currentSessionId === undefined) return
+    if (currentSessionId === undefined) { restoredSession.current = undefined; setPanelSettled(false); return }
     let cancelled = false
     void catalogSeeded.current
       .then(() => readWorkbenchState(currentSessionId))
       .then((restored) => {
-        if (cancelled || restored === undefined) return
+        if (cancelled) return
+        restoredSession.current = currentSessionId
+        setPanelSettled(true)
+        if (restored === undefined) return
         setPrompt(restored.prompt)
         setNegativePrompt(restored.negativePrompt)
         if (restored.negativePrompt.trim() !== '') setNegativeOpen(true)
@@ -254,7 +264,11 @@ export function WorkbenchRoot({
           setSeed(restored.seed)
         }
       })
-      .catch(() => { /* the restore is advisory; the catalog defaults stay */ })
+      .catch(() => {
+        // The restore is advisory; the catalog defaults stay. The read has
+        // still settled, so the panel may commit from here on.
+        if (!cancelled) { restoredSession.current = currentSessionId; setPanelSettled(true) }
+      })
     return () => { cancelled = true }
   }, [readWorkbenchState, currentSessionId])
 

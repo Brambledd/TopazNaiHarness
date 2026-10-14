@@ -19,6 +19,10 @@ import { resolutionForTier, snapDimensionWithinArea, maxDimensionFor } from '../
 const zh = {
   'mode.conversation': '对话',
   'mode.workbench': '创作台',
+  'artists.edit': '编辑',
+  'artists.update': '保存',
+  'artists.cancel': '取消',
+  'artists.editingHint': '正在编辑已保存的画师串，可自由改名重写',
   'tab.label': '工作台模式',
   'tab.generate': '生成',
   'tab.reverse': '反推',
@@ -1279,7 +1283,7 @@ describe('artist chains section', () => {
 
   const STANDARD = '0.3:cola gotouryouta::, 0.5:yoneyama mai::, 0.7:betabeet::, 0.9:re0n::, 1.8:kim hyung tae::'
 
-  it('loads the library on first open and renders each named chain with its whole text', async () => {
+  it('re-reads the library on EVERY open and renders each named chain with its whole text', async () => {
     const { props, artistChains } = makeProps()
     artistChains.mockResolvedValue([
       savedChain('chain-1', '厚涂风', STANDARD),
@@ -1293,10 +1297,35 @@ describe('artist chains section', () => {
     expect(screen.getByText('厚涂风')).toBeTruthy()
     expect(screen.getByText('watercolor')).toBeTruthy()
     expect(screen.getByText('0.8:wlop::, 1.2:artgerm::')).toBeTruthy()
-    // Re-collapsing hides the section body; the library is not re-read.
+    // Re-collapsing hides the section body; reopening re-reads the host
+    // library, so chains saved in another seat or session are always current.
     fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
     expect(screen.queryByText('watercolor')).toBeNull()
-    expect(artistChains).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    expect(await screen.findByText('watercolor')).toBeTruthy()
+    expect(artistChains).toHaveBeenCalledTimes(2)
+  })
+
+  it('loads a saved chain into the form for an in-place update and cancels back to adding', async () => {
+    const { props, saveArtistChain } = makeProps()
+    props.artistChains.mockResolvedValue([savedChain('chain-1', 'watercolor', '0.8:wlop::')])
+    renderWith(props)
+    fireEvent.click(screen.getByRole('button', { name: /画师串/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '编辑' }))
+    // The form carries the chain's stored values (queried by the stable aria-labels:
+    // the name placeholder flips to the editing hint while a chain is loaded).
+    expect((screen.getByLabelText('画师串名称') as HTMLInputElement).value).toBe('watercolor')
+    expect((screen.getByLabelText('画师串标签串') as HTMLInputElement).value).toBe('0.8:wlop::')
+    fireEvent.change(screen.getByLabelText('画师串名称'), { target: { value: 'watercolor ii' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => { expect(saveArtistChain).toHaveBeenCalledWith({ id: 'chain-1', name: 'watercolor ii', tags: '0.8:wlop::' }) })
+    // A successful update resets the form back to add mode.
+    await waitFor(() => { expect(screen.getByRole('button', { name: '添加' })).toBeTruthy() })
+    // Cancel returns the form to add mode without touching the saved row.
+    fireEvent.click(await screen.findByRole('button', { name: '编辑' }))
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.getByRole('button', { name: '添加' })).toBeTruthy()
+    expect((screen.getByLabelText('画师串名称') as HTMLInputElement).value).toBe('')
   })
 
   it('shows the empty line before anything is saved', async () => {

@@ -1,4 +1,4 @@
-/** Workbench copy dictionaries (typed keys; i18n gate owns product text). */
+﻿/** Workbench copy dictionaries (typed keys; i18n gate owns product text). */
 
 export const en = {
   'tab.label': 'Workbench mode',
@@ -40,6 +40,10 @@ export const en = {
   'artists.empty': 'No chains saved yet — add one below.',
   'artists.insert': 'Insert',
   'artists.remove': 'Delete',
+  'artists.edit': 'Edit',
+  'artists.update': 'Save',
+  'artists.cancel': 'Cancel',
+  'artists.editingHint': 'Editing a saved chain — rename or rewrite freely',
   'artists.add': 'Add',
   'artists.nameLabel': 'Chain name',
   'artists.namePlaceholder': 'e.g. "impasto style"',
@@ -179,6 +183,10 @@ export const zh = {
   'artists.empty': '还没有保存的画师串，在下方添加一条。',
   'artists.insert': '插入',
   'artists.remove': '删除',
+  'artists.edit': '编辑',
+  'artists.update': '保存',
+  'artists.cancel': '取消',
+  'artists.editingHint': '正在编辑已保存的画师串，可自由改名重写',
   'artists.add': '添加',
   'artists.nameLabel': '画师串名称',
   'artists.namePlaceholder': '如「厚涂风」',

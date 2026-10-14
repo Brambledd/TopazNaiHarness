@@ -114,7 +114,8 @@ export function WorkbenchRoot({
   const [savedChains, setSavedChains] = useState<readonly NovelaiArtistChain[]>([])
   const [chainName, setChainName] = useState('')
   const [tagsText, setTagsText] = useState('')
-  const artistLoadedRef = useRef(false)
+  // When set, the artist form edits that saved chain in place instead of adding a new one.
+  const [editingChainId, setEditingChainId] = useState<string | undefined>(undefined)
   const [characters, setCharacters] = useState<CharacterDraft[]>([])
   const [charactersOpen, setCharactersOpen] = useState(false)
   const [splitting, setSplitting] = useState(false)
@@ -340,9 +341,11 @@ export function WorkbenchRoot({
   const toggleArtistSection = (): void => {
     const next = !artistOpen
     setArtistOpen(next)
-    if (next && !artistLoadedRef.current) {
-      artistLoadedRef.current = true
-      void artistChains().then(setSavedChains).catch(() => { /* the empty library stands until a mutation refreshes */ })
+    if (next) {
+      // Re-read on EVERY open: the library is instance-scoped host data that
+      // must survive switches and reloads, so a once-per-mount snapshot can
+      // go stale the moment another seat or session touched the store.
+      void artistChains().then(setSavedChains).catch(() => { /* the last served library stands until the next open */ })
     }
   }
 
@@ -356,11 +359,25 @@ export function WorkbenchRoot({
     const tags = tagsText.trim()
     /* v8 ignore next -- unreachable from the form: the save button is disabled under the same emptiness condition */
     if (name === '' || tags === '') return
-    void saveArtistChain({ id: '', name, tags }).then((value) => {
+    void saveArtistChain({ id: editingChainId ?? '', name, tags }).then((value) => {
       setSavedChains(value)
+      setEditingChainId(undefined)
       setChainName('')
       setTagsText('')
     }).catch(() => { /* the library keeps its last served state; the next action retries */ })
+  }
+
+  /** Load one saved chain into the form for an in-place update (the store keeps its slot). */
+  const beginEditChain = (item: NovelaiArtistChain): void => {
+    setEditingChainId(item.id)
+    setChainName(item.name)
+    setTagsText(item.tags)
+  }
+
+  const cancelEditChain = (): void => {
+    setEditingChainId(undefined)
+    setChainName('')
+    setTagsText('')
   }
 
   const removeSavedChain = (id: string): void => {
@@ -1157,22 +1174,28 @@ export function WorkbenchRoot({
               <div className={css.artistList}>
                 {savedChains.length === 0 && <p className={css.artistPreview}>{t('artists.empty')}</p>}
                 {savedChains.map(item => (
-                  <div key={item.id} className={css.artistRow}>
+                  <div key={item.id} className={`${css.artistRow} ${editingChainId === item.id ? css.artistRowEditing : ''}`}>
                     <span className={css.artistName}>{item.name}</span>
-                    <span className={css.artistPreview} title={item.tags}>{item.tags}</span>
-                    <button type="button" className={css.charAction} onClick={() => { insertArtistChain(item.tags) }}>
-                      {t('artists.insert')}
-                    </button>
-                    <button type="button" className={css.charAction} onClick={() => { removeSavedChain(item.id) }}>
-                      {t('artists.remove')}
-                    </button>
+                    {/* Full tags text: the operator curates these verbatim, so nothing may clip. */}
+                    <span className={css.artistTagsFull}>{item.tags}</span>
+                    <div className={css.artistActions}>
+                      <button type="button" className={css.charAction} onClick={() => { insertArtistChain(item.tags) }}>
+                        {t('artists.insert')}
+                      </button>
+                      <button type="button" className={css.charAction} onClick={() => { beginEditChain(item) }}>
+                        {t('artists.edit')}
+                      </button>
+                      <button type="button" className={css.charAction} onClick={() => { removeSavedChain(item.id) }}>
+                        {t('artists.remove')}
+                      </button>
+                    </div>
                   </div>
                 ))}
                 <div className={css.artistForm}>
                   <input
                     className={css.artistInput}
                     value={chainName}
-                    placeholder={t('artists.namePlaceholder')}
+                    placeholder={editingChainId === undefined ? t('artists.namePlaceholder') : t('artists.editingHint')}
                     aria-label={t('artists.nameLabel')}
                     onChange={(event) => { setChainName(event.target.value) }}
                   />
@@ -1183,13 +1206,18 @@ export function WorkbenchRoot({
                     aria-label={t('artists.tagsLabel')}
                     onChange={(event) => { setTagsText(event.target.value) }}
                   />
+                  {editingChainId !== undefined && (
+                    <button type="button" className={css.charAction} onClick={cancelEditChain}>
+                      {t('artists.cancel')}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={css.charAction}
                     disabled={chainName.trim() === '' || tagsText.trim() === ''}
                     onClick={submitArtistChain}
                   >
-                    {t('artists.add')}
+                    {editingChainId === undefined ? t('artists.add') : t('artists.update')}
                   </button>
                 </div>
               </div>

@@ -228,8 +228,8 @@ function makeProps(historyEntries: Array<Record<string, unknown>> = []) {
     return () => { backfillSink = undefined }
   })
   type PatchRequest = {
-    slot: 'positive' | 'negative' | 'settings'
-    operations: Array<{ op: 'add' | 'remove' | 'modify'; tag?: string; field?: string; value?: string }>
+    slot: 'positive' | 'negative' | 'settings' | 'characters'
+    operations: Array<{ op: 'add' | 'remove' | 'modify'; tag?: string; field?: string; value?: string; character?: number }>
   }
   let patchSink: ((request: PatchRequest) => void) | undefined
   const onPatchApply = vi.fn((callback: (request: PatchRequest) => void) => {

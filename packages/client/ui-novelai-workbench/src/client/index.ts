@@ -81,8 +81,11 @@ export function apply(ctx: ClientContext): void {
     ]
     return () => { for (const dispose of disposers) dispose() }
   }, 'ui-novelai-workbench: state mirror re-push')
-  /** Shared inject face: both seats (center surface and conversation rail) expose the same verbs. */
-  const workbenchInject = (): WorkbenchInjected => ({
+  /** Shared inject face: both seats (center surface and conversation rail) expose the same verbs.
+   * Built once — the apply closure's methods are stable, and a per-render factory would hand the
+   * panel freshly-referenced props every render, re-running every effect that depends on a face
+   * method (the restore and catalog-seed chains included). */
+  const workbenchInjectInstance: WorkbenchInjected = {
     setViewMode: (mode) => { ctx.layout.setViewMode(mode) },
     catalog: async () => {
       const result = await ctx.remote.novelai.catalog()
@@ -173,7 +176,8 @@ export function apply(ctx: ClientContext): void {
       patchSubscribers.add(callback)
       return () => { patchSubscribers.delete(callback) }
     },
-  })
+  }
+  const workbenchInject = (): WorkbenchInjected => workbenchInjectInstance
   ctx.effect(() => {
     // The sidebar footer seat is list-kind: the slots API allows no inject
     // face there, so the mode switch lives in the workbench's own top bar for

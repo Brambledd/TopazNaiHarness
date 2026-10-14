@@ -189,8 +189,12 @@ export function WorkbenchRoot({
     return () => { cancelled = true }
   }, [history])
 
-  // Live Anlas quote, debounced across width/height/steps edits.
+  // Live Anlas quote, debounced across width/height/steps edits. The quote
+  // waits for the restore read to settle: quoting the pre-restore dimensions
+  // would spend a slow routed round-trip on values the restore immediately
+  // replaces, and the prompt must render before any advisory call.
   useEffect(() => {
+    if (!panelSettled || !catalogReady) return undefined
     if (width <= 0 || height <= 0) return undefined
     let cancelled = false
     const timer = setTimeout(() => {
@@ -199,7 +203,7 @@ export function WorkbenchRoot({
       }).catch(() => { /* the quote is advisory; generation reports real failures */ })
     }, 350)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [width, height, steps, estimate])
+  }, [panelSettled, catalogReady, width, height, steps, estimate])
 
   // Revoke every minted object URL when the surface unmounts.
   useEffect(() => () => {

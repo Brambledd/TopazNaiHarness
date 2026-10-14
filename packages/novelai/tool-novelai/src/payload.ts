@@ -11,14 +11,18 @@ import {
 import { maxCharactersFor } from './types.ts'
 
 /**
- * Negative prompt used when the caller sends none. Mirrors the official V4+ "Heavy"
- * undesired-content preset, because the API applies presets client-side: it receives
- * only the merged `uc`/`negative_prompt` text.
+ * Negative prompt used when the caller sends none. Extends the official V4+ "Heavy"
+ * undesired-content preset with the operator's standing quality/border-defect list,
+ * because the API applies presets client-side: it receives only the merged
+ * `uc`/`negative_prompt` text.
  */
 export const DEFAULT_NEGATIVE_PROMPT =
   'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, '
-  + 'jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, '
-  + 'too many watermarks, blank page'
+  + 'jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, '
+  + 'multiple views, logo, too many watermarks, negative space, blank page, black border, '
+  + 'black bars, letterbox, pillarbox, black edges, empty black space, dark border, frame border, '
+  + 'vignette, out of frame, cropped, incomplete composition, black background edges, '
+  + 'low quality, blurry, bad hands'
 
 /** Per-pixel coefficient of the official Anlas base-price formula, ported from NovelAI's frontend. */
 const BASE_PIXEL_COEFFICIENT = 2951823174884865e-21

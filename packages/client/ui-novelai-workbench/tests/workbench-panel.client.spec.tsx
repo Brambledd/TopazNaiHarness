@@ -1125,6 +1125,22 @@ describe('workbench state restore', () => {
     expect(view).toBeTruthy()
   })
 
+  it('rehydrates stored character cards as drafts on entry', async () => {
+    const { props, readWorkbenchState } = makeProps()
+    readWorkbenchState.mockResolvedValue(stateFixture({
+      characters: [
+        { prompt: 'silver hair, salute', useCoords: false, x: 0.3, y: 0.5 },
+        { prompt: 'cat ears, wave', negativePrompt: 'extra ears', useCoords: false, x: 0.7, y: 0.5 },
+      ],
+    }))
+    renderWith(withSession(props, 'session-1'))
+    await waitFor(() => { expect(readWorkbenchState).toHaveBeenCalledWith('session-1') })
+    // The fold opens by itself and both cards land with their own prompts.
+    await waitFor(() => { expect(screen.getByRole('button', { name: /角色提示词/ }).getAttribute('aria-expanded')).toBe('true') })
+    expect((screen.getAllByLabelText('角色 1')[0] as HTMLTextAreaElement).value).toBe('silver hair, salute')
+    expect((screen.getAllByLabelText('角色 2')[0] as HTMLTextAreaElement).value).toBe('cat ears, wave')
+  })
+
   it('reads the session state once per entry and not again on re-renders', async () => {
     const { props, readWorkbenchState } = makeProps()
     const view = renderWith(withSession(props, 'session-1'))

@@ -112,6 +112,11 @@ export function resolveInput(args: NovelaiArgs, committed: CommittedWorkbench | 
     panelCharacters !== undefined && panelCharacters.length > 0 ? panelCharacters : args.characters,
     model,
   )
+  // Batch size and interval are panel-owned settings (the desktop contract:
+  // multi-image is the caller's loop), so they bind from the committed state
+  // alone; the call schema has no batch arguments to override them with.
+  const batchCount = clampBatch(committed?.batchCount, 1, 8, 1)
+  const batchIntervalSec = clampBatch(committed?.batchIntervalSec, 0, 60, 5)
   return {
     prompt: source.prompt.trim(),
     negativePrompt: source.negativePrompt?.trim() || DEFAULT_NEGATIVE_PROMPT,
@@ -124,5 +129,12 @@ export function resolveInput(args: NovelaiArgs, committed: CommittedWorkbench | 
     noiseSchedule: (source.noiseSchedule ?? 'native') as NovelaiNoiseSchedule,
     seed,
     ...(characters === undefined ? {} : { characters }),
+    ...(batchCount > 1 ? { batchCount, batchIntervalSec } : {}),
   }
+}
+
+/** Clamp one panel-owned batch number into its range, falling back when absent or malformed. */
+function clampBatch(value: number | undefined, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.min(max, Math.max(min, Math.round(value)))
 }

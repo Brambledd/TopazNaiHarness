@@ -355,6 +355,10 @@ export interface NovelaiWorkbenchState {
   readonly seed?: number
   /** Structured per-character prompts; absent when the panel has no character cards. */
   readonly characters?: ReadonlyArray<NovelaiCharacterPromptRequest>
+  /** Images per generation run, 1–8; absent means 1. */
+  readonly batchCount?: number
+  /** Seconds between the images of one run, 0–60; absent means the 5-second default. */
+  readonly batchIntervalSec?: number
 }
 
 /** `commitWorkbenchState` request: the session whose workbench panel committed. */

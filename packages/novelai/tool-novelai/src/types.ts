@@ -84,6 +84,10 @@ export interface NovelaiGenerateInput {
   seed: number
   /** Structured characters, capped to the checkpoint's capacity; absent means none. */
   characters?: NovelaiCharacterCaption[]
+  /** Images per run, 1–8; absent means 1. */
+  batchCount?: number
+  /** Seconds between the images of one run, 0–60; absent means the 5-second default. */
+  batchIntervalSec?: number
 }
 
 /** Wire body of `POST /ai/generate-image` (text-to-image, `action: "generate"`). */

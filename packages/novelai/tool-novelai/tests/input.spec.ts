@@ -89,6 +89,20 @@ describe('resolveInput (workbench binding)', () => {
     expect(input.characters).toEqual([{ prompt: 'call character', negativePrompt: '' }])
   })
 
+  it('binds the panel\'s batch count and interval, clamped; absent means a single image', () => {
+    const batched = resolveInput({}, { ...COMMITTED, batchCount: 3, batchIntervalSec: 10 })
+    expect(batched.batchCount).toBe(3)
+    expect(batched.batchIntervalSec).toBe(10)
+    // Values outside the panel's own ranges clamp instead of failing.
+    const clamped = resolveInput({}, { ...COMMITTED, batchCount: 99, batchIntervalSec: -5 })
+    expect(clamped.batchCount).toBe(8)
+    expect(clamped.batchIntervalSec).toBe(0)
+    // No panel batch settings: the fields stay absent (single image, default gap).
+    const single = resolveInput({}, COMMITTED)
+    expect(single.batchCount).toBeUndefined()
+    expect(single.batchIntervalSec).toBeUndefined()
+  })
+
   it('blank character entries drop and the checkpoint cap clamps the rest', () => {
     const seven = Array.from({ length: 7 }, (_, index) => ({ prompt: `char ${index}` }))
     const input = resolveInput({

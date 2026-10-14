@@ -452,6 +452,8 @@ describe('workbench state persistence', () => {
         { prompt: 'silver hair, salute', useCoords: false, x: 0.3, y: 0.5 },
         { prompt: 'cat ears, wave', negativePrompt: 'extra ears', useCoords: false, x: 0.7, y: 0.5 },
       ],
+      batchCount: 3,
+      batchIntervalSec: 10,
     }
     await controller.commitWorkbenchState({ sessionId: 'session-1', state })
     await expect(controller.readWorkbenchState({ sessionId: 'session-1' }))

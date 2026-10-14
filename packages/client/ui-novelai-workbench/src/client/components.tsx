@@ -253,12 +253,13 @@ export function WorkbenchRoot({
       noiseSchedule,
       ...(characters.length === 0 ? {} : { characters: characters.map(characterToRequest) }),
       ...(seedMode === 'fixed' ? { seed } : {}),
+      ...(batchCount > 1 ? { batchCount, batchIntervalSec } : {}),
     }
     const timer = setTimeout(() => { void commitWorkbenchState(currentSessionId, state).catch(() => {}) }, 400)
     return () => { clearTimeout(timer) }
   }, [
     commitWorkbenchState, currentSessionId, panelSettled, catalogReady, visible, prompt, negativePrompt, model,
-    width, height, steps, cfgScale, sampler, noiseSchedule, seedMode, seed, characters,
+    width, height, steps, cfgScale, sampler, noiseSchedule, seedMode, seed, characters, batchCount, batchIntervalSec,
   ])
 
   // Restore-on-session: every session-id change re-runs the restore, so
@@ -317,6 +318,11 @@ export function WorkbenchRoot({
           y: character.y ?? 0.5,
         })))
         if ((restored.characters ?? []).length > 0) setCharactersOpen(true)
+        // Batch settings ride the state too; absence means the 1/5 defaults.
+        if (restored.batchCount !== undefined) setBatchCount(Math.max(1, Math.min(8, restored.batchCount)))
+        if (restored.batchIntervalSec !== undefined) {
+          setBatchIntervalSec(Math.max(0, Math.min(60, restored.batchIntervalSec)))
+        }
       })
       .catch(() => {
         // The restore is advisory; the catalog defaults stay. The read has

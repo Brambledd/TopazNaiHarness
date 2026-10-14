@@ -1000,6 +1000,18 @@ describe('conversation interop', () => {
     }))
   })
 
+  it('commits the batch settings when the count is above one', async () => {
+    const { props } = await mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.change(screen.getByLabelText('批量张数'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('间隔（秒）'), { target: { value: '10' } })
+    await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 600) }) })
+    expect(props.commitWorkbenchState).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      batchCount: 3,
+      batchIntervalSec: 10,
+    }))
+  })
+
   it('holds the commit until the session restore read settles, so a remount cannot publish the bare panel', async () => {
     const { props, readWorkbenchState } = makeProps()
     let releaseRead: (() => void) | undefined
@@ -1139,6 +1151,24 @@ describe('workbench state restore', () => {
     await waitFor(() => { expect(screen.getByRole('button', { name: /角色提示词/ }).getAttribute('aria-expanded')).toBe('true') })
     expect((screen.getAllByLabelText('角色 1')[0] as HTMLTextAreaElement).value).toBe('silver hair, salute')
     expect((screen.getAllByLabelText('角色 2')[0] as HTMLTextAreaElement).value).toBe('cat ears, wave')
+  })
+
+  it('restores the stored batch settings with clamping and republishes them', async () => {
+    const { props, readWorkbenchState } = makeProps()
+    readWorkbenchState.mockResolvedValue(stateFixture({ batchCount: 99, batchIntervalSec: -5 }))
+    renderWith(withSession(props, 'session-1'))
+    await waitFor(() => { expect(readWorkbenchState).toHaveBeenCalledWith('session-1') })
+    // Values outside the panel's own ranges clamp to 8 / 0 on rehydrate.
+    await waitFor(() => {
+      expect((screen.getByLabelText('批量张数') as HTMLInputElement).value).toBe('8')
+    })
+    expect((screen.getByLabelText('间隔（秒）') as HTMLInputElement).value).toBe('0')
+    // The restored panel republishes the clamped values in its next commit.
+    await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 600) }) })
+    expect(props.commitWorkbenchState).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      batchCount: 8,
+      batchIntervalSec: 0,
+    }))
   })
 
   it('reads the session state once per entry and not again on re-renders', async () => {

@@ -19,6 +19,7 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-projection-cache'
 import type {} from '@deepseek-ai/dsh-session-query'
 import {
+  MAX_NOVELAI_SEED,
   NOVELAI_MODELS,
   NOVELAI_NOISE_SCHEDULES,
   NOVELAI_SAMPLERS,
@@ -42,6 +43,8 @@ const DESCRIPTION =
   + 'A repeat with an unchanged workbench prompt and seed is rejected (it returns a near-identical image). '
   + 'Without a workbench, write the prompt in Danbooru-tag style (e.g. "1girl, solo, blue hair, white dress"). '
   + 'Every call is PAID (Anlas): batch and iterate deliberately, never in a loop. '
+  + 'When the workbench panel sets a batch count above 1, ONE call produces that many images sequentially '
+  + 'with the panel interval between them (a bound seed walks +1 per image); the result lists every sibling path and seed. '
   + 'The result reports the saved file path and the seed, so a follow-up can vary one element '
   + 'while keeping the rest identical by reusing that seed. '
   + 'Never post-process, rename, copy, or "fix" the produced image files with other tools; '
@@ -187,6 +190,18 @@ export function apply(ctx: Context, config: Config): void {
           height: { type: 'integer', required: true },
           steps: { type: 'integer', required: true },
           anlasEstimate: { type: 'integer', required: true },
+          siblings: {
+            type: 'array',
+            description: 'The other images of one batch run; absent for a single-image run.',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                path: { type: 'string', required: true },
+                seed: { type: 'integer', required: true },
+              },
+            },
+          },
           attachment: {
             type: 'object',
             additionalProperties: true,
@@ -202,6 +217,9 @@ export function apply(ctx: Context, config: Config): void {
       },
       render: (_args, value) => {
         const text = `Saved ${value.model} image (${value.width}x${value.height}, seed ${value.seed}, ~${value.anlasEstimate} Anlas) to ${value.path}`
+          + (value.siblings === undefined || !Array.isArray(value.siblings) || value.siblings.length === 0
+            ? ''
+            : `\nBatch siblings (${value.siblings.length}):\n` + value.siblings.map(s => `  seed ${s.seed}: ${s.path}`).join('\n'))
         // The durable image block in the result CONTENT is what session
         // attachment authorization scans (`referencedImage` in the web session
         // controller); result metadata alone never authorizes a read.
@@ -249,48 +267,78 @@ export function apply(ctx: Context, config: Config): void {
         lastGenerations.set(lastKey, { prompt: fingerprint, seed: input.seed })
       }
       const stem = args.filename ? safeFileStem(args.filename) : generationFileStem(input.seed)
-      const payload = buildNovelaiPayload(input)
-      const timeout = AbortSignal.timeout(config.timeoutMs)
-      const signal = AbortSignal.any([exec.signal, timeout])
-      let images: Uint8Array[]
-      try {
-        images = await requestGeneration({
-          payload,
-          token,
-          baseUrl: config.imageBaseUrl,
-          timeoutMs: config.timeoutMs,
-          signal,
-          proxyUrl: resolveProxyUrl(config.proxyUrl) ?? '',
-        })
-      } catch (error: unknown) {
-        if (error instanceof Error && error.message.includes('HTTP 401')) {
-          throw new Error(
-            'NovelAI rejected the token (HTTP 401): save a valid persistent token in Settings → General '
-            + '(NovelAI API token), or update the plugin config `token` / the '
-            + `${NOVELAI_TOKEN_REF} credential`,
-            { cause: error },
-          )
-        }
-        throw error
-      }
-      const image = images[0]
-      if (image === undefined) {
-        throw new Error('NovelAI returned an empty image list; not retrying to avoid a duplicate charge')
-      }
-      // The controller's live directory when mounted (it honors the Settings
-      // generation-directory override), the plugin config otherwise; the PNG
-      // saves under the local-time day folders, like the workbench library.
       const outputDir = dayDirectory(await resolveGenerationRoot(fallbackOutputDir, controller), new Date())
       await mkdir(outputDir, { recursive: true })
-      if (images.length > 1) {
-        // Keep sibling images beside the primary one instead of dropping paid output.
-        for (let index = 1; index < images.length; index++) {
-          const sibling = images[index]
-          if (sibling !== undefined) await writeFile(join(outputDir, `${stem}-${index}.png`), sibling)
+      // Batch run (the workbench panel's contract): N sequential requests with
+      // the configured interval between them. A bound seed walks +1 per image
+      // so a batch is not N near-identical frames; random intent draws fresh
+      // per image, because resolveInput materialized only the first draw.
+      const count = input.batchCount ?? 1
+      const intervalMs = (input.batchIntervalSec ?? 5) * 1000
+      const seedIsRandom = args.seed === undefined && committed?.seed === undefined
+      let primary: { path: string; image: Uint8Array } | undefined
+      const siblings: { path: string; seed: number }[] = []
+      for (let index = 0; index < count; index++) {
+        const seedForImage = count === 1
+          ? input.seed
+          : seedIsRandom
+            ? Math.floor(Math.random() * (MAX_NOVELAI_SEED + 1))
+            : input.seed + index
+        const perImageInput = count === 1 ? input : { ...input, seed: seedForImage }
+        const payload = buildNovelaiPayload(perImageInput)
+        const timeout = AbortSignal.timeout(config.timeoutMs)
+        const signal = AbortSignal.any([exec.signal, timeout])
+        let images: Uint8Array[]
+        try {
+          images = await requestGeneration({
+            payload,
+            token,
+            baseUrl: config.imageBaseUrl,
+            timeoutMs: config.timeoutMs,
+            signal,
+            proxyUrl: resolveProxyUrl(config.proxyUrl) ?? '',
+          })
+        } catch (error: unknown) {
+          if (error instanceof Error && error.message.includes('HTTP 401')) {
+            throw new Error(
+              'NovelAI rejected the token (HTTP 401): save a valid persistent token in Settings → General '
+              + '(NovelAI API token), or update the plugin config `token` / the '
+              + `${NOVELAI_TOKEN_REF} credential`,
+              { cause: error },
+            )
+          }
+          throw error
+        }
+        const image = images[0]
+        if (image === undefined) {
+          throw new Error('NovelAI returned an empty image list; not retrying to avoid a duplicate charge')
+        }
+        const imageStem = count === 1 ? stem : `${stem}-${index + 1}`
+        const path = join(outputDir, `${imageStem}.png`)
+        await writeFile(path, image)
+        if (index === 0) {
+          primary = { path, image }
+        } else {
+          siblings.push({ path, seed: seedForImage })
+        }
+        // Keep any extra frames the API returned beside the primary one
+        // instead of dropping paid output.
+        for (let extra = 1; extra < images.length; extra++) {
+          const sibling = images[extra]
+          if (sibling !== undefined) {
+            const extraPath = join(outputDir, `${imageStem}-${extra}.png`)
+            await writeFile(extraPath, sibling)
+            if (index === 0) siblings.push({ path: extraPath, seed: seedForImage })
+          }
+        }
+        if (index + 1 < count && intervalMs > 0) {
+          await new Promise((resolve) => { setTimeout(resolve, intervalMs) })
+          if (exec.signal.aborted) throw new Error('batch generation aborted between images')
         }
       }
-      const path = join(outputDir, `${stem}.png`)
-      await writeFile(path, image)
+      if (primary === undefined) throw new Error('batch loop produced no image')
+      const image = primary.image
+      const path = primary.path
       // Durable attachment for transcript display and later reuse. This channel
       // is best-effort: the generation already succeeded and the file result
       // stands on its own, so an unavailable store or a failed save must not
@@ -331,6 +379,7 @@ export function apply(ctx: Context, config: Config): void {
         height: input.height,
         steps: input.steps,
         anlasEstimate: estimateAnlas(input.width, input.height, input.steps),
+        ...(siblings.length === 0 ? {} : { siblings }),
         ...(attachmentJson === undefined ? {} : { attachment: attachmentJson }),
       }
       return result

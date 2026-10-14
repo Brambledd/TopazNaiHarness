@@ -314,6 +314,13 @@ export class NovelaiController extends TypertRemoteService {
    */
   @Remote('commitWorkbenchState')
   async commitWorkbenchState(request: NovelaiCommitWorkbenchStateRequest): Promise<{ ok: true }> {
+    // A seeded panel always carries a checkpoint and a non-zero size; the
+    // bare all-empty shape is an unseeded remount racing the switch. Storing
+    // it would overwrite the session's real state with nothing, so the host
+    // refuses regardless of how many panel instances are racing.
+    if (request.state.model === '' && request.state.width === 0) {
+      throw new RemoteError('novelai/state-bare-commit', 'the panel state carries no seeded checkpoint or size', { message: 'the panel state carries no seeded checkpoint or size' })
+    }
     this.workbenchStates.set(request.sessionId, request.state)
     try {
       await this.workbenchStore.write(request.sessionId, request.state)

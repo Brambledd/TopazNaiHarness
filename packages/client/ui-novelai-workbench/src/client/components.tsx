@@ -153,6 +153,10 @@ export function WorkbenchRoot({
   // The seeding promise is retained so the session-state restore (which must
   // win over these defaults) follows it deterministically.
   const catalogSeeded = useRef<Promise<void>>(Promise.resolve())
+  // The commit gate's seed half: the panel may commit only after the catalog
+  // defaults have landed, so the bare pre-seed field values (empty checkpoint,
+  // zero size) never reach the host and overwrite the stored session state.
+  const [catalogReady, setCatalogReady] = useState(false)
   useEffect(() => {
     let cancelled = false
     const seeded = catalog().then((value) => {
@@ -167,6 +171,7 @@ export function WorkbenchRoot({
       // The default checkpoint is the catalog's newest entry (the list is
       // newest-first), not the host's pricing-friendly default.
       setModel(current => current || (value.models[0] ?? value.defaults.model))
+      setCatalogReady(true)
     })
     catalogSeeded.current = seeded
     seeded.catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) })
@@ -203,10 +208,11 @@ export function WorkbenchRoot({
   // Commit the panel state to the host (debounced): the session's committed
   // state is the prompt source the novelai_generate tool binds to. A commit
   // failure is silent — the next panel change re-commits. The commit waits
-  // for the session's restore read to settle: a remount mid-switch would
-  // otherwise publish the bare unseeded panel over the stored state.
+  // for the catalog seed AND the session's restore read to settle: a remount
+  // mid-switch would otherwise publish the bare unseeded panel (empty
+  // checkpoint, zero size) over the stored state.
   useEffect(() => {
-    if (currentSessionId === undefined || !panelSettled) return
+    if (currentSessionId === undefined || !panelSettled || !catalogReady) return
     const state = {
       prompt,
       negativePrompt,
@@ -222,7 +228,7 @@ export function WorkbenchRoot({
     const timer = setTimeout(() => { void commitWorkbenchState(currentSessionId, state).catch(() => {}) }, 400)
     return () => { clearTimeout(timer) }
   }, [
-    commitWorkbenchState, currentSessionId, panelSettled, prompt, negativePrompt, model,
+    commitWorkbenchState, currentSessionId, panelSettled, catalogReady, prompt, negativePrompt, model,
     width, height, steps, cfgScale, sampler, noiseSchedule, seedMode, seed,
   ])
 

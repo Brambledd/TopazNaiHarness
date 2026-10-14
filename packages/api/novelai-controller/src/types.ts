@@ -21,6 +21,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'novelai/settings-write-failed': { readonly message: string }
     /** The committed workbench panel state could not be persisted under the harness home. */
     'novelai/state-persist-failed': { readonly message: string }
+    /** The committed workbench panel state is the bare unseeded shape, refused so it cannot overwrite stored state. */
+    'novelai/state-bare-commit': { readonly message: string }
     /** An artist-chains mutation carried an empty or over-long name or tags text. */
     'novelai/artist-chain-invalid': { readonly message: string }
     /** An artist-chains save or removal targeted an id that is not stored. */

@@ -965,6 +965,28 @@ describe('conversation interop', () => {
     expect(props.commitWorkbenchState).toHaveBeenCalledWith('session-1', expect.objectContaining({ prompt: 'typed after read' }))
   })
 
+  it('holds the commit while the catalog seed is pending, since the bare pre-seed fields are the overwrite shape', async () => {
+    const { props } = makeProps()
+    const catalogStub = props.catalog as unknown as ReturnType<typeof vi.fn>
+    let releaseCatalog: (() => void) | undefined
+    catalogStub.mockImplementation(async () => await new Promise<typeof catalog>((resolve) => {
+      releaseCatalog = () => { resolve(catalog) }
+    }))
+    render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
+    await act(async () => {})
+    // The read settles instantly (undefined), but the seed is still pending:
+    // committing now would publish width 0 and an empty checkpoint — the exact
+    // shape that blanked stored sessions in the field.
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'typed mid-seed' } })
+    await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 600) }) })
+    expect(props.commitWorkbenchState).not.toHaveBeenCalled()
+    releaseCatalog?.()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'typed after seed' } })
+    await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 600) }) })
+    expect(props.commitWorkbenchState).toHaveBeenCalledWith('session-1', expect.objectContaining({ prompt: 'typed after seed' }))
+  })
+
   it('the rail cut generates through the conversation, not the direct remote', async () => {
     const { props } = makeProps()
     render(<WorkbenchRoot {...({ ...(props as unknown as ComponentProps<typeof WorkbenchRoot>), variant: 'rail' as const })} />)

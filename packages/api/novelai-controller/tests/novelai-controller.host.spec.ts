@@ -423,6 +423,17 @@ describe('workbench state persistence', () => {
       .resolves.toEqual({ state: workbenchState('1girl, solo') })
   })
 
+  it('refuses the bare unseeded state so a racing remount cannot blank the stored session', async () => {
+    const { controller } = await harness()
+    await controller.commitWorkbenchState({ sessionId: 'session-1', state: workbenchState('real prompt') })
+    const bare = { ...workbenchState(''), model: '', width: 0, height: 0 }
+    await expect(controller.commitWorkbenchState({ sessionId: 'session-1', state: bare }))
+      .rejects.toMatchObject({ code: 'novelai/state-bare-commit' })
+    // The stored state survives the refused bare commit untouched.
+    await expect(controller.readWorkbenchState({ sessionId: 'session-1' }))
+      .resolves.toEqual({ state: workbenchState('real prompt') })
+  })
+
   it('persists the commit under the harness home and restores it into a fresh controller', async () => {
     // The sandbox home comes from beforeEach; both controllers resolve the same
     // `<home>/novelai-workbench-states` directory.

@@ -150,9 +150,10 @@ export function WorkbenchRoot({
   const urlCache = useRef(new Map<string, string>())
 
   // One-time catalog load seeds every dropdown and the workbench defaults.
-  // The seeding promise is retained so the session-state restore (which must
-  // win over these defaults) follows it deterministically.
-  const catalogSeeded = useRef<Promise<void>>(Promise.resolve())
+  // The restore read runs in parallel with the seed (it must not wait on the
+  // catalog round-trip), so once restored values are applied the seed stops
+  // writing field defaults — the restored session owns the panel.
+  const restoredAppliedRef = useRef(false)
   // The commit gate's seed half: the panel may commit only after the catalog
   // defaults have landed, so the bare pre-seed field values (empty checkpoint,
   // zero size) never reach the host and overwrite the stored session state.
@@ -162,18 +163,19 @@ export function WorkbenchRoot({
     const seeded = catalog().then((value) => {
       if (cancelled) return
       setCatalogValue(value)
-      setSampler(current => current || value.defaults.sampler)
-      setNoiseSchedule(current => current || value.defaults.noiseSchedule)
-      setWidth(current => current || value.defaults.width)
-      setHeight(current => current || value.defaults.height)
-      setSteps(value.defaults.steps)
-      setCfgScale(value.defaults.cfgScale)
-      // The default checkpoint is the catalog's newest entry (the list is
-      // newest-first), not the host's pricing-friendly default.
-      setModel(current => current || (value.models[0] ?? value.defaults.model))
+      if (!restoredAppliedRef.current) {
+        setSampler(current => current || value.defaults.sampler)
+        setNoiseSchedule(current => current || value.defaults.noiseSchedule)
+        setWidth(current => current || value.defaults.width)
+        setHeight(current => current || value.defaults.height)
+        setSteps(value.defaults.steps)
+        setCfgScale(value.defaults.cfgScale)
+        // The default checkpoint is the catalog's newest entry (the list is
+        // newest-first), not the host's pricing-friendly default.
+        setModel(current => current || (value.models[0] ?? value.defaults.model))
+      }
       setCatalogReady(true)
     })
-    catalogSeeded.current = seeded
     seeded.catch((e: unknown) => { setError(e instanceof Error ? e.message : String(e)) })
     return () => { cancelled = true }
   }, [catalog])
@@ -234,27 +236,33 @@ export function WorkbenchRoot({
 
   // Restore-on-session: every session-id change re-runs the restore, so
   // switching back to a previous conversation lands its committed state again
-  // (the panel never clears fields on a switch, and the commit loop
-  // republishes the panel, so a re-restore is idempotent). The read applies
-  // after the catalog seeding so restored parameters win over the defaults.
-  // A response that resolves after the session changed again (or the surface
-  // unmounted) is dropped by the cancelled flag and never clobbers the panel
-  // the user is typing into. The guard commits only after a settled read —
-  // a read cancelled mid-flight must not mark the session as restored.
-  // panelSettled gates the commit effect until this read lands, so a
-  // remount's bare unseeded panel cannot overwrite the stored state.
+  // (the commit loop republishes the panel, so a re-restore is idempotent).
+  // The read runs in parallel with the catalog seed; whichever lands first
+  // wins, and once restored values are applied the seed stops writing field
+  // defaults (restoredAppliedRef). A response that resolves after the session
+  // changed again (or the surface unmounted) is dropped by the cancelled flag
+  // and never clobbers the panel the user is typing into. The guard commits
+  // only after a settled read — a read cancelled mid-flight must not mark the
+  // session as restored. panelSettled gates the commit effect until this read
+  // lands, so a remount's bare unseeded panel cannot overwrite the stored
+  // state; a stored document missing the seeded shape (empty checkpoint, zero
+  // size — residue from the pre-gate writes) is treated as absent.
   const restoredSession = useRef<typeof currentSessionId>(undefined)
   useEffect(() => {
     if (restoredSession.current === currentSessionId) return
-    if (currentSessionId === undefined) { restoredSession.current = undefined; setPanelSettled(false); return }
+    // Every session change shuts the commit gate until this session's read
+    // settles: the fields still carry the previous session's content, and a
+    // commit here would store it under the new session.
+    setPanelSettled(false)
+    if (currentSessionId === undefined) { restoredSession.current = undefined; return }
     let cancelled = false
-    void catalogSeeded.current
-      .then(() => readWorkbenchState(currentSessionId))
+    void readWorkbenchState(currentSessionId)
       .then((restored) => {
         if (cancelled) return
         restoredSession.current = currentSessionId
         setPanelSettled(true)
-        if (restored === undefined) return
+        if (restored === undefined || (restored.model === '' && restored.width === 0)) return
+        restoredAppliedRef.current = true
         setPrompt(restored.prompt)
         setNegativePrompt(restored.negativePrompt)
         if (restored.negativePrompt.trim() !== '') setNegativeOpen(true)

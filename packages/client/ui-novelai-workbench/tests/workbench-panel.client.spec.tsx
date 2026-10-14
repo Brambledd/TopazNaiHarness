@@ -287,7 +287,7 @@ async function mount() {
   const { props, generate, splitCharacters, seedDraft, deliverBackfill, deliverPatch } = makeProps()
   const view = render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)
   await act(async () => {}) // drain the restore-read chain so the commit gate opens
-  return { view, generate, splitCharacters, seedDraft, deliverBackfill, deliverPatch, setViewMode: props.setViewMode }
+  return { view, props, generate, splitCharacters, seedDraft, deliverBackfill, deliverPatch, setViewMode: props.setViewMode }
 }
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
@@ -975,6 +975,29 @@ describe('conversation interop', () => {
     fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'park' } })
     await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 600) }) })
     expect(props.commitWorkbenchState).toHaveBeenCalledWith('session-1', expect.objectContaining({ prompt: 'park' }))
+  })
+
+  it('commits the character cards with the panel state so generation can bind them', async () => {
+    const { deliverPatch, props } = await mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    act(() => {
+      deliverPatch({
+        slot: 'characters',
+        operations: [
+          { op: 'add', character: 1, tag: 'silver hair' },
+          { op: 'add', character: 2, tag: 'cat ears' },
+        ],
+      })
+    })
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'tavern' } })
+    await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 600) }) })
+    expect(props.commitWorkbenchState).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      prompt: 'tavern',
+      characters: [
+        expect.objectContaining({ prompt: 'silver hair' }),
+        expect.objectContaining({ prompt: 'cat ears' }),
+      ],
+    }))
   })
 
   it('holds the commit until the session restore read settles, so a remount cannot publish the bare panel', async () => {

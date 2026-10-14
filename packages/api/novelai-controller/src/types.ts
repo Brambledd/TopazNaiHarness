@@ -353,6 +353,8 @@ export interface NovelaiWorkbenchState {
   readonly noiseSchedule: string
   /** Fixed seed; absent means random per run. */
   readonly seed?: number
+  /** Structured per-character prompts; absent when the panel has no character cards. */
+  readonly characters?: ReadonlyArray<NovelaiCharacterPromptRequest>
 }
 
 /** `commitWorkbenchState` request: the session whose workbench panel committed. */

@@ -14,9 +14,8 @@ export type CommittedWorkbench = NovelaiWorkbenchState
 
 /**
  * Model arguments after schema validation, before default resolution. The
- * `characters` array is the one argument that binds even under a live
- * workbench: the model authors the per-character structure at generation
- * time, and the committed panel state carries no characters today.
+ * `characters` array binds only when the committed panel state carries no
+ * character cards; a panel with cards is the visible truth and wins.
  */
 export interface NovelaiArgs {
   prompt?: string
@@ -34,15 +33,15 @@ export interface NovelaiArgs {
 }
 
 /**
- * Normalize the call's characters the way the workbench resolution does:
- * trim, drop blank prompts, trim personal negatives, and clamp to the
+ * Normalize call-or-workbench characters the way the workbench resolution
+ * does: trim, drop blank prompts, trim personal negatives, and clamp to the
  * checkpoint's capacity. Empty results stay absent.
- * @param characters - the call's raw character captions.
+ * @param characters - the raw character prompts (wire or caption shape).
  * @param model - checkpoint that receives them.
  * @returns the normalized captions, or `undefined` for none.
  */
 function resolveCharacters(
-  characters: NovelaiArgs['characters'],
+  characters: ReadonlyArray<{ prompt: string; negativePrompt?: string }> | undefined,
   model: NovelaiModel,
 ): NovelaiCharacterCaption[] | undefined {
   const normalized = (characters ?? [])
@@ -105,7 +104,14 @@ export function resolveInput(args: NovelaiArgs, committed: CommittedWorkbench | 
     throw new Error(`invalid seed: ${seed} (must be an integer within 0–${MAX_NOVELAI_SEED})`)
   }
   const model = (source.model ?? 'nai-diffusion-5-full') as NovelaiModel
-  const characters = resolveCharacters(args.characters, model)
+  // The committed panel's character cards are the visible truth the operator
+  // applied; the call's own characters array is the fallback for sessions
+  // whose panel carries none (an empty panel list counts as none).
+  const panelCharacters = committed?.characters
+  const characters = resolveCharacters(
+    panelCharacters !== undefined && panelCharacters.length > 0 ? panelCharacters : args.characters,
+    model,
+  )
   return {
     prompt: source.prompt.trim(),
     negativePrompt: source.negativePrompt?.trim() || DEFAULT_NEGATIVE_PROMPT,

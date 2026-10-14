@@ -153,7 +153,7 @@ export function apply(ctx: Context, config: Config): void {
       prompt: { type: 'string', description: 'Positive prompt, Danbooru-tag style. Ignored when the session has a live workbench panel — the committed workbench prompt binds. When you pass characters, keep the shared scene, composition, and setting here and put each character\'s personal tags only in their entry.' },
       characters: {
         type: 'array',
-        description: 'One entry per distinct character in the scene. Each entry\'s prompt carries that character\'s personal appearance and action tags (e.g. "1girl, blue hair, school uniform"); the shared scene/composition stays in the base prompt. Without characters the base prompt describes everyone, as today. Caps: 32 entries on V5 checkpoints, 6 on V4/V4.5, unsupported on V3 (entries beyond the cap are dropped).',
+        description: 'One entry per distinct character in the scene. Each entry\'s prompt carries that character\'s personal appearance and action tags (e.g. "1girl, blue hair, school uniform"); the shared scene/composition stays in the base prompt. When the workbench panel has character cards, they bind instead — author per-character structure through novelai_prompt_patch\'s characters slot and let the user apply it. Caps: 32 entries on V5 checkpoints, 6 on V4/V4.5, unsupported on V3 (entries beyond the cap are dropped).',
         items: {
           type: 'object',
           additionalProperties: false,

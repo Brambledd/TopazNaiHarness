@@ -40,6 +40,17 @@ interface CharacterDraft {
   y: number
 }
 
+/** Project one character draft onto the wire request shape (module-level: the commit effect and generation share it). */
+function characterToRequest(draft: CharacterDraft): NovelaiCharacterPromptRequest {
+  return {
+    prompt: draft.prompt,
+    ...(draft.negativePrompt.trim() === '' ? {} : { negativePrompt: draft.negativePrompt }),
+    useCoords: draft.useCoords,
+    x: draft.x,
+    y: draft.y,
+  }
+}
+
 /** Per-request character capacity of one checkpoint (desktop reference parity). */
 function maxCharactersFor(model: string): number {
   if (model.startsWith('nai-diffusion-5-')) return 32
@@ -240,13 +251,14 @@ export function WorkbenchRoot({
       cfgScale,
       sampler,
       noiseSchedule,
+      ...(characters.length === 0 ? {} : { characters: characters.map(characterToRequest) }),
       ...(seedMode === 'fixed' ? { seed } : {}),
     }
     const timer = setTimeout(() => { void commitWorkbenchState(currentSessionId, state).catch(() => {}) }, 400)
     return () => { clearTimeout(timer) }
   }, [
     commitWorkbenchState, currentSessionId, panelSettled, catalogReady, visible, prompt, negativePrompt, model,
-    width, height, steps, cfgScale, sampler, noiseSchedule, seedMode, seed,
+    width, height, steps, cfgScale, sampler, noiseSchedule, seedMode, seed, characters,
   ])
 
   // Restore-on-session: every session-id change re-runs the restore, so
@@ -295,6 +307,16 @@ export function WorkbenchRoot({
           setSeedMode('fixed')
           setSeed(restored.seed)
         }
+        // Stored character cards rehydrate as fresh drafts (ids are panel-local).
+        setCharacters((restored.characters ?? []).map(character => ({
+          id: nextCharacterId(),
+          prompt: character.prompt,
+          negativePrompt: character.negativePrompt ?? '',
+          useCoords: character.useCoords ?? false,
+          x: character.x ?? 0.5,
+          y: character.y ?? 0.5,
+        })))
+        if ((restored.characters ?? []).length > 0) setCharactersOpen(true)
       })
       .catch(() => {
         // The restore is advisory; the catalog defaults stay. The read has
@@ -440,13 +462,7 @@ export function WorkbenchRoot({
   }
 
   /** Project one draft onto the wire request shape. */
-  const toCharacterRequest = (draft: CharacterDraft): NovelaiCharacterPromptRequest => ({
-    prompt: draft.prompt,
-    ...(draft.negativePrompt.trim() === '' ? {} : { negativePrompt: draft.negativePrompt }),
-    useCoords: draft.useCoords,
-    x: draft.x,
-    y: draft.y,
-  })
+  const toCharacterRequest = characterToRequest
 
   /** Mint a fresh local row id. */
   const nextCharacterId = (): string => {

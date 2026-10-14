@@ -444,6 +444,20 @@ describe('workbench state persistence', () => {
       .resolves.toEqual({ state: workbenchState('real prompt') })
   })
 
+  it('persists character cards with the state so the generation binding sees them', async () => {
+    const { controller } = await harness()
+    const state: NovelaiWorkbenchState = {
+      ...workbenchState('tavern, 6girls'),
+      characters: [
+        { prompt: 'silver hair, salute', useCoords: false, x: 0.3, y: 0.5 },
+        { prompt: 'cat ears, wave', negativePrompt: 'extra ears', useCoords: false, x: 0.7, y: 0.5 },
+      ],
+    }
+    await controller.commitWorkbenchState({ sessionId: 'session-1', state })
+    await expect(controller.readWorkbenchState({ sessionId: 'session-1' }))
+      .resolves.toEqual({ state })
+  })
+
   it('persists the commit under the harness home and restores it into a fresh controller', async () => {
     // The sandbox home comes from beforeEach; both controllers resolve the same
     // `<home>/novelai-workbench-states` directory.

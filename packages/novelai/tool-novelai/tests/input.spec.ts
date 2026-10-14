@@ -62,6 +62,33 @@ describe('resolveInput (workbench binding)', () => {
     ])
   })
 
+  it('the committed panel\'s character cards bind over the call\'s characters', () => {
+    const input = resolveInput({
+      prompt: 'ignored',
+      characters: [{ prompt: 'call character' }],
+    }, {
+      ...COMMITTED,
+      characters: [
+        { prompt: 'panel silver hair', negativePrompt: 'extra ears', useCoords: true, x: 0.3, y: 0.7 },
+        { prompt: 'panel cat ears', useCoords: false, x: 0.5, y: 0.5 },
+      ],
+    })
+    // The panel is the visible truth the operator applied; the wire-only
+    // coordinate fields drop in the caption normalization.
+    expect(input.characters).toEqual([
+      { prompt: 'panel silver hair', negativePrompt: 'extra ears' },
+      { prompt: 'panel cat ears', negativePrompt: '' },
+    ])
+  })
+
+  it('an empty panel characters list falls back to the call\'s characters', () => {
+    const input = resolveInput(
+      { characters: [{ prompt: 'call character' }] },
+      { ...COMMITTED, characters: [] },
+    )
+    expect(input.characters).toEqual([{ prompt: 'call character', negativePrompt: '' }])
+  })
+
   it('blank character entries drop and the checkpoint cap clamps the rest', () => {
     const seven = Array.from({ length: 7 }, (_, index) => ({ prompt: `char ${index}` }))
     const input = resolveInput({

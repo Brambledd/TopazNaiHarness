@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-14-novelai-patch-characters-slot.md
-2026-10-14-novelai-patch-characters-slot.md: 6e27162cba3db52bbc584b784f45da9698843f3e
-2026-10-14-novelai-patch-characters-slot.zh.md: 34c6deed59f95b8040a2c21469c196217c46264b
+2026-10-14-novelai-patch-characters-slot.md: e3e9a554246bdfc9342e8e8460f5401dfe6f0d17
+2026-10-14-novelai-patch-characters-slot.zh.md: 08fa3441513e896be790582aae8d6d06ae944775

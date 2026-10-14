@@ -24,3 +24,4 @@
 - 陈旧闭包隐患对所有未来的补丁分支一并修复：`applyPatchRequest` 内的任何状态读取都安全，因为订阅每渲染重订。
 - 角色级负面提示词与坐标仍由面板手动管理；补丁槽只编辑提示词（schema 不携带 `x`/`y`），保持操作记录在无损 JSON 边界两侧都是字符串映射。
 - 已提交状态如今端到端携带角色卡：`NovelaiWorkbenchState` 长出可选 `characters` 数组，面板提交并恢复它（会话重入时卡片以全新草稿回填），`novelai_generate` 的解析在面板有卡时绑定面板角色——仅当面板无卡时才回退到调用自己的 `characters`。有卡的面板是操作者所见的事实；调用参数再也无法悄悄绕过操作者应用的内容。
+- 与补丁工具参数不同，这次 wire 变更跨越了一个已构建的浏览器边界：`@deepseek-ai/dsh-api-remotes` 客户端 bundle 内嵌了 `novelai_commitWorkbenchState` 的生成版 schemastery schema，旧构建——其 schema 早于 `characters`——会在每次提交里剥掉这个未知键，提示词与参数照常通过而角色无声消失。只要工作台状态的 wire 类型长出新字段就必须重建它（`pnpm --filter @deepseek-ai/dsh-api-remotes bundle`）；线上故障特征是面板显示卡片而落盘状态文档没有 `characters`。

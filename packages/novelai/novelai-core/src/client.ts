@@ -112,7 +112,14 @@ export async function requestGeneration(options: {
   }
   if (!response.ok) {
     // Never auto-retry a failed paid submission: the server may have charged for the image.
-    throw new Error(`NovelAI generation failed: HTTP ${response.status} ${response.statusText}`)
+    // The response body usually names the actual rejection (server-side 500s and proxy
+    // error pages read very differently), so surface a snippet instead of the bare status.
+    const detail = await response.text().catch(() => '')
+    const snippet = detail.trim().replace(/\s+/g, ' ').slice(0, 300)
+    throw new Error(
+      `NovelAI generation failed: HTTP ${response.status} ${response.statusText}`
+      + (snippet === '' ? '' : ` — ${snippet}`),
+    )
   }
   return extractImages(new Uint8Array(await response.arrayBuffer()))
 }

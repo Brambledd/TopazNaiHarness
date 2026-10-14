@@ -42,7 +42,7 @@ describe('structured character captions', () => {
     expect(payload.parameters.use_coords).toBe(true)
   })
 
-  it('carries per-character negatives only when at least one is set', () => {
+  it('mirrors the negative captions one-for-one whenever characters exist', () => {
     const withNegative = buildNovelaiPayload(base({
       characters: [
         { prompt: '1girl', negativePrompt: 'extra ears', useCoords: false, x: 0.5, y: 0.5 },
@@ -54,10 +54,14 @@ describe('structured character captions', () => {
       { char_caption: 'extra ears', centers: [{ x: 0.5, y: 0.5 }] },
       { char_caption: '', centers: [{ x: 0.5, y: 0.5 }] },
     ])
+    // A populated positive list with an empty negative list is a server-side
+    // rejection risk: the mirror ships even when every personal negative is empty.
     const withoutNegative = buildNovelaiPayload(base({
       characters: [{ prompt: '1girl', negativePrompt: '', useCoords: false, x: 0.5, y: 0.5 }],
     }))
-    expect((withoutNegative.parameters.v4_negative_prompt as { caption: { char_captions: unknown[] } }).caption.char_captions).toEqual([])
+    expect((withoutNegative.parameters.v4_negative_prompt as { caption: { char_captions: unknown[] } }).caption.char_captions).toEqual([
+      { char_caption: '', centers: [{ x: 0.5, y: 0.5 }] },
+    ])
   })
 
   it('clamps coordinates and drops blank captions beyond trimming', () => {

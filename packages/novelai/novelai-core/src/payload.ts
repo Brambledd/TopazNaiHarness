@@ -18,8 +18,11 @@ import {
  */
 export const DEFAULT_NEGATIVE_PROMPT =
   'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, '
-  + 'jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, '
-  + 'too many watermarks, blank page'
+  + 'jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, '
+  + 'multiple views, logo, too many watermarks, negative space, blank page, black border, '
+  + 'black bars, letterbox, pillarbox, black edges, empty black space, dark border, frame border, '
+  + 'vignette, out of frame, cropped, incomplete composition, black background edges, '
+  + 'low quality, blurry, bad hands'
 
 /** Per-pixel coefficient of the official Anlas base-price formula, ported from NovelAI's frontend. */
 const BASE_PIXEL_COEFFICIENT = 2951823174884865e-21
@@ -103,9 +106,12 @@ export function buildNovelaiPayload(input: NovelaiGenerateInput): NovelaiWirePay
   }
   if (isV4Plus(input.model)) {
     // Structured character captions (desktop reference parity): each character keeps
-    // its own caption and, when any character carries one, its own negative caption.
-    // The API requires one center per caption even for model-chosen placement — an
-    // empty centers array fails with HTTP 500 — so (0.5, 0.5) is the AI-choice sentinel.
+    // its own caption and the negative structure mirrors the positive count
+    // one-for-one whenever characters exist (empty string when the character carries
+    // no personal negative) — a populated positive list with an empty negative list
+    // is a server-side rejection risk. The API requires one center per caption even
+    // for model-chosen placement — an empty centers array fails with HTTP 500 — so
+    // (0.5, 0.5) is the AI-choice sentinel.
     const characters = normalizeCharacters(input)
     const cap = maxNovelaiCharacters(input.model)
     const useCoords = characters.some(character => character.useCoords)
@@ -113,12 +119,10 @@ export function buildNovelaiPayload(input: NovelaiGenerateInput): NovelaiWirePay
       char_caption: character.prompt,
       centers: [{ x: character.useCoords ? clampUnit(character.x) : 0.5, y: character.useCoords ? clampUnit(character.y) : 0.5 }],
     }))
-    const negativeCaptions = characters.slice(0, cap).some(character => character.negativePrompt !== '')
-      ? characters.slice(0, cap).map(character => ({
-        char_caption: character.negativePrompt,
-        centers: [{ x: character.useCoords ? clampUnit(character.x) : 0.5, y: character.useCoords ? clampUnit(character.y) : 0.5 }],
-      }))
-      : []
+    const negativeCaptions = characters.slice(0, cap).map(character => ({
+      char_caption: character.negativePrompt,
+      centers: [{ x: character.useCoords ? clampUnit(character.x) : 0.5, y: character.useCoords ? clampUnit(character.y) : 0.5 }],
+    }))
     // The desktop reference writes the flag at the top level as well as inside
     // both structured objects; the API reads the top-level one.
     parameters.use_coords = useCoords

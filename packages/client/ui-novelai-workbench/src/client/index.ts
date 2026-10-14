@@ -22,7 +22,7 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import { WorkbenchRail, WorkbenchRoot } from './components.tsx'
 import type { WorkbenchBackfillRequest, WorkbenchPatchRequest } from './bridge.ts'
 import type { WorkbenchInjected } from './injected.ts'
-import type { NovelaiWorkbenchState as WorkbenchStateMirror } from '@deepseek-ai/dsh-api-novelai-controller/types'
+import type { NovelaiCatalogValue, NovelaiEstimateValue, NovelaiWorkbenchState as WorkbenchStateMirror } from '@deepseek-ai/dsh-api-novelai-controller/types'
 import { en, zh, type WorkbenchKey } from './locales.ts'
 
 export type { NovelaiWorkbenchBridge, WorkbenchBackfillCharacter, WorkbenchBackfillRequest, WorkbenchPatchOperation, WorkbenchPatchRequest } from './bridge.ts'
@@ -85,16 +85,31 @@ export function apply(ctx: ClientContext): void {
    * Built once — the apply closure's methods are stable, and a per-render factory would hand the
    * panel freshly-referenced props every render, re-running every effect that depends on a face
    * method (the restore and catalog-seed chains included). */
+  // Cross-remount caches: the panel remounts on every conversation switch and
+  // would otherwise re-issue the catalog round-trip (proxy-slow) and an Anlas
+  // estimate per size before the user can interact. The catalog is static per
+  // connection; an estimate is deterministic in its dimensions, so a small
+  // capped map serves repeats.
+  let catalogCache: Promise<NovelaiCatalogValue> | undefined
+  const estimateCache = new Map<string, NovelaiEstimateValue>()
   const workbenchInjectInstance: WorkbenchInjected = {
     setViewMode: (mode) => { ctx.layout.setViewMode(mode) },
-    catalog: async () => {
-      const result = await ctx.remote.novelai.catalog()
-      if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
-      return result.value
+    catalog: () => {
+      catalogCache ??= (async () => {
+        const result = await ctx.remote.novelai.catalog()
+        if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+        return result.value
+      })()
+      return catalogCache
     },
     estimate: async (request) => {
+      const key = `${request.width}x${request.height}x${request.steps}`
+      const cached = estimateCache.get(key)
+      if (cached !== undefined) return cached
       const result = await ctx.remote.novelai.estimate(request)
       if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+      if (estimateCache.size >= 100) estimateCache.clear()
+      estimateCache.set(key, result.value)
       return result.value
     },
     generate: async (request) => {

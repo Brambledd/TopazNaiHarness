@@ -18,6 +18,7 @@ export const SLOT_KEY = {
   positive: 'patch.slot.positive',
   negative: 'patch.slot.negative',
   settings: 'patch.slot.settings',
+  characters: 'patch.slot.characters',
 } as const
 
 /** Locale keys per operation verb (shared with the turn-tail card). */
@@ -101,6 +102,9 @@ export function PatchRow({ block, t, requestPatchApply }: PatchRowProps) {
                 }}
               />
               <span className={css.verb}>{t(OP_KEY[operation.op])}</span>
+              {model.slot === 'characters' && (
+                <span className={css.target}>{t('patch.characterN').replace('{n}', operation.character !== undefined ? String(operation.character) : '?')}</span>
+              )}
               <span className={css.target}>{operation.field ?? operation.tag}</span>
               {operation.op === 'modify' && operation.value !== undefined && (
                 <span className={css.value}>→ {operation.value}</span>

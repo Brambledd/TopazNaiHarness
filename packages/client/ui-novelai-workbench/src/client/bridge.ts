@@ -43,18 +43,20 @@ export interface WorkbenchBackfillRequest {
 export interface WorkbenchPatchOperation {
   /** Verb: add a tag, remove a tag, or modify (rewrite a tag / set a field). */
   op: 'add' | 'remove' | 'modify'
-  /** Danbooru tag (positive/negative slots). */
+  /** Danbooru tag (positive/negative/characters slots). */
   tag?: string
   /** Settings field (settings slot). */
   field?: string
   /** Replacement tag or the settings field value. */
   value?: string
+  /** 1-based character number (characters slot); a new number creates the card. */
+  character?: number
 }
 
 /** One conversation-side patch delivered into the mounted workbench panel. */
 export interface WorkbenchPatchRequest {
   /** Target slot. */
-  slot: 'positive' | 'negative' | 'settings'
+  slot: 'positive' | 'negative' | 'settings' | 'characters'
   /** Ordered operations applied as one patch. */
   operations: WorkbenchPatchOperation[]
 }

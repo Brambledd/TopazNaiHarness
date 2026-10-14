@@ -99,6 +99,9 @@ function PatchTailCard({ request, applied, onApplied, t, requestPatchApply }: {
                 }}
               />
               <span className={css.verb}>{t(OP_KEY[operation.op])}</span>
+              {request.slot === 'characters' && (
+                <span className={css.target}>{t('patch.characterN').replace('{n}', operation.character !== undefined ? String(operation.character) : '?')}</span>
+              )}
               <span className={css.target}>{operation.field ?? operation.tag}</span>
               {operation.op === 'modify' && operation.value !== undefined && (
                 <span className={css.value}>→ {operation.value}</span>

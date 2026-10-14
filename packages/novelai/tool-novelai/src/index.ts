@@ -348,8 +348,8 @@ export function apply(ctx: Context, config: Config): void {
     description: PATCH_DESCRIPTION,
     parameters: {
       slot: {
-        type: 'string', enum: ['positive', 'negative', 'settings'], required: true,
-        description: 'Which workbench slot the operations target.',
+        type: 'string', enum: ['positive', 'negative', 'settings', 'characters'], required: true,
+        description: 'Which workbench slot the operations target. Multi-character scenes: use `characters` — one `character` number per character — and keep only shared scene tags on `positive`.',
       },
       operations: {
         type: 'array', required: true,
@@ -359,9 +359,10 @@ export function apply(ctx: Context, config: Config): void {
           additionalProperties: true,
           properties: {
             op: { type: 'string', enum: ['add', 'remove', 'modify'], required: true, description: 'Tag verb (add/remove/modify); on the settings slot only modify (set) is meaningful.' },
-            tag: { type: 'string', description: 'Danbooru tag (positive/negative slots). `modify` rewrites this tag to `value`.' },
+            tag: { type: 'string', description: 'Danbooru tag (positive/negative/characters slots). `modify` rewrites this tag to `value`.' },
             field: { type: 'string', enum: [...SETTINGS_FIELDS], description: 'Settings field (settings slot): model, width, height, steps, cfgScale, sampler, noiseSchedule, seed.' },
             value: { type: 'string', description: 'Replacement tag (modify) or the settings field value as a string.' },
+            character: { type: 'integer', description: '1-based character number (characters slot only); a new number creates that character card.' },
           },
         },
       },

@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-14-novelai-patch-characters-slot.md
+2026-10-14-novelai-patch-characters-slot.md: 4e79b6fcb6b8e13aaddd35027a043db47a055970
+2026-10-14-novelai-patch-characters-slot.zh.md: f3ac95544eab55069a1c704a52c18e21bd8592d6

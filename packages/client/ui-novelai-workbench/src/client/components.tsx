@@ -654,9 +654,50 @@ export function WorkbenchRoot({
       return tags.join(', ')
     }
     if (request.slot === 'positive') setPrompt(applyTagOps)
-    else setNegativePrompt(applyTagOps)
+    else if (request.slot === 'negative') setNegativePrompt(applyTagOps)
+    else {
+      // Characters slot: one ordered pass materializes cards up to the highest
+      // referenced number (1-based, clamped to model capacity), then each op
+      // edits that card's prompt tags exactly like the positive slot's tag ops.
+      const capacity = maxCharactersFor(model)
+      const highest = Math.min(capacity, Math.max(0, ...request.operations.map(operation => operation.character ?? 1)))
+      setCharacters((current) => {
+        const next = [...current]
+        while (next.length < highest) {
+          next.push({ id: nextCharacterId(), prompt: '', negativePrompt: '', useCoords: false, x: 0.5, y: 0.5 })
+        }
+        return next.map((draft, index) => {
+          const number = index + 1
+          if (!request.operations.some(operation => (operation.character ?? 1) === number)) return draft
+          const tags = draft.prompt.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
+          for (const operation of request.operations) {
+            if ((operation.character ?? 1) !== number) continue
+            const tag = operation.tag?.trim() ?? ''
+            if (tag === '') continue
+            if (operation.op === 'add') {
+              if (!tags.includes(tag)) tags.push(tag)
+            } else if (operation.op === 'remove') {
+              const at = tags.indexOf(tag)
+              if (at >= 0) tags.splice(at, 1)
+            } else {
+              const replacement = operation.value?.trim() ?? tag
+              for (let i = 0; i < tags.length; i++) {
+                if (tags[i] === tag) tags[i] = replacement
+              }
+            }
+          }
+          return { ...draft, prompt: tags.join(', ') }
+        })
+      })
+      // A characters patch is about those cards: open the fold so the user
+      // sees them land.
+      setCharactersOpen(true)
+    }
   }
-  useEffect(() => onPatchApply(applyPatchRequest), [onPatchApply])
+  // No deps: the subscriber must be the CURRENT render's closure. The
+  // characters branch reads `model` for capacity, and a stale first-render
+  // closure would clamp every patch to the unseeded capacity of 0.
+  useEffect(() => onPatchApply(applyPatchRequest))
 
   /** Mint (or reuse) the object URL of one entry's PNG. */
   const entryUrl = (entry: NovelaiGenerationValue): string | undefined => {
@@ -1217,7 +1258,7 @@ export function WorkbenchRoot({
                         aria-label={`${t('characters.remove')} ${String(index + 1)}`}
                         onClick={() => { removeCharacter(draft.id) }}
                       >
-                          ✕
+                        ✕
                       </button>
                     </div>
                     <PromptTextarea

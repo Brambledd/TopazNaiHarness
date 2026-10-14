@@ -945,6 +945,29 @@ describe('conversation interop', () => {
     expect((screen.getByLabelText('种子值') as HTMLInputElement).value).toBe('777')
   })
 
+  it('applies a characters patch into per-character cards without touching the shared prompt', async () => {
+    const { deliverPatch } = await mount()
+    await waitFor(() => { expect(screen.getByLabelText('模型')).toBeTruthy() })
+    fireEvent.change(screen.getByPlaceholderText('1girl, solo, masterpiece…'), { target: { value: 'tavern, 2girls, warm light' } })
+    act(() => {
+      deliverPatch({
+        slot: 'characters',
+        operations: [
+          { op: 'add', character: 1, tag: 'silver hair' },
+          { op: 'add', character: 2, tag: 'cat ears' },
+          { op: 'add', character: 2, tag: 'wolf tail' },
+        ],
+      })
+    })
+    // The shared prompt stays exactly as it was.
+    expect((screen.getByPlaceholderText('1girl, solo, masterpiece…') as HTMLInputElement).value)
+      .toBe('tavern, 2girls, warm light')
+    // The patch opens the characters fold itself, and both cards land.
+    expect(screen.getByRole('button', { name: /角色提示词/ }).getAttribute('aria-expanded')).toBe('true')
+    expect((screen.getAllByLabelText('角色 1')[0] as HTMLTextAreaElement).value).toBe('silver hair')
+    expect((screen.getAllByLabelText('角色 2')[0] as HTMLTextAreaElement).value).toBe('cat ears, wolf tail')
+  })
+
   it('commits the panel state for the current session (debounced)', async () => {
     const { props } = makeProps()
     render(<WorkbenchRoot {...(props as unknown as ComponentProps<typeof WorkbenchRoot>)} />)

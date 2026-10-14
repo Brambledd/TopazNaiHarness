@@ -13,17 +13,21 @@ export const SETTINGS_FIELDS = [
 /** Model-facing description of the patch tool. */
 export const PATCH_DESCRIPTION =
   'Propose a precise edit to the NovelAI workbench prompt instead of restating the whole prompt: '
-  + 'one call carries the slot (positive / negative / settings) and an ordered operation list '
+  + 'one call carries the slot (positive / negative / settings / characters) and an ordered operation list '
   + '(add a tag, remove a tag, modify a tag to a new spelling, or set a settings field). '
+  + 'MULTI-CHARACTER SCENES MUST USE THE CHARACTERS SLOT: give every character its own operations with its '
+  + '1-based `character` number (new numbers create that character card), and keep only the SHARED scene tags '
+  + '(setting, lighting, composition, quality tags) on the positive slot — never write several characters as '
+  + 'plain tags on the positive slot. '
   + 'USE THIS FIRST whenever the user requests a new scene or any visual change: emit the needed tags '
-  + 'as one patch, tell the user to click 应用 in the card, and only then call novelai_generate. '
+  + 'as one patch per slot, tell the user to click 应用 in the card, and only then call novelai_generate. '
   + 'generation always runs off the workbench\'s live prompt — a requested scene that never reached '
   + 'the workbench will not appear in the image.'
 
 /** Model arguments of the patch tool after schema validation. */
 export interface PatchArgs {
-  slot: 'positive' | 'negative' | 'settings'
-  operations: Array<{ op: 'add' | 'remove' | 'modify'; tag?: string; field?: string; value?: string }>
+  slot: 'positive' | 'negative' | 'settings' | 'characters'
+  operations: Array<{ op: 'add' | 'remove' | 'modify'; tag?: string; field?: string; value?: string; character?: number }>
 }
 
 /**
@@ -47,6 +51,22 @@ export function normalizePatch(args: PatchArgs): { slot: string; operations: Arr
         throw new Error(`${where}: settings ops need a value`)
       }
       return { op: 'modify', field: operation.field, value: operation.value.trim() }
+    }
+    if (args.slot === 'characters') {
+      if (operation.character === undefined || !Number.isInteger(operation.character) || operation.character < 1) {
+        throw new Error(`${where}: characters-slot ops need a 1-based integer character number`)
+      }
+      if (operation.tag === undefined || operation.tag.trim() === '') {
+        throw new Error(`${where}: characters-slot ops need a tag`)
+      }
+      if (operation.op === 'modify' && (operation.value === undefined || operation.value.trim() === '')) {
+        throw new Error(`${where}: modify needs the replacement value`)
+      }
+      const characterRecord: Record<string, string> = {
+        op: operation.op, character: String(operation.character), tag: operation.tag.trim(),
+      }
+      if (operation.op === 'modify' && operation.value !== undefined) characterRecord['value'] = operation.value.trim()
+      return characterRecord
     }
     if (operation.tag === undefined || operation.tag.trim() === '') {
       throw new Error(`${where}: ${args.slot}-slot ops need a tag`)

@@ -55,6 +55,25 @@ describe('PatchRow', () => {
     expect(screen.getAllByRole('checkbox')).toHaveLength(3)
   })
 
+  it('renders a characters-slot patch with per-character rows and applies it whole', () => {
+    const charactersPatch = {
+      slot: 'characters',
+      operations: [
+        { op: 'add', character: 1, tag: 'silver hair' },
+        { op: 'add', character: 2, tag: 'cat ears' },
+      ],
+    }
+    const requestPatchApply = vi.fn(() => true)
+    render(<PatchRow {...props(settledBlock(charactersPatch), requestPatchApply)} />)
+    // The characters slot must read as a card, not as the unreadable note.
+    expect(screen.getByText('patch.slot.characters')).toBeTruthy()
+    expect(screen.getAllByText('patch.characterN')).toHaveLength(2)
+    expect(screen.getByText('silver hair')).toBeTruthy()
+    expect(screen.getByText('cat ears')).toBeTruthy()
+    fireEvent.click(screen.getByText('patch.apply'))
+    expect(requestPatchApply).toHaveBeenCalledWith({ slot: 'characters', operations: charactersPatch.operations })
+  })
+
   it('applies only the checked operations through the bridge and locks the card', () => {
     const requestPatchApply = vi.fn(() => true)
     render(<PatchRow {...props(settledBlock(PATCH), requestPatchApply)} />)

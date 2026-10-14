@@ -36,7 +36,7 @@ export function patchModel(block: ToolCallViewProps['block']): PatchModel | null
   const argsRaw = (settled ? block.call?.argsRaw : block.argsRaw) ?? ''
   try {
     const parsed = JSON.parse(argsRaw) as { slot?: unknown; operations?: unknown }
-    if (parsed.slot !== 'positive' && parsed.slot !== 'negative' && parsed.slot !== 'settings') return null
+    if (parsed.slot !== 'positive' && parsed.slot !== 'negative' && parsed.slot !== 'settings' && parsed.slot !== 'characters') return null
     if (!Array.isArray(parsed.operations)) return null
     const operations = parsed.operations.filter((operation): operation is WorkbenchPatchOperation => {
       if (typeof operation !== 'object' || operation === null) return false
